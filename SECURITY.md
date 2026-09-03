@@ -18,7 +18,7 @@ If you discover a security vulnerability in Voxel⁺, please report it responsib
 
 Instead, please:
 
-1. **Email the security team**: mokshadshetty@gmail.com
+1. **Discord the security team**: DisGamerWorld
 2. **Include "Security Vulnerability"** in the subject line
 3. **Provide details** about the vulnerability:
    - Description of the issue
