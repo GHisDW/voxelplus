@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Questions and Discussion
+    url: https://github.com/GHisDW/voxelplus/discussions
+    about: Please ask and answer questions here.
+  - name: Security Issues
+    url: mailto:mokshadshetty@gmail.com
+    about: Please report security vulnerabilities via email, not as issues.
