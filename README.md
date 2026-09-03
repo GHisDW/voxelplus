@@ -12,32 +12,37 @@
 
 Voxel⁺ is what happens when you take Fabric Loom, Gradle, a bit of Electron, and a healthy disrespect for “intended use” and turn them into an actual playable singleplayer Minecraft client.
 
-It’s free. It’s offline. It’s fully moddable. And it’s built entirely around abusing Loom’s `runClient` task until it stops being a temporary dev environment and starts being a real game.
+It’s free. It’s offline (after first setup). It’s fully moddable. And it’s built entirely around abusing Loom’s `runClient` task until it stops being a temporary dev environment and starts being a real game — the kind of abuse your CI told you not to try at home.
 
-### The honest technical explanation
+> TL;DR: It makes `./gradlew runClient` behave like a proper, isolated Minecraft instance. No launcher faff, just chaos and mod support.
 
-Fabric Loom + Gradle were never meant to be a launcher.  
-Voxel⁺ leans into that hard:
 
-- It forces the exact Java + Gradle wrapper + Loom version each Minecraft version wants
-- It rewrites / injects the config so `./gradlew runClient` becomes a full, isolated, playable instance
-- It then layers instance management, Modrinth, resource packs, and live logs on top
+## The honest technical explanation (and a small apology to Loom)
 
-This is deliberately exploiting current Loom behaviour.  
-It will break. Fabric is already fixing it in [PR #1600](https://github.com/FabricMC/fabric-loom/pull/1600). When that lands, this whole approach gets patched and Voxel⁺ will need a serious update (or a rewrite). Until then… it works.
+Fabric Loom + Gradle were never meant to be a launcher. Voxel⁺ leans into that hard:
 
-### Features
+- Forces the exact Java, Gradle wrapper, and Loom version each Minecraft version wants
+- Rewrites / injects configs so `./gradlew runClient` becomes a full, isolated, playable instance
+- Layers instance management, Modrinth browsing, resource packs, and live logs on top
+
+This is deliberately exploiting current Loom behaviour. It will break. Fabric is already fixing it in [PR #1600](https://github.com/FabricMC/fabric-loom/pull/1600). When that lands, this whole approach will need a serious update — and probably a long, remorseful refactor.
+
+(Yes, we know this is a bit cursed. We prefer the term "strategically experimental.")
+
+
+## Features
 
 - Real free Java Edition singleplayer (offline after first setup)
-- Full Fabric mod support
-- Automatic Java detection & version matching
+- Full Fabric mod support (because mods > vanilla)
+- Automatic Java detection & version matching (it cries so you don’t have to)
 - Proper isolated instances (create / duplicate / import / export)
-- Built-in Modrinth browser
-- Resource packs + shaders
-- Live Minecraft + Gradle logs
-- Per-instance Loom/Gradle environment that we happily abuse
+- Built-in Modrinth browser (for instant mod temptation)
+- Resource packs + shaders (for when you want Minecraft to look like a painting)
+- Live Minecraft + Gradle logs (for debugging — and dramatic revenge)
+- Per-instance Loom/Gradle environments that we happily abuse
 
-### Supported versions
+
+## Supported versions
 
 | Minecraft | Java    | Gradle  | Loom         |
 |-----------|---------|---------|--------------|
@@ -49,23 +54,30 @@ It will break. Fabric is already fixing it in [PR #1600](https://github.com/Fabr
 | 1.20.x    | 17 / 21 | 8.10.2  | 1.8.13       |
 | 1.21.x    | 21      | 8.10.2  | 1.8.13       |
 
-### Download & Install
+
+## Download & Install
 
 Everything about downloading, system requirements, first launch, Java setup, creating instances, and troubleshooting lives here:
 
 **→ [DOWNLOADING.md](DOWNLOADING.md)**
 
-That’s the official guide. Start there.
+That’s the official guide. Start there — it has fewer jokes and more actionable instructions.
 
-### Quick start (for the impatient)
+
+## Quick start (for the impatient)
 
 ```bash
 git clone https://github.com/GHisDW/voxelplus.git
 cd voxelplus
 npm install
 npm run app:dev
-Or just grab a release from the repo and follow DOWNLOADING.md [blocked].
-Project structure (for the curious)
+```
+
+Or just grab a release from the repo and follow DOWNLOADING.md. This path contains fewer opportunities to accidentally summon Gradle demons.
+
+
+## Project structure (for the curious)
+
 textvoxelplus/
 ├── electron/          # main process + the actual magic
 │   ├── main.ts
@@ -78,15 +90,30 @@ textvoxelplus/
 ├── frontend/          # the UI
 ├── templates/         # the Loom/Gradle templates we mess with
 └── package.json
-Contact & Support
+
+
+## Contact & Support
+
 Got questions, found a bug, or just want to talk about how cursed this is?
-Discord: DisGamerWorld
-Contributing
+
+- Discord: DisGamerWorld
+- Open an issue if you think your world was destroyed by a bug (or by your own TNT experiment)
+
+
+## Contributing
+
 PRs welcome. Especially if you’re helping prepare for the day Loom PR #1600 lands and breaks everything.
-See the contribution guidelines and DOWNLOADING.md [blocked] for setup info.
-License
-MIT. Do whatever you want with it.
-Disclaimer
+
+See the contribution guidelines and DOWNLOADING.md for setup info. We accept code, documentation, snacks, and very specific bug reports.
+
+
+## License
+
+MIT. Do whatever you want with it. Please be nicer to the code than it has been to Loom.
+
+
+## Disclaimer
+
 Voxel⁺ is not affiliated with Mojang, Microsoft, or the Fabric project.
 
 Minecraft is a trademark of Mojang Studios.
@@ -95,4 +122,5 @@ This client exists because Loom currently lets us get away with it. That window 
 
 
 Built with Electron, Vite, TypeScript, Fabric Loom, Gradle, and a complete lack of respect for “intended behaviour”.
-⭐ Star it if it made you smile
+
+If this README made you smile, consider starring the repo ⭐
