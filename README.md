@@ -7,12 +7,13 @@
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/GHisDW/voxelplus)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows-lightgray)](https://github.com/GHisDW/voxelplus)
+[![Discord](https://img.shields.io/badge/discord-Join%20Server-5865F2)](https://discord.gg/msYWkqa4k)
 
 </div>
 
-Voxel⁺ is what happens when you take Fabric Loom, Gradle, a bit of Electron, and a healthy disrespect for “intended use” and turn them into an actual playable singleplayer Minecraft client. 😈🛠️
+Voxel⁺ is what happens when you take Fabric Loom, Gradle, a bit of Electron, and a healthy disrespect for "intended use" and turn them into an actual playable singleplayer Minecraft client. [...]
 
-It’s free, it’s offline (after first setup), and it’s fully moddable. We’ve basically taught `./gradlew runClient` to behave like a proper game launcher — with snacks. 🍪
+It's free, it's offline (after first setup), and it's fully moddable. We've basically taught `./gradlew runClient` to behave like a proper game launcher — with snacks. 🍪
 
 > TL;DR: It makes `./gradlew runClient` behave like a proper, isolated Minecraft instance. No launcher faff — just chaos, mods, and excessive logging. ⚡️
 
@@ -25,16 +26,16 @@ Fabric Loom + Gradle were never meant to be a launcher. Voxel⁺ leans into that
 - ✍️ Rewrites / injects configs so `./gradlew runClient` becomes a full, isolated, playable instance
 - 🧩 Layers instance management, Modrinth browsing, resource packs, and live logs on top
 
-This is deliberately exploiting current Loom behaviour. It will break — probably at the worst possible moment. Fabric is already fixing it in [PR #1600](https://github.com/FabricMC/fabric-loom/pull/1600). When that lands, we’ll need to adapt (and maybe apologize). 🙏
+This is deliberately exploiting current Loom behaviour. It will break — probably at the worst possible moment. Fabric is already fixing it in [PR #1600](https://github.com/FabricMC/fabric-loom/p[...]
 
-(Yes, it’s a little cursed. We prefer "strategically experimental." 🚀)
+(Yes, it's a little cursed. We prefer "strategically experimental." 🚀)
 
 
 ## ✨ Features
 
 - ✅ Real free Java Edition singleplayer (offline after first setup)
 - 🧩 Full Fabric mod support (mods > vanilla)
-- ☕ Automatic Java detection & version matching (so you don’t have to cry over JDKs)
+- ☕ Automatic Java detection & version matching (so you don't have to cry over JDKs)
 - 🗃️ Proper isolated instances (create / duplicate / import / export)
 - 🔎 Built-in Modrinth browser (one-click mod temptation)
 - 🎨 Resource packs + shaders (make your world photogenic)
@@ -63,7 +64,7 @@ Everything about downloading, system requirements, first launch, Java setup, cre
 
 **→ [DOWNLOADING.md](DOWNLOADING.md)** 📚
 
-That’s the official guide. Start there — it has more step-by-step instructions and fewer bad jokes. (Fewer — not none.)
+That's the official guide. Start there — it has more step-by-step instructions and fewer bad jokes. (Fewer — not none.)
 
 
 ## ⚡ Quick start (for the impatient)
@@ -105,8 +106,8 @@ textvoxelplus/
 ## ⚠️ Known issues & troubleshooting
 
 - If your run fails with a mismatched Java version: check the instance settings and/or the DOWNLOADING.md Java section. ☕️
-- If Gradle hangs: try clearing the instance’s Gradle cache and re-run the setup. 🧹
-- Loom PR #1600 may change behavior — if something breaks after Loom updates, submit an issue and we’ll triage.
+- If Gradle hangs: try clearing the instance's Gradle cache and re-run the setup. 🧹
+- Loom PR #1600 may change behavior — if something breaks after Loom updates, submit an issue and we'll triage.
 
 If you hit something weird, open an issue with logs attached (logs are available in the instance UI). The more dramatic the stack trace, the better the story. 📣
 
@@ -115,6 +116,7 @@ If you hit something weird, open an issue with logs attached (logs are available
 
 Got questions or want to report a bug? Reach out:
 
+- **Discord Server**: https://discord.gg/msYWkqa4k 💬 (voxel + server)
 - Discord: DisGamerWorld 💬
 - Open an issue: https://github.com/GHisDW/voxelplus/issues 🐛
 
@@ -141,7 +143,7 @@ A: Usually yes, but mods can change world formats. Back up before major changes!
 
 Q: What happens when Loom PR #1600 lands? ⚖️
 
-A: We’ll update Voxel⁺. It might require new approaches — please help if you can! Contributors are heroes. 🦸‍♀️🦸
+A: We'll update Voxel⁺. It might require new approaches — please help if you can! Contributors are heroes. 🦸‍♀️🦸
 
 
 ## 📜 License
@@ -155,11 +157,11 @@ Voxel⁺ is not affiliated with Mojang, Microsoft, or the Fabric project.
 
 Minecraft is a trademark of Mojang Studios.
 
-This client exists because Loom currently permits this workflow. That window may close; we’re actively tracking Loom changes. 🕵️‍♀️
+This client exists because Loom currently permits this workflow. That window may close; we're actively tracking Loom changes. 🕵️‍♀️
 
 
 ---
 
-Built with Electron, Vite, TypeScript, Fabric Loom, Gradle, and a complete lack of respect for “intended behaviour”.
+Built with Electron, Vite, TypeScript, Fabric Loom, Gradle, and a complete lack of respect for "intended behaviour".
 
 If this README made you smile, consider starring the repo ⭐ — or at least leaving a funny issue. 😂
