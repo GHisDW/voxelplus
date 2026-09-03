@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**A modern, offline Minecraft client for singleplayer development**
+**Free, offline, moddable singleplayer Minecraft (Java Edition)**
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/GHisDW/voxelplus)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -10,166 +10,89 @@
 
 </div>
 
-Voxel⁺ is a powerful, Windows-first Minecraft client designed for singleplayer mod development and testing. Built with Electron, Vite, and TypeScript, it provides a clean, modern interface for managing isolated Minecraft instances with automatic environment resolution.
+Voxel⁺ is what happens when you take Fabric Loom, Gradle, a bit of Electron, and a healthy disrespect for “intended use” and turn them into an actual playable singleplayer Minecraft client.
 
-## ✨ Features
+It’s free. It’s offline. It’s fully moddable. And it’s built entirely around abusing Loom’s `runClient` task until it stops being a temporary dev environment and starts being a real game.
 
-- **Automatic Java Detection** - Scans and validates installed Java runtimes
-- **Dynamic Compatibility Resolution** - Automatically selects the correct Java version for each Minecraft version
-- **Fabric Mod Integration** - Built-in support for Fabric mod loader and development
-- **Instance Management** - Create, duplicate, import, and export isolated Minecraft instances
-- **Modrinth Integration** - Browse and install mods directly from Modrinth
-- **Resource Pack Support** - Manage resource packs and shaders
-- **Real-time Logging** - View live logs from Minecraft and Gradle processes
-- **Offline-First** - Works completely offline after initial setup
-- **Development Tools** - Integrated Fabric Loom/Gradle environment for mod development
+### The honest technical explanation
 
-## 🎯 Supported Minecraft Versions
+Fabric Loom + Gradle were never meant to be a launcher.  
+Voxel⁺ leans into that hard:
 
-- **1.15.x** - Java 8 + Gradle 6.0 + Loom 0.4-SNAPSHOT
-- **1.16.x** - Java 8 + Gradle 7.0 + Loom 0.8-SNAPSHOT  
-- **1.17.x** - Java 16 + Gradle 7.3 + Loom 0.9-SNAPSHOT
-- **1.18.x** - Java 17 + Gradle 8.10.2 + Loom 1.8.13
-- **1.19.x** - Java 17 + Gradle 8.10.2 + Loom 1.8.13
-- **1.20.x** - Java 17/21 + Gradle 8.10.2 + Loom 1.8.13
-- **1.21.x** - Java 21 + Gradle 8.10.2 + Loom 1.8.13
+- It forces the exact Java + Gradle wrapper + Loom version each Minecraft version wants
+- It rewrites / injects the config so `./gradlew runClient` becomes a full, isolated, playable instance
+- It then layers instance management, Modrinth, resource packs, and live logs on top
 
-## 🚀 Getting Started
+This is deliberately exploiting current Loom behaviour.  
+It will break. Fabric is already fixing it in [PR #1600](https://github.com/FabricMC/fabric-loom/pull/1600). When that lands, this whole approach gets patched and Voxel⁺ will need a serious update (or a rewrite). Until then… it works.
 
-### Prerequisites
+### Features
 
-- **Windows 10/11** (Primary platform)
-- **Node.js 18+** 
-- **Java 8, 17, or 21** (Voxel⁺ will detect and use appropriate versions)
-- **7-Zip** or similar (for instance import/export)
+- Real free Java Edition singleplayer (offline after first setup)
+- Full Fabric mod support
+- Automatic Java detection & version matching
+- Proper isolated instances (create / duplicate / import / export)
+- Built-in Modrinth browser
+- Resource packs + shaders
+- Live Minecraft + Gradle logs
+- Per-instance Loom/Gradle environment that we happily abuse
 
-### Installation
+### Supported versions
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/GHisDW/voxelplus.git
-   cd voxelplus
-   ```
+| Minecraft | Java    | Gradle  | Loom         |
+|-----------|---------|---------|--------------|
+| 1.15.x    | 8       | 6.0     | 0.4-SNAPSHOT |
+| 1.16.x    | 8       | 7.0     | 0.8-SNAPSHOT |
+| 1.17.x    | 16      | 7.3     | 0.9-SNAPSHOT |
+| 1.18.x    | 17      | 8.10.2  | 1.8.13       |
+| 1.19.x    | 17      | 8.10.2  | 1.8.13       |
+| 1.20.x    | 17 / 21 | 8.10.2  | 1.8.13       |
+| 1.21.x    | 21      | 8.10.2  | 1.8.13       |
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
+### Download & Install
 
-3. **Development mode**
-   ```bash
-   npm run app:dev
-   ```
+Everything about downloading, system requirements, first launch, Java setup, creating instances, and troubleshooting lives here:
 
-4. **Production build**
-   ```bash
-   npm run build
-   npm start
-   ```
+**→ [DOWNLOADING.md](DOWNLOADING.md)**
 
-## 📖 Usage
+That’s the official guide. Start there.
 
-### Creating a New Instance
-
-1. Click "Create Instance" in the main interface
-2. Select your desired Minecraft version
-3. Choose a name for your instance
-4. Voxel⁺ will automatically:
-   - Set up the correct Gradle/Gradle wrapper
-   - Configure Fabric Loom for the selected version
-   - Select the appropriate Java runtime
-   - Pre-download necessary dependencies
-
-### Installing Mods
-
-1. Navigate to the "Mods" tab for your instance
-2. Use the built-in Modrinth search to find mods
-3. Click "Install" to add mods to your instance
-4. Toggle mods on/off as needed
-
-### Running an Instance
-
-1. Select an instance from the main list
-2. Click the "PLAY" button
-3. Voxel⁺ will:
-   - Verify Java compatibility
-   - Set up the correct environment
-   - Launch Minecraft with the appropriate configuration
-
-## 🔧 Development
-
-### Project Structure
-
-```
-voxelplus/
-├── electron/              # Electron main process
-│   ├── main.ts           # Application entry point
-│   ├── preload.ts        # IPC bridge
-│   └── backend/          # Backend services
-│       ├── instances/    # Instance management
-│       ├── java/         # Java detection & compatibility
-│       ├── processes/    # Process management
-│       └── content/      # Mod/content management
-├── frontend/             # React/Vite frontend
-├── templates/            # Gradle wrapper templates
-└── package.json
-```
-
-### Building from Source
+### Quick start (for the impatient)
 
 ```bash
-# Install dependencies
+git clone https://github.com/GHisDW/voxelplus.git
+cd voxelplus
 npm install
+npm run app:dev
+Or just grab a release from the repo and follow DOWNLOADING.md [blocked].
+Project structure (for the curious)
+textvoxelplus/
+├── electron/          # main process + the actual magic
+│   ├── main.ts
+│   ├── preload.ts
+│   └── backend/
+│       ├── instances/
+│       ├── java/
+│       ├── processes/
+│       └── content/
+├── frontend/          # the UI
+├── templates/         # the Loom/Gradle templates we mess with
+└── package.json
+Contact & Support
+Got questions, found a bug, or just want to talk about how cursed this is?
+Discord: DisGamerWorld
+Contributing
+PRs welcome. Especially if you’re helping prepare for the day Loom PR #1600 lands and breaks everything.
+See the contribution guidelines and DOWNLOADING.md [blocked] for setup info.
+License
+MIT. Do whatever you want with it.
+Disclaimer
+Voxel⁺ is not affiliated with Mojang, Microsoft, or the Fabric project.
 
-# Development
-npm run dev
+Minecraft is a trademark of Mojang Studios.
 
-# Production build
-npm run build
+This client exists because Loom currently lets us get away with it. That window is closing.
 
-# Run production build
-npm start
-```
 
-## 🤝 Contributing
-
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-### Areas for Contribution
-
-- **Additional Minecraft Version Support** - Add compatibility for new Minecraft releases
-- **UI Improvements** - Enhance the user interface and experience
-- **Performance Optimizations** - Improve startup time and resource usage
-- **Bug Fixes** - Help squash bugs and improve stability
-- **Documentation** - Improve guides and documentation
-
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- **Fabric Project** - For the excellent Fabric mod loader and Loom toolchain
-- **Modrinth** - For providing an excellent mod hosting platform
-- **Electron Team** - For the cross-platform desktop framework
-- **Minecraft Community** - For years of amazing mods and content
-
-## 📧 Contact
-
-- **Author**: GHisDW
-- **Email**: mokshadshetty@gmail.com
-- **GitHub**: [GHisDW](https://github.com/GHisDW)
-
-## ⚠️ Disclaimer
-
-Voxel⁺ is an unofficial third-party Minecraft client. It is not affiliated with, endorsed by, or sponsored by Mojang Studios or Microsoft Corporation. Minecraft is a trademark of Mojang Studios.
-
----
-
-<div align="center">
-
-**Built with ❤️ for the Minecraft modding community**
-
-[⭐ Star us on GitHub!](https://github.com/GHisDW/voxelplus)
-
-</div>
+Built with Electron, Vite, TypeScript, Fabric Loom, Gradle, and a complete lack of respect for “intended behaviour”.
+⭐ Star it if it made you smile
