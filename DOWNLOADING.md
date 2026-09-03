@@ -1,113 +1,90 @@
 # Downloading & Installing Voxel⁺
 
-Everything about downloading, system requirements, first launch, Java setup, creating instances, and troubleshooting lives here.
+Voxel⁺ is a Windows-first, single-player Minecraft helper that sets up isolated Loom/Gradle instances per world. This document explains how to get a working copy today and clearly separates:
 
-## Releases (recommended)
-Official builds are published on the Releases page: https://github.com/GHisDW/voxelplus/releases
+1. Downloading a published release (if/when a Release is published)
+2. Running from source (developer workflow)
+3. Building a packaged copy locally (Windows-first)
 
-- If you see a release (for example `v1.0.0`) download the platform asset (installer or portable zip) for your OS and run it.
-- If there are no published platform assets yet, you have two easy options below: download the source ZIP (quick, but requires a local build or dev run) or produce a portable build locally with a single command (no installer required).
-
-## Quick download options
-
-Option A — Easiest: download a published release (if available)
-1. Open: https://github.com/GHisDW/voxelplus/releases/latest
-2. Download the asset that matches your platform (e.g. `voxelplus-1.0.0-portable-win.zip`).
-3. Extract and run the executable.
-
-Option B — If no release assets: download the source ZIP and run the app in development mode
-1. Download source ZIP: https://github.com/GHisDW/voxelplus/archive/refs/heads/main.zip
-2. Extract and open a terminal in the extracted folder.
-3. Install Node (>=18 recommended) and npm.
-4. Run:
-```bash
-npm install
-npm run app:dev
-```
-This starts the Electron app in development mode (fast to try, not a packaged installer).
-
-Option C — Produce a quick portable (Windows) without changing the repo
-This creates a portable application using npx (uses locally installed tools, no global modifications). This is a simple way to produce a runnable build you can distribute.
-
-Requirements:
-- Node.js and npm installed
-- Windows 10/11 for the example below (Linux/macOS variations shown after)
-
-Steps (PowerShell):
-```powershell
-# 1. Clone and install
-git clone https://github.com/GHisDW/voxelplus.git
-cd voxelplus
-npm install
-npm run build
-
-# 2. Pack a portable app using electron-packager
-# This uses npx so you don't need to modify package.json
-npx electron-packager . VoxelPlus --platform=win32 --arch=x64 --out=release --overwrite --prune=true
-
-# 3. Zip the result (optional)
-Compress-Archive -Path .\release\VoxelPlus-win32-x64\* -DestinationPath voxelplus-quick-win-x64.zip
-```
-Result: `voxelplus-quick-win-x64.zip` in the repo folder.
-
-Linux / macOS (example using electron-packager):
-```bash
-git clone https://github.com/GHisDW/voxelplus.git
-cd voxelplus
-npm install
-npm run build
-npx electron-packager . VoxelPlus --platform=linux --arch=x64 --out=release --overwrite --prune=true
-# or for mac: --platform=darwin
-```
-
-Notes about quick-packaging
-- These produced artifacts are "portable" and not signed installers. They are suitable for testing and local use.
-- Packaging options can be tuned; for production-grade installers see the "Automating releases" section below.
-
-## System requirements
-- OS: Windows 10 / 11 (64-bit recommended). Linux/macOS supported with community builds.
-- Disk: 2+ GB free per instance; more for mods/worlds.
-- CPU/RAM: Minecraft requirements apply; 8GB RAM recommended for modded instances.
-- Java: Voxel⁺ manages Java per-instance, but recommended Java majors per Minecraft version are in the README.
-
-## First launch (packaged release)
-1. Run the downloaded installer or extract the portable zip.
-2. Launch Voxel⁺.
-3. On first run Voxel⁺ will download Gradle/Loom artifacts and validate Java — this may take a few minutes.
-
-## Running from source (developer quick start)
-```bash
-git clone https://github.com/GHisDW/voxelplus.git
-cd voxelplus
-npm install
-npm run app:dev
-```
-
-## Automating releases (recommended for maintainers)
-If you'd like Releases to contain ready-to-download installers and zips automatically, add a CI workflow that builds and publishes artifacts on tag push. The simplest approach:
-
-1. Add `electron-builder` or `electron-packager` to devDependencies and configure a `build` section in package.json.
-2. Add a GitHub Actions workflow that runs on `push` of tags like `v*`, builds artifacts for target platforms, and uses a release action to publish them.
-
-Example GH Actions flow (high level):
-- Trigger: push tag `v*`
-- Steps: checkout, setup node, npm ci, npm run build, npx electron-builder (or electron-packager), create GitHub release, upload artifacts.
-
-If you'd like, I can add a starter `.github/workflows/release.yml` that builds for Windows x64 and drafts/releases artifacts automatically — you will need to configure repository secrets (GITHUB_TOKEN is available by default, additional signing keys only if you want signed installers).
-
-## Troubleshooting
-- If a run fails with a mismatched Java version: check instance settings inside the app and ensure a compatible JRE is installed.
-- If Gradle hangs: clear instance Gradle cache and re-run setup from the instance UI.
-- Logs: Instance UI exposes live Minecraft + Gradle logs — attach them to issues.
-
-## Getting help
-- Discord: DisGamerWorld
-- Open an issue: https://github.com/GHisDW/voxelplus/issues
+Do not follow the developer instructions unless you are comfortable running Node.js/npm commands.
 
 ---
 
-If you'd like, I will:
-- add RELEASE_NOTES.md and draft release notes for `v1.0.0`, and/or
-- add a GitHub Actions workflow to automatically build & publish release assets on tag creation.
+## 1) Published releases
 
-Tell me which and I will commit them.
+Check the Releases page for official packaged builds:
+
+- Releases: [/GHisDW/voxelplus/releases](/GHisDW/voxelplus/releases)
+
+If a release is available, download the asset for Windows and follow the included instructions. Currently there are no official releases published in this repository; if you need an installer and none is available, use one of the options below.
+
+---
+
+## 2) Running from source (Developers)
+
+This is the fastest way to try Voxel⁺ if you have Node.js installed. This runs the app in development mode and is intended for contributors and testers.
+
+Requirements
+- Node.js (18+ recommended)
+- npm (bundled with Node.js)
+
+Commands
+```bash
+git clone https://github.com/GHisDW/voxelplus.git
+cd voxelplus
+npm install
+npm run app:dev
+```
+
+Notes
+- `npm run app:dev` runs the Electron + frontend in development mode using the repo's existing scripts.
+- This is not a packaged installer — expect developer console output and a live dev server for the UI.
+
+---
+
+## 3) Building a packaged copy locally (Windows-first)
+
+If you prefer a packaged, distributable folder (portable app) for Windows you can produce one locally. This guide uses `electron-packager` via `npx` so you don't need to permanently add packaging tools to the repo.
+
+1. Build the project (compile TypeScript and frontend assets):
+```bash
+npm install
+npm run build
+```
+
+2. Package for Windows (example, Windows x64):
+```bash
+# from the repo root
+npx electron-packager . VoxelPlus --platform=win32 --arch=x64 --out=release --overwrite --prune=true
+```
+
+3. The packaged folder will be in `release/VoxelPlus-win32-x64/`. You can zip that folder and distribute the zip — the result is a portable app, not a signed installer.
+
+Important
+- The repository does not currently include official installer scripts or signed binaries. The steps above create an unsigned portable app for local testing and distribution.
+- Building installers (MSI/NSIS/etc.) requires additional tooling (e.g., `electron-builder`) and configuration which are not present in this repository.
+- The project is Windows-first; do not assume Linux/macOS builds are officially supported unless you add platform-specific CI and packaging.
+
+---
+
+## First run notes and troubleshooting
+
+- On first launch Voxel⁺ will download Gradle/Fabric Loom artifacts for the selected Minecraft version and try to auto-detect installed Java runtimes. This may take several minutes.
+- If a run fails due to a Java mismatch, open the instance settings in the app and select a compatible JRE/JDK.
+- If Gradle hangs, clear the instance Gradle cache from the instance UI and retry setup.
+- For runtime issues, attach the instance logs when opening an issue — the app exposes live Minecraft + Gradle logs.
+
+---
+
+## Getting help
+
+- Discord: DisGamerWorld
+- Open an issue: [/GHisDW/voxelplus/issues](/GHisDW/voxelplus/issues)
+
+---
+
+If you want, I can:
+- add a brief RELEASE_NOTES.md and prepare a draft release entry (no assets) so a Release body exists for future uploads, or
+- add a minimal GitHub Actions workflow to build and attach artifacts on tag pushes (you must opt in before I add CI). 
+
+Tell me if you want RELEASE_NOTES.md committed and whether to draft a release (no assets) for now.
