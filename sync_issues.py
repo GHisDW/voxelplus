@@ -2,10 +2,12 @@
 import os
 import json
 import re
-import subprocess
-
 import requests
 
+
+# ============================================================
+# CONFIG
+# ============================================================
 
 WEBHOOK_URL = os.environ["DISCORD_WEBHOOK_URL"]
 EVENT_PATH = os.environ["GITHUB_EVENT_PATH"]
@@ -36,181 +38,88 @@ LABEL_EMOJIS = {
 }
 
 
+# ============================================================
+# MAPPING FILE
+# ============================================================
+
 def load_map():
+    """
+    The mapping file now stores ONLY Discord post IDs.
+
+    Example:
+
+    {
+        "thread_ids": [
+            "123456789",
+            "987654321"
+        ]
+    }
+    """
+
     if not os.path.exists(MAP_FILE):
-        return {}
+        return []
 
     try:
         with open(MAP_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        if not isinstance(data, dict):
-            return {}
+        if isinstance(data, dict):
+            thread_ids = data.get("thread_ids", [])
 
-        return data
+            if isinstance(thread_ids, list):
+                return thread_ids
+
+        # Also support an old format temporarily.
+        if isinstance(data, dict):
+            ids = []
+
+            for value in data.values():
+                if isinstance(value, dict):
+                    thread_id = value.get("thread_id")
+
+                    if thread_id:
+                        ids.append(thread_id)
+
+            return ids
+
+        return []
 
     except (json.JSONDecodeError, OSError):
-        return {}
+        return []
 
 
-def save_map(data):
+def save_map(thread_ids):
+    """
+    Save only the Discord post IDs.
+    """
+
     with open(MAP_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+        json.dump(
+            {
+                "thread_ids": thread_ids
+            },
+            f,
+            indent=2,
+        )
 
+
+# ============================================================
+# GITHUB
+# ============================================================
 
 def get_event():
     with open(EVENT_PATH, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
-def make_labels(labels):
-    if not labels:
-        return "🏷️ **Labels:** None"
+def get_open_issues():
+    """
+    Get every OPEN GitHub issue.
 
-    result = []
+    Pull requests are ignored because GitHub's Issues API
+    also returns pull requests.
+    """
 
-    for label in labels:
-        name = label.get("name", "unknown")
-        emoji = LABEL_EMOJIS.get(name.lower(), "🏷️")
-        result.append(f"{emoji} {name}")
-
-    return "🏷️ **Labels:** " + " · ".join(result)
-
-
-def make_content(issue):
-    body = issue.get("body") or "No description provided."
-
-    # Discord message content has a 2000-character limit.
-    if len(body) > MAX_DESCRIPTION_LENGTH:
-        body = (
-            body[:MAX_DESCRIPTION_LENGTH]
-            + "\n\n…Description truncated. "
-            + "See the GitHub issue for the full description."
-        )
-
-    author = issue.get("user", {}).get("login", "Unknown")
-    number = issue.get("number", "Unknown")
-    url = issue.get("html_url", "")
-    state = issue.get("state", "open")
-
-    status = "🟢 Open" if state == "open" else "🔴 Closed"
-
-    content = (
-        f"{make_labels(issue.get('labels', []))}\n\n"
-        f"📝 **Description**\n"
-        f"{body}\n\n"
-        f"👤 **Opened by:** {author}\n"
-        f"📊 **Status:** {status}\n\n"
-        f"🔗 **GitHub Issue #{number}**\n"
-        f"{url}"
-    )
-
-    # Final safety check.
-    if len(content) > DISCORD_MAX_MESSAGE_LENGTH:
-        content = content[: DISCORD_MAX_MESSAGE_LENGTH - 3] + "..."
-
-    return content
-
-
-def print_discord_error(response):
-    print("================================")
-    print("DISCORD REQUEST FAILED")
-    print("================================")
-    print(f"HTTP status: {response.status_code}")
-    print(f"Response: {response.text}")
-    print("================================")
-
-
-def create_post(issue):
-    title = issue.get("title") or "GitHub Issue"
-
-    # Discord forum thread names have a maximum length.
-    title = title[:100]
-
-    url = WEBHOOK_URL.rstrip("/") + "?wait=true"
-
-    payload = {
-        "thread_name": title,
-        "content": make_content(issue),
-    }
-
-    response = requests.post(
-        url,
-        json=payload,
-        timeout=30,
-    )
-
-    if not response.ok:
-        print_discord_error(response)
-
-    response.raise_for_status()
-
-    try:
-        message = response.json()
-    except ValueError:
-        raise RuntimeError(
-            "Discord returned a non-JSON response."
-        )
-
-    thread_id = message.get("channel_id")
-
-    if not thread_id:
-        raise RuntimeError(
-            "Discord did not return a Forum post ID. "
-            f"Response was: {message}"
-        )
-
-    print(
-        f"Created Discord post for Issue "
-        f"#{issue['number']}: {thread_id}"
-    )
-
-    return thread_id
-
-
-def webhook_parts():
-    match = re.match(
-        r"^https://discord(?:app)?\.com/api/webhooks/(\d+)/([^/?]+)",
-        WEBHOOK_URL,
-    )
-
-    if not match:
-        raise RuntimeError(
-            "Invalid Discord webhook URL. "
-            "Check the DISCORD_WEBHOOK_URL secret."
-        )
-
-    return match.group(1), match.group(2)
-
-
-def update_post(thread_id, issue):
-    webhook_id, webhook_token = webhook_parts()
-
-    url = (
-        f"https://discord.com/api/webhooks/"
-        f"{webhook_id}/{webhook_token}/messages/@original"
-        f"?thread_id={thread_id}"
-    )
-
-    response = requests.patch(
-        url,
-        json={
-            "content": make_content(issue),
-        },
-        timeout=30,
-    )
-
-    if not response.ok:
-        print_discord_error(response)
-
-    response.raise_for_status()
-
-    print(
-        f"Updated Discord post for Issue #{issue['number']}"
-    )
-
-
-def get_all_issues():
     url = (
         f"https://api.github.com/repos/"
         f"{GITHUB_REPOSITORY}/issues"
@@ -230,12 +139,17 @@ def get_all_issues():
             url,
             headers=headers,
             params={
-                "state": "all",
+                "state": "open",
                 "per_page": 100,
                 "page": page,
             },
             timeout=30,
         )
+
+        if not response.ok:
+            print("GitHub API request failed.")
+            print("Status:", response.status_code)
+            print("Response:", response.text)
 
         response.raise_for_status()
 
@@ -245,7 +159,7 @@ def get_all_issues():
             break
 
         for issue in issues:
-            # GitHub's Issues API also returns pull requests.
+            # GitHub's Issues API also includes pull requests.
             if "pull_request" not in issue:
                 all_issues.append(issue)
 
@@ -254,172 +168,368 @@ def get_all_issues():
     return all_issues
 
 
-def sync_all():
+# ============================================================
+# CONTENT
+# ============================================================
+
+def make_labels(labels):
+    if not labels:
+        return "🏷️ **Labels:** None"
+
+    result = []
+
+    for label in labels:
+        name = label.get("name", "unknown")
+
+        emoji = LABEL_EMOJIS.get(
+            name.lower(),
+            "🏷️",
+        )
+
+        result.append(
+            f"{emoji} {name}"
+        )
+
+    return (
+        "🏷️ **Labels:** "
+        + " · ".join(result)
+    )
+
+
+def make_content(issue):
+    body = (
+        issue.get("body")
+        or "No description provided."
+    )
+
+    # Keep enough room for the rest of the message.
+    if len(body) > MAX_DESCRIPTION_LENGTH:
+        body = (
+            body[:MAX_DESCRIPTION_LENGTH]
+            + "\n\n"
+            "…Description truncated. "
+            "See the GitHub issue for the full description."
+        )
+
+    author = (
+        issue.get("user", {})
+        .get("login", "Unknown")
+    )
+
+    number = issue.get(
+        "number",
+        "Unknown",
+    )
+
+    url = issue.get(
+        "html_url",
+        "",
+    )
+
+    content = (
+        f"{make_labels(issue.get('labels', []))}\n\n"
+        f"📝 **Description**\n"
+        f"{body}\n\n"
+        f"👤 **Opened by:** {author}\n"
+        f"📊 **Status:** 🟢 Open\n\n"
+        f"🔗 **GitHub Issue #{number}**\n"
+        f"{url}"
+    )
+
+    # Final safety check.
+    if len(content) > DISCORD_MAX_MESSAGE_LENGTH:
+        content = (
+            content[
+                :DISCORD_MAX_MESSAGE_LENGTH - 3
+            ]
+            + "..."
+        )
+
+    return content
+
+
+# ============================================================
+# DISCORD WEBHOOK
+# ============================================================
+
+def webhook_parts():
+    """
+    Extract the webhook ID and token from the webhook URL.
+    """
+
+    match = re.match(
+        r"^https://discord(?:app)?\.com/api/webhooks/"
+        r"(\d+)/([^/?]+)",
+        WEBHOOK_URL,
+    )
+
+    if not match:
+        raise RuntimeError(
+            "Invalid DISCORD_WEBHOOK_URL."
+        )
+
+    return (
+        match.group(1),
+        match.group(2),
+    )
+
+
+def delete_post(thread_id):
+    """
+    Delete one Forum post created by this webhook.
+
+    A webhook can manage/delete its own messages.
+    """
+
+    webhook_id, webhook_token = webhook_parts()
+
+    url = (
+        f"https://discord.com/api/webhooks/"
+        f"{webhook_id}/{webhook_token}"
+        f"?thread_id={thread_id}"
+    )
+
+    response = requests.delete(
+        url,
+        timeout=30,
+    )
+
+    # 404 usually means the post was already deleted.
+    if response.status_code == 404:
+        print(
+            f"Post {thread_id} already deleted."
+        )
+        return
+
+    if not response.ok:
+        print(
+            f"Failed to delete Discord post "
+            f"{thread_id}"
+        )
+        print("Status:", response.status_code)
+        print("Response:", response.text)
+
+    response.raise_for_status()
+
+    print(
+        f"Deleted Discord post: {thread_id}"
+    )
+
+
+def delete_old_posts():
+    """
+    Delete every Discord Forum post that our previous
+    sync created.
+    """
+
+    old_thread_ids = load_map()
+
+    if not old_thread_ids:
+        print(
+            "No previous Discord posts to delete."
+        )
+        return
+
     print("================================")
-    print("FULL DISCORD SYNC")
+    print("DELETING OLD DISCORD POSTS")
     print("================================")
 
-    issues = get_all_issues()
+    print(
+        f"Found {len(old_thread_ids)} "
+        f"previous Discord posts."
+    )
 
-    print(f"Found {len(issues)} GitHub issues.")
-
-    mapping = load_map()
-
-    created = 0
-    updated = 0
-    failed = 0
-
-    for issue in issues:
-        number = str(issue["number"])
-
+    for thread_id in old_thread_ids:
         try:
-            if number in mapping:
-                thread_id = mapping[number]["thread_id"]
-
-                update_post(
-                    thread_id,
-                    issue,
-                )
-
-                updated += 1
-
-            else:
-                thread_id = create_post(issue)
-
-                mapping[number] = {
-                    "thread_id": thread_id,
-                    "issue_url": issue.get("html_url"),
-                }
-
-                save_map(mapping)
-                created += 1
+            delete_post(thread_id)
 
         except Exception as error:
             print(
-                f"FAILED Issue #{number}: {error}"
+                f"Could not delete post "
+                f"{thread_id}: {error}"
             )
+
+    # Clear the old list before creating the new one.
+    save_map([])
+
+    print(
+        "Finished cleaning old Discord posts."
+    )
+
+
+def create_post(issue):
+    """
+    Create a new Discord Forum post using the webhook.
+    """
+
+    title = (
+        issue.get("title")
+        or "GitHub Issue"
+    )
+
+    # Discord Forum post names are limited.
+    title = title[:100]
+
+    url = (
+        WEBHOOK_URL.rstrip("/")
+        + "?wait=true"
+    )
+
+    payload = {
+        "thread_name": title,
+        "content": make_content(issue),
+    }
+
+    response = requests.post(
+        url,
+        json=payload,
+        timeout=30,
+    )
+
+    if not response.ok:
+        print("================================")
+        print("DISCORD CREATE FAILED")
+        print("================================")
+        print("Status:", response.status_code)
+        print("Response:", response.text)
+        print("================================")
+
+    response.raise_for_status()
+
+    try:
+        message = response.json()
+
+    except ValueError:
+        raise RuntimeError(
+            "Discord returned an invalid JSON response."
+        )
+
+    thread_id = message.get(
+        "channel_id"
+    )
+
+    if not thread_id:
+        raise RuntimeError(
+            "Discord did not return a Forum post ID."
+        )
+
+    print(
+        f"Created Discord post for "
+        f"Issue #{issue['number']}: "
+        f"{thread_id}"
+    )
+
+    return thread_id
+
+
+# ============================================================
+# FULL REBUILD
+# ============================================================
+
+def sync_all():
+    print("================================")
+    print("GITHUB → DISCORD SYNC")
+    print("================================")
+
+    # --------------------------------------------------------
+    # STEP 1: Delete everything we created last time.
+    # --------------------------------------------------------
+
+    delete_old_posts()
+
+    # --------------------------------------------------------
+    # STEP 2: Get ONLY currently open GitHub issues.
+    # --------------------------------------------------------
+
+    print("Getting open GitHub issues...")
+
+    issues = get_open_issues()
+
+    print(
+        f"Found {len(issues)} open GitHub issues."
+    )
+
+    # --------------------------------------------------------
+    # STEP 3: Create a fresh Discord post for every issue.
+    # --------------------------------------------------------
+
+    print("================================")
+    print("CREATING DISCORD POSTS")
+    print("================================")
+
+    new_thread_ids = []
+
+    created = 0
+    failed = 0
+
+    for issue in issues:
+        try:
+            thread_id = create_post(issue)
+
+            new_thread_ids.append(
+                thread_id
+            )
+
+            created += 1
+
+        except Exception as error:
+            print(
+                f"FAILED Issue "
+                f"#{issue.get('number')}: "
+                f"{error}"
+            )
+
             failed += 1
 
-    save_map(mapping)
+    # --------------------------------------------------------
+    # STEP 4: Save the NEW post IDs.
+    # --------------------------------------------------------
+
+    save_map(new_thread_ids)
 
     print("================================")
     print("SYNC FINISHED")
-    print(f"Created: {created}")
-    print(f"Updated: {updated}")
-    print(f"Failed: {failed}")
+    print("================================")
+    print(
+        f"Open GitHub issues: {len(issues)}"
+    )
+    print(
+        f"Discord posts created: {created}"
+    )
+    print(
+        f"Failed: {failed}"
+    )
     print("================================")
 
 
-def sync_event(issue):
-    mapping = load_map()
-    number = str(issue["number"])
-
-    if number in mapping:
-        update_post(
-            mapping[number]["thread_id"],
-            issue,
-        )
-
-    else:
-        thread_id = create_post(issue)
-
-        mapping[number] = {
-            "thread_id": thread_id,
-            "issue_url": issue.get("html_url"),
-        }
-
-        save_map(mapping)
-
-
-def run_git_command(*args):
-    result = subprocess.run(
-        args,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-
-    if result.returncode != 0:
-        print(
-            f"Git command failed: {' '.join(args)}"
-        )
-
-        if result.stdout:
-            print(result.stdout)
-
-        if result.stderr:
-            print(result.stderr)
-
-    return result.returncode
-
-
-def save_to_git():
-    run_git_command(
-        "git",
-        "config",
-        "user.name",
-        "github-actions[bot]",
-    )
-
-    run_git_command(
-        "git",
-        "config",
-        "user.email",
-        "41898282+github-actions[bot]@users.noreply.github.com",
-    )
-
-    if run_git_command(
-        "git",
-        "add",
-        MAP_FILE,
-    ) != 0:
-        return
-
-    result = subprocess.run(
-        ["git", "diff", "--cached", "--quiet"],
-        check=False,
-    )
-
-    # Exit code 0 means there are no staged changes.
-    if result.returncode == 0:
-        print("No mapping changes to commit.")
-        return
-
-    if run_git_command(
-        "git",
-        "commit",
-        "-m",
-        "Update Discord issue mapping",
-    ) != 0:
-        return
-
-    run_git_command(
-        "git",
-        "push",
-    )
-
+# ============================================================
+# MAIN
+# ============================================================
 
 def main():
     event = get_event()
 
-    # Manual workflow run = sync everything.
-    if "issue" not in event:
-        print("Manual workflow run detected.")
+    if "issue" in event:
+        print(
+            f"GitHub issue event detected: "
+            f"#{event['issue']['number']}"
+        )
+    else:
+        print(
+            "Manual workflow run detected."
+        )
 
-        sync_all()
-        save_to_git()
-
-        return
-
-    # GitHub issue event = sync that issue.
-    issue = event["issue"]
-
-    print(
-        f"Automatic issue event: #{issue['number']}"
-    )
-
-    sync_event(issue)
-    save_to_git()
+    # IMPORTANT:
+    #
+    # We ALWAYS do a complete rebuild.
+    #
+    # We do NOT update individual issues.
+    # We do NOT compare issue IDs.
+    # We do NOT create a second copy based on events.
+    #
+    # Discord is simply rebuilt from the current
+    # list of OPEN GitHub issues.
+    sync_all()
 
 
 if __name__ == "__main__":
