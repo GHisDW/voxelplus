@@ -1,4 +1,4 @@
-```yaml
+
 name: Sync GitHub Issues to Discord Forum
 
 on:
@@ -467,4 +467,4 @@ jobs:
           print(f"Posts created:        {created}")
           print(f"Discord forum tags:   {len(existing_tags)}")
           print("========================================")
-```
+
