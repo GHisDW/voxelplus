@@ -1,15 +1,14 @@
 ```python
 import os
 import json
+import subprocess
 import requests
-
-# ============================================================
-# CONFIG
-# ============================================================
 
 REPO = "GHisDW/voxelplus"
 WEBHOOK_URL = os.environ["DISCORD_WEBHOOK_URL"]
-EVENT_PATH = os.environ.get("GITHUB_EVENT_PATH")
+EVENT_PATH = os.environ["GITHUB_EVENT_PATH"]
+
+MAP_FILE = "discord_issue_map.json"
 
 LABEL_EMOJIS = {
     "accessibility": "♿",
@@ -29,35 +28,73 @@ LABEL_EMOJIS = {
 }
 
 
-# ============================================================
-# GITHUB
-# ============================================================
+# ------------------------------------------------------------
+# Mapping file
+# ------------------------------------------------------------
 
-def get_issue_from_event():
-    """Get the issue that triggered this GitHub Action."""
+def load_mapping():
+    if not os.path.exists(MAP_FILE):
+        return {}
 
-    if not EVENT_PATH:
-        return None
-
-    with open(EVENT_PATH, "r", encoding="utf-8") as file:
-        event = json.load(file)
-
-    return event.get("issue")
+    with open(MAP_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 
-# ============================================================
-# DISCORD FORMATTING
-# ============================================================
+def save_mapping(mapping):
+    with open(MAP_FILE, "w", encoding="utf-8") as f:
+        json.dump(mapping, f, indent=2)
 
-def make_label_line(issue):
-    """Turn GitHub labels into a neat emoji line."""
 
+def save_mapping_to_git():
+    subprocess.run(
+        ["git", "config", "user.name", "github-actions[bot]"],
+        check=True
+    )
+
+    subprocess.run(
+        [
+            "git",
+            "config",
+            "user.email",
+            "41898282+github-actions[bot]@users.noreply.github.com"
+        ],
+        check=True
+    )
+
+    subprocess.run(
+        ["git", "add", MAP_FILE],
+        check=True
+    )
+
+    result = subprocess.run(
+        ["git", "diff", "--cached", "--quiet"]
+    )
+
+    # Nothing changed.
+    if result.returncode == 0:
+        return
+
+    subprocess.run(
+        ["git", "commit", "-m", "Update Discord issue mapping"],
+        check=True
+    )
+
+    subprocess.run(
+        ["git", "push"],
+        check=True
+    )
+
+
+# ------------------------------------------------------------
+# Formatting
+# ------------------------------------------------------------
+
+def label_line(issue):
     labels = []
 
     for label in issue.get("labels", []):
-        name = label["name"].strip()
+        name = label["name"]
         emoji = LABEL_EMOJIS.get(name.lower(), "🏷️")
-
         labels.append(f"{emoji} {name}")
 
     if not labels:
@@ -66,47 +103,51 @@ def make_label_line(issue):
     return "🏷️ " + " · ".join(labels)
 
 
-def make_post(issue):
-    """Build the Discord Forum post."""
-
-    number = issue["number"]
-    title = issue["title"]
+def make_content(issue):
     body = issue.get("body") or "_No description provided._"
-    author = issue["user"]["login"]
-    url = issue["html_url"]
-    state = issue["state"]
 
-    label_line = make_label_line(issue)
+    status = (
+        "🟢 Open"
+        if issue["state"] == "open"
+        else "🔴 Closed"
+    )
 
-    status = "🟢 Open" if state == "open" else "🔴 Closed"
-
-    content = (
-        f"{label_line}\n\n"
+    return (
+        f"{label_line(issue)}\n\n"
         f"**📝 Description**\n"
         f"{body}\n\n"
         f"**👤 Opened by**\n"
-        f"{author}\n\n"
+        f"{issue['user']['login']}\n\n"
         f"**📊 Status**\n"
         f"{status}\n\n"
-        f"**🔗 GitHub Issue #{number}**\n"
-        f"{url}"
+        f"**🔗 GitHub Issue #{issue['number']}**\n"
+        f"{issue['html_url']}"
     )
 
-    return title, content
+
+# ------------------------------------------------------------
+# Discord
+# ------------------------------------------------------------
+
+def webhook_parts():
+    """
+    Discord webhook URL looks like:
+
+    https://discord.com/api/webhooks/WEBHOOK_ID/WEBHOOK_TOKEN
+    """
+
+    parts = WEBHOOK_URL.rstrip("/").split("/")
+
+    webhook_id = parts[-2]
+    webhook_token = parts[-1]
+
+    return webhook_id, webhook_token
 
 
-# ============================================================
-# DISCORD
-# ============================================================
-
-def create_forum_post(issue):
-    """Create one Discord Forum post."""
-
-    title, content = make_post(issue)
-
+def create_post(issue):
     payload = {
-        "thread_name": title,
-        "content": content,
+        "thread_name": issue["title"],
+        "content": make_content(issue),
     }
 
     response = requests.post(
@@ -116,50 +157,134 @@ def create_forum_post(issue):
         timeout=30,
     )
 
-    if response.ok:
-        print(
-            f"✅ Created Discord post for "
-            f"GitHub issue #{issue['number']}: {title}"
+    if not response.ok:
+        print(response.text)
+
+    response.raise_for_status()
+
+    data = response.json()
+
+    # Discord returns the created thread ID.
+    thread_id = data.get("channel_id")
+
+    if not thread_id:
+        raise RuntimeError(
+            "Discord did not return a channel_id for the new Forum post."
         )
-    else:
+
+    print(
+        f"✅ Created Discord post for issue "
+        f"#{issue['number']}"
+    )
+
+    return thread_id
+
+
+def update_post(thread_id, issue):
+    webhook_id, webhook_token = webhook_parts()
+
+    url = (
+        f"https://discord.com/api/webhooks/"
+        f"{webhook_id}/{webhook_token}/messages/@original"
+    )
+
+    response = requests.patch(
+        url,
+        params={"thread_id": thread_id},
+        json={
+            "content": make_content(issue)
+        },
+        timeout=30,
+    )
+
+    if not response.ok:
         print(
-            f"❌ Discord returned {response.status_code}"
+            f"Discord update failed: "
+            f"{response.status_code}"
         )
         print(response.text)
 
     response.raise_for_status()
 
+    print(
+        f"✅ Updated Discord post for issue "
+        f"#{issue['number']}"
+    )
 
-# ============================================================
-# MAIN
-# ============================================================
+
+# ------------------------------------------------------------
+# Main
+# ------------------------------------------------------------
 
 def main():
 
-    print("======================================")
-    print(" GitHub → Discord Issue Sync")
-    print("======================================")
+    with open(EVENT_PATH, "r", encoding="utf-8") as f:
+        event = json.load(f)
 
-    issue = get_issue_from_event()
+    issue = event.get("issue")
 
     if not issue:
-        print("No issue event found.")
-        print("This workflow should be triggered by a GitHub issue.")
+        print("No issue in this GitHub event.")
         return
 
     # Ignore pull requests.
     if "pull_request" in issue:
-        print("This is a pull request. Ignoring.")
+        print("Pull request detected. Ignoring.")
         return
 
+    issue_number = str(issue["number"])
+    action = event.get("action")
+
     print(
-        f"Processing GitHub issue "
-        f"#{issue['number']}: {issue['title']}"
+        f"GitHub issue #{issue_number}: "
+        f"action={action}"
     )
 
-    create_forum_post(issue)
+    mapping = load_mapping()
 
-    print("Done!")
+    # --------------------------------------------------------
+    # New issue
+    # --------------------------------------------------------
+
+    if action == "opened":
+
+        if issue_number in mapping:
+            print(
+                "Discord post already exists. "
+                "Nothing to do."
+            )
+            return
+
+        thread_id = create_post(issue)
+
+        mapping[issue_number] = {
+            "thread_id": thread_id,
+            "issue_url": issue["html_url"],
+        }
+
+        save_mapping(mapping)
+        save_mapping_to_git()
+
+        return
+
+    # --------------------------------------------------------
+    # Existing issue changed
+    # --------------------------------------------------------
+
+    if issue_number not in mapping:
+        print(
+            "⚠️ This issue does not have a Discord post "
+            "registered yet."
+        )
+        print(
+            "No new post will be created automatically "
+            "to avoid duplicates."
+        )
+        return
+
+    thread_id = mapping[issue_number]["thread_id"]
+
+    update_post(thread_id, issue)
 
 
 if __name__ == "__main__":
