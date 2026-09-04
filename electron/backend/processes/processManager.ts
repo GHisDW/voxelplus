@@ -1,4 +1,4 @@
-﻿import { spawn, ChildProcess, exec } from 'node:child_process';
+import { spawn, ChildProcess, exec } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import { ProcessStatus, LaunchResult, ProcessStatusEvent, JavaRuntime } from '../../types';
@@ -7,6 +7,7 @@ import { JavaDetector } from '../java/javaDetector';
 import { MinecraftCompatibilityResolver } from '../instances/minecraftCompatibilityResolver';
 import { LogStreamer } from './logStreamer';
 import { ConfigStore } from '../storage/configStore';
+import { createInterface } from 'node:readline';
 
 interface ActiveProcess {
   instanceId: string;
@@ -164,11 +165,11 @@ export class ProcessManager {
       metadata.status = 'RUNNING';
       InstanceMetadataStore.writeMetadata(instanceDir, metadata);
 
-      child.stdout?.on('data', (data) => {
-        const text = data.toString();
-        const lines = text.split(/\r?\n/);
-        for (const line of lines) {
-          if (!line.trim()) continue;
+      // Use readline to process stdout/stderr line-by-line which plays nicely with batching in LogStreamer
+      if (child.stdout) {
+        const rlOut = createInterface({ input: child.stdout });
+        rlOut.on('line', (line) => {
+          if (!line.trim()) return;
           LogStreamer.addLog(line, 'INFO', instanceId, metadata.name);
           if (line.includes('Fabric Loom') || line.includes(':runClient')) {
             if (active.status !== 'RUNNING') {
@@ -176,17 +177,16 @@ export class ProcessManager {
               active.status = 'RUNNING';
             }
           }
-        }
-      });
+        });
+      }
 
-      child.stderr?.on('data', (data) => {
-        const text = data.toString();
-        const lines = text.split(/\r?\n/);
-        for (const line of lines) {
-          if (!line.trim()) continue;
+      if (child.stderr) {
+        const rlErr = createInterface({ input: child.stderr });
+        rlErr.on('line', (line) => {
+          if (!line.trim()) return;
           LogStreamer.addLog(line, 'WARN', instanceId, metadata.name);
-        }
-      });
+        });
+      }
 
       child.on('close', (code) => {
         LogStreamer.addLog(`[Voxel+] Process for "${metadata.name}" exited with code ${code}.`, code === 0 ? 'INFO' : 'WARN', instanceId, metadata.name);
