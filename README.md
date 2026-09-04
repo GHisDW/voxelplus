@@ -8,6 +8,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows-lightgray)](https://github.com/GHisDW/voxelplus)
 [![Discord](https://img.shields.io/badge/discord-Join%20Server-5865F2)](https://discord.gg/msYWkqa4k)
+**For contributing, showcasing, testing etc we highly encourage you to join the discord server**
 
 </div>
 
