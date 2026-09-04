@@ -10,6 +10,8 @@ name: Sync GitHub Issues to Discord
       - closed
       - reopened
 
+  workflow_dispatch:
+
 jobs:
   sync:
     runs-on: ubuntu-latest
