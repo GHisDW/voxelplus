@@ -78,8 +78,9 @@ For general bugs, feature requests, or non-security issues, please use the norma
 ## Contact
 
 For security-related questions:
-- **Email**: mokshadshetty@gmail.com
+- **Discord dm**: DisGamerWorld
 - **GitHub**: [@GHisDW](https://github.com/GHisDW)
+- **Discord Server**: https://discord.gg/msYWkqa4k
 
 ---
 
