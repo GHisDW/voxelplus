@@ -11,7 +11,7 @@ jobs:
 sync:
 runs-on: ubuntu-latest
 
-```
+
 env:
   DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
   GITHUB_TOKEN: ${{ github.token }}
@@ -680,15 +680,5 @@ steps:
           f"Discord tags: {len(existing_tags)}"
       )
       print("========================================")
-```
-
-```
-
-One thing to watch: **the Discord bot needs Manage Channels + Manage Threads + Send Messages + View Channel** for this to work correctly.
-
-This version is intentionally the “nuke and rebuild” approach:
-
-**Run workflow → delete every post → fetch open issues → create fresh posts → apply labels/tags.**
-
-So if there are currently 30 random posts in the forum, all 30 go bye-bye, then the open GitHub issues come back. 💀🔥
+ open GitHub issues come back. 💀🔥
 ```
