@@ -48,21 +48,23 @@ def get_issue_from_event():
 
     issue = event.get("issue")
 
+    # Manual workflow runs do not contain issue information.
     if not issue:
-        raise RuntimeError("No issue data found in GitHub event.")
+        print("No GitHub issue event found.")
+        print("This is normal for a manual workflow run.")
+        return None, None
 
     return issue, event.get("action")
 
 
 def label_line(labels):
-    names = [label["name"] for label in labels]
-
-    if not names:
+    if not labels:
         return "🏷️ Labels: None"
 
     formatted = []
 
-    for name in names:
+    for label in labels:
+        name = label.get("name", "unknown")
         emoji = LABEL_EMOJIS.get(name.lower(), "🏷️")
         formatted.append(f"{emoji} {name}")
 
@@ -70,12 +72,10 @@ def label_line(labels):
 
 
 def make_content(issue):
-    title = issue.get("title", "Untitled issue")
     body = issue.get("body") or "No description provided."
     author = issue.get("user", {}).get("login", "Unknown")
     number = issue.get("number")
     url = issue.get("html_url")
-
     state = issue.get("state", "open")
 
     if state == "open":
@@ -117,7 +117,9 @@ def create_post(issue):
     thread_id = message.get("channel_id")
 
     if not thread_id:
-        raise RuntimeError("Discord did not return a Forum post/thread ID.")
+        raise RuntimeError(
+            "Discord did not return a Forum post/thread ID."
+        )
 
     print(f"Created Discord post: {thread_id}")
 
@@ -159,7 +161,10 @@ def update_post(thread_id, issue):
 
 
 def save_to_git():
-    os.system("git config user.name 'github-actions[bot]'")
+    os.system(
+        "git config user.name 'github-actions[bot]'"
+    )
+
     os.system(
         "git config user.email "
         "'41898282+github-actions[bot]@users.noreply.github.com'"
@@ -167,9 +172,7 @@ def save_to_git():
 
     os.system(f"git add {MAP_FILE}")
 
-    result = os.system(
-        "git diff --cached --quiet"
-    )
+    result = os.system("git diff --cached --quiet")
 
     if result != 0:
         os.system(
@@ -181,6 +184,11 @@ def save_to_git():
 def main():
     issue, action = get_issue_from_event()
 
+    # Manual workflow run.
+    if issue is None:
+        print("Nothing to sync.")
+        return
+
     issue_number = str(issue["number"])
 
     issue_map = load_map()
@@ -188,13 +196,16 @@ def main():
     print(f"GitHub issue #{issue_number}")
     print(f"Action: {action}")
 
-    # New issue → create Discord Forum post
+    # ---------------------------------------------------------
+    # NEW ISSUE
+    # ---------------------------------------------------------
+
     if action == "opened":
         if issue_number in issue_map:
             print(
-                f"Issue #{issue_number} already has a Discord post. "
-                "Skipping duplicate."
+                f"Issue #{issue_number} already has a Discord post."
             )
+            print("Skipping duplicate.")
             return
 
         thread_id = create_post(issue)
@@ -207,19 +218,33 @@ def main():
         save_map(issue_map)
         save_to_git()
 
+        print(
+            f"Saved Discord mapping for issue #{issue_number}."
+        )
+
         return
 
-    # Existing issue → update Discord Forum post
+    # ---------------------------------------------------------
+    # UPDATED ISSUE
+    # ---------------------------------------------------------
+
     if issue_number not in issue_map:
         print(
-            f"No Discord post mapping found for issue #{issue_number}. "
-            "Skipping update."
+            f"No Discord post mapping found for "
+            f"issue #{issue_number}."
         )
+        print("Skipping update to avoid creating a duplicate.")
+
         return
 
     thread_id = issue_map[issue_number]["thread_id"]
 
     update_post(thread_id, issue)
+
+    print(
+        f"Successfully synced issue #{issue_number} "
+        f"to Discord."
+    )
 
 
 if __name__ == "__main__":
