@@ -1,10 +1,8 @@
-```python
 import os
 import json
-import subprocess
+import re
 import requests
 
-REPO = "GHisDW/voxelplus"
 WEBHOOK_URL = os.environ["DISCORD_WEBHOOK_URL"]
 EVENT_PATH = os.environ["GITHUB_EVENT_PATH"]
 
@@ -28,265 +26,201 @@ LABEL_EMOJIS = {
 }
 
 
-# ------------------------------------------------------------
-# Mapping file
-# ------------------------------------------------------------
-
-def load_mapping():
+def load_map():
     if not os.path.exists(MAP_FILE):
         return {}
 
-    with open(MAP_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(MAP_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return {}
 
 
-def save_mapping(mapping):
+def save_map(issue_map):
     with open(MAP_FILE, "w", encoding="utf-8") as f:
-        json.dump(mapping, f, indent=2)
+        json.dump(issue_map, f, indent=2)
 
 
-def save_mapping_to_git():
-    subprocess.run(
-        ["git", "config", "user.name", "github-actions[bot]"],
-        check=True
-    )
-
-    subprocess.run(
-        [
-            "git",
-            "config",
-            "user.email",
-            "41898282+github-actions[bot]@users.noreply.github.com"
-        ],
-        check=True
-    )
-
-    subprocess.run(
-        ["git", "add", MAP_FILE],
-        check=True
-    )
-
-    result = subprocess.run(
-        ["git", "diff", "--cached", "--quiet"]
-    )
-
-    # Nothing changed.
-    if result.returncode == 0:
-        return
-
-    subprocess.run(
-        ["git", "commit", "-m", "Update Discord issue mapping"],
-        check=True
-    )
-
-    subprocess.run(
-        ["git", "push"],
-        check=True
-    )
-
-
-# ------------------------------------------------------------
-# Formatting
-# ------------------------------------------------------------
-
-def label_line(issue):
-    labels = []
-
-    for label in issue.get("labels", []):
-        name = label["name"]
-        emoji = LABEL_EMOJIS.get(name.lower(), "🏷️")
-        labels.append(f"{emoji} {name}")
-
-    if not labels:
-        return "🏷️ No labels"
-
-    return "🏷️ " + " · ".join(labels)
-
-
-def make_content(issue):
-    body = issue.get("body") or "_No description provided._"
-
-    status = (
-        "🟢 Open"
-        if issue["state"] == "open"
-        else "🔴 Closed"
-    )
-
-    return (
-        f"{label_line(issue)}\n\n"
-        f"**📝 Description**\n"
-        f"{body}\n\n"
-        f"**👤 Opened by**\n"
-        f"{issue['user']['login']}\n\n"
-        f"**📊 Status**\n"
-        f"{status}\n\n"
-        f"**🔗 GitHub Issue #{issue['number']}**\n"
-        f"{issue['html_url']}"
-    )
-
-
-# ------------------------------------------------------------
-# Discord
-# ------------------------------------------------------------
-
-def webhook_parts():
-    """
-    Discord webhook URL looks like:
-
-    https://discord.com/api/webhooks/WEBHOOK_ID/WEBHOOK_TOKEN
-    """
-
-    parts = WEBHOOK_URL.rstrip("/").split("/")
-
-    webhook_id = parts[-2]
-    webhook_token = parts[-1]
-
-    return webhook_id, webhook_token
-
-
-def create_post(issue):
-    payload = {
-        "thread_name": issue["title"],
-        "content": make_content(issue),
-    }
-
-    response = requests.post(
-        WEBHOOK_URL,
-        params={"wait": "true"},
-        json=payload,
-        timeout=30,
-    )
-
-    if not response.ok:
-        print(response.text)
-
-    response.raise_for_status()
-
-    data = response.json()
-
-    # Discord returns the created thread ID.
-    thread_id = data.get("channel_id")
-
-    if not thread_id:
-        raise RuntimeError(
-            "Discord did not return a channel_id for the new Forum post."
-        )
-
-    print(
-        f"✅ Created Discord post for issue "
-        f"#{issue['number']}"
-    )
-
-    return thread_id
-
-
-def update_post(thread_id, issue):
-    webhook_id, webhook_token = webhook_parts()
-
-    url = (
-        f"https://discord.com/api/webhooks/"
-        f"{webhook_id}/{webhook_token}/messages/@original"
-    )
-
-    response = requests.patch(
-        url,
-        params={"thread_id": thread_id},
-        json={
-            "content": make_content(issue)
-        },
-        timeout=30,
-    )
-
-    if not response.ok:
-        print(
-            f"Discord update failed: "
-            f"{response.status_code}"
-        )
-        print(response.text)
-
-    response.raise_for_status()
-
-    print(
-        f"✅ Updated Discord post for issue "
-        f"#{issue['number']}"
-    )
-
-
-# ------------------------------------------------------------
-# Main
-# ------------------------------------------------------------
-
-def main():
-
+def get_issue_from_event():
     with open(EVENT_PATH, "r", encoding="utf-8") as f:
         event = json.load(f)
 
     issue = event.get("issue")
 
     if not issue:
-        print("No issue in this GitHub event.")
-        return
+        raise RuntimeError("No issue data found in GitHub event.")
 
-    # Ignore pull requests.
-    if "pull_request" in issue:
-        print("Pull request detected. Ignoring.")
-        return
+    return issue, event.get("action")
 
-    issue_number = str(issue["number"])
-    action = event.get("action")
 
-    print(
-        f"GitHub issue #{issue_number}: "
-        f"action={action}"
+def label_line(labels):
+    names = [label["name"] for label in labels]
+
+    if not names:
+        return "🏷️ Labels: None"
+
+    formatted = []
+
+    for name in names:
+        emoji = LABEL_EMOJIS.get(name.lower(), "🏷️")
+        formatted.append(f"{emoji} {name}")
+
+    return "🏷️ " + " · ".join(formatted)
+
+
+def make_content(issue):
+    title = issue.get("title", "Untitled issue")
+    body = issue.get("body") or "No description provided."
+    author = issue.get("user", {}).get("login", "Unknown")
+    number = issue.get("number")
+    url = issue.get("html_url")
+
+    state = issue.get("state", "open")
+
+    if state == "open":
+        status = "🟢 Open"
+    else:
+        status = "🔴 Closed"
+
+    labels = issue.get("labels", [])
+
+    return (
+        f"{label_line(labels)}\n\n"
+        f"📝 **Description**\n"
+        f"{body}\n\n"
+        f"👤 **Opened by:** {author}\n"
+        f"📊 **Status:** {status}\n\n"
+        f"🔗 **GitHub Issue #{number}**\n"
+        f"{url}"
     )
 
-    mapping = load_mapping()
 
-    # --------------------------------------------------------
-    # New issue
-    # --------------------------------------------------------
+def create_post(issue):
+    content = make_content(issue)
 
+    payload = {
+        "thread_name": issue.get("title", "GitHub Issue"),
+        "content": content,
+    }
+
+    response = requests.post(
+        WEBHOOK_URL + "?wait=true",
+        json=payload,
+        timeout=30,
+    )
+
+    response.raise_for_status()
+
+    message = response.json()
+
+    thread_id = message.get("channel_id")
+
+    if not thread_id:
+        raise RuntimeError("Discord did not return a Forum post/thread ID.")
+
+    print(f"Created Discord post: {thread_id}")
+
+    return thread_id
+
+
+def get_webhook_parts():
+    match = re.match(
+        r"https://discord(?:app)?\.com/api/webhooks/(\d+)/([^/?]+)",
+        WEBHOOK_URL,
+    )
+
+    if not match:
+        raise RuntimeError("Invalid Discord webhook URL.")
+
+    return match.group(1), match.group(2)
+
+
+def update_post(thread_id, issue):
+    webhook_id, webhook_token = get_webhook_parts()
+
+    url = (
+        f"https://discord.com/api/webhooks/"
+        f"{webhook_id}/{webhook_token}/messages/@original"
+        f"?thread_id={thread_id}"
+    )
+
+    response = requests.patch(
+        url,
+        json={
+            "content": make_content(issue),
+        },
+        timeout=30,
+    )
+
+    response.raise_for_status()
+
+    print(f"Updated Discord post: {thread_id}")
+
+
+def save_to_git():
+    os.system("git config user.name 'github-actions[bot]'")
+    os.system(
+        "git config user.email "
+        "'41898282+github-actions[bot]@users.noreply.github.com'"
+    )
+
+    os.system(f"git add {MAP_FILE}")
+
+    result = os.system(
+        "git diff --cached --quiet"
+    )
+
+    if result != 0:
+        os.system(
+            "git commit -m 'Update Discord issue mapping'"
+        )
+        os.system("git push")
+
+
+def main():
+    issue, action = get_issue_from_event()
+
+    issue_number = str(issue["number"])
+
+    issue_map = load_map()
+
+    print(f"GitHub issue #{issue_number}")
+    print(f"Action: {action}")
+
+    # New issue → create Discord Forum post
     if action == "opened":
-
-        if issue_number in mapping:
+        if issue_number in issue_map:
             print(
-                "Discord post already exists. "
-                "Nothing to do."
+                f"Issue #{issue_number} already has a Discord post. "
+                "Skipping duplicate."
             )
             return
 
         thread_id = create_post(issue)
 
-        mapping[issue_number] = {
+        issue_map[issue_number] = {
             "thread_id": thread_id,
-            "issue_url": issue["html_url"],
+            "issue_url": issue.get("html_url"),
         }
 
-        save_mapping(mapping)
-        save_mapping_to_git()
+        save_map(issue_map)
+        save_to_git()
 
         return
 
-    # --------------------------------------------------------
-    # Existing issue changed
-    # --------------------------------------------------------
-
-    if issue_number not in mapping:
+    # Existing issue → update Discord Forum post
+    if issue_number not in issue_map:
         print(
-            "⚠️ This issue does not have a Discord post "
-            "registered yet."
-        )
-        print(
-            "No new post will be created automatically "
-            "to avoid duplicates."
+            f"No Discord post mapping found for issue #{issue_number}. "
+            "Skipping update."
         )
         return
 
-    thread_id = mapping[issue_number]["thread_id"]
+    thread_id = issue_map[issue_number]["thread_id"]
 
     update_post(thread_id, issue)
 
 
 if __name__ == "__main__":
     main()
-```
