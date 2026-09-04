@@ -1,6 +1,11 @@
+```yaml
 name: Sync GitHub Issues to Discord
 
 on:
+  issues:
+    types:
+      - opened
+
   workflow_dispatch:
 
 jobs:
@@ -23,7 +28,9 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
-      - name: Sync issues
+      - name: Sync issue
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
         run: python sync_issues.py
+```
