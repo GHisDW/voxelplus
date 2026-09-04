@@ -1,7 +1,11 @@
+
 import os
 import json
 import re
+import subprocess
+
 import requests
+
 
 WEBHOOK_URL = os.environ["DISCORD_WEBHOOK_URL"]
 EVENT_PATH = os.environ["GITHUB_EVENT_PATH"]
@@ -9,6 +13,10 @@ GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
 GITHUB_REPOSITORY = os.environ["GITHUB_REPOSITORY"]
 
 MAP_FILE = "discord_issue_map.json"
+
+DISCORD_MAX_MESSAGE_LENGTH = 2000
+MAX_DESCRIPTION_LENGTH = 1400
+
 
 LABEL_EMOJIS = {
     "accessibility": "♿",
@@ -34,14 +42,20 @@ def load_map():
 
     try:
         with open(MAP_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
+            data = json.load(f)
+
+        if not isinstance(data, dict):
+            return {}
+
+        return data
+
+    except (json.JSONDecodeError, OSError):
         return {}
 
 
 def save_map(data):
     with open(MAP_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+        json.dump(data, f, indent=2, ensure_ascii=False)
 
 
 def get_event():
@@ -65,14 +79,23 @@ def make_labels(labels):
 
 def make_content(issue):
     body = issue.get("body") or "No description provided."
+
+    # Discord message content has a 2000-character limit.
+    if len(body) > MAX_DESCRIPTION_LENGTH:
+        body = (
+            body[:MAX_DESCRIPTION_LENGTH]
+            + "\n\n…Description truncated. "
+            + "See the GitHub issue for the full description."
+        )
+
     author = issue.get("user", {}).get("login", "Unknown")
-    number = issue.get("number")
-    url = issue.get("html_url")
+    number = issue.get("number", "Unknown")
+    url = issue.get("html_url", "")
     state = issue.get("state", "open")
 
     status = "🟢 Open" if state == "open" else "🔴 Closed"
 
-    return (
+    content = (
         f"{make_labels(issue.get('labels', []))}\n\n"
         f"📝 **Description**\n"
         f"{body}\n\n"
@@ -82,38 +105,80 @@ def make_content(issue):
         f"{url}"
     )
 
+    # Final safety check.
+    if len(content) > DISCORD_MAX_MESSAGE_LENGTH:
+        content = content[: DISCORD_MAX_MESSAGE_LENGTH - 3] + "..."
+
+    return content
+
+
+def print_discord_error(response):
+    print("================================")
+    print("DISCORD REQUEST FAILED")
+    print("================================")
+    print(f"HTTP status: {response.status_code}")
+    print(f"Response: {response.text}")
+    print("================================")
+
 
 def create_post(issue):
+    title = issue.get("title") or "GitHub Issue"
+
+    # Discord forum thread names have a maximum length.
+    title = title[:100]
+
+    url = WEBHOOK_URL.rstrip("/") + "?wait=true"
+
+    payload = {
+        "thread_name": title,
+        "content": make_content(issue),
+    }
+
     response = requests.post(
-        WEBHOOK_URL + "?wait=true",
-        json={
-            "thread_name": issue.get("title", "GitHub Issue"),
-            "content": make_content(issue),
-        },
+        url,
+        json=payload,
         timeout=30,
     )
 
+    if not response.ok:
+        print_discord_error(response)
+
     response.raise_for_status()
 
-    message = response.json()
+    try:
+        message = response.json()
+    except ValueError:
+        raise RuntimeError(
+            "Discord returned a non-JSON response."
+        )
+
     thread_id = message.get("channel_id")
 
     if not thread_id:
-        raise RuntimeError("Discord did not return a Forum post ID.")
+        raise RuntimeError(
+            "Discord did not return a Forum post ID. "
+            f"Response was: {message}"
+        )
 
-    print(f"Created Discord post for Issue #{issue['number']}: {thread_id}")
+    print(
+        f"Created Discord post for Issue "
+        f"#{issue['number']}: {thread_id}"
+    )
 
     return thread_id
 
 
 def webhook_parts():
     match = re.match(
-        r"https://discord(?:app)?\.com/api/webhooks/(\d+)/([^/?]+)",
+        r"^https://discord(?:app)?\.com/api/webhooks/(\d+)/([^/?]+)",
         WEBHOOK_URL,
     )
 
     if not match:
-        raise RuntimeError("Invalid Discord webhook URL.")
+        raise RuntimeError(
+            "Invalid Discord webhook URL. "
+            "Check the DISCORD_WEBHOOK_URL secret."
+        )
 
     return match.group(1), match.group(2)
 
@@ -130,18 +195,26 @@ def update_post(thread_id, issue):
     response = requests.patch(
         url,
         json={
-            "content": make_content(issue)
+            "content": make_content(issue),
         },
         timeout=30,
     )
 
+    if not response.ok:
+        print_discord_error(response)
+
     response.raise_for_status()
 
-    print(f"Updated Discord post for Issue #{issue['number']}")
+    print(
+        f"Updated Discord post for Issue #{issue['number']}"
+    )
 
 
 def get_all_issues():
-    url = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/issues"
+    url = (
+        f"https://api.github.com/repos/"
+        f"{GITHUB_REPOSITORY}/issues"
+    )
 
     headers = {
         "Accept": "application/vnd.github+json",
@@ -218,6 +291,7 @@ def sync_all():
                     "issue_url": issue.get("html_url"),
                 }
 
+                save_map(mapping)
                 created += 1
 
         except Exception as error:
@@ -245,6 +319,7 @@ def sync_event(issue):
             mapping[number]["thread_id"],
             issue,
         )
+
     else:
         thread_id = create_post(issue)
 
@@ -256,35 +331,84 @@ def sync_event(issue):
         save_map(mapping)
 
 
-def save_to_git():
-    os.system(
-        "git config user.name 'github-actions[bot]'"
+def run_git_command(*args):
+    result = subprocess.run(
+        args,
+        check=False,
+        capture_output=True,
+        text=True,
     )
 
-    os.system(
-        "git config user.email "
-        "'41898282+github-actions[bot]@users.noreply.github.com'"
-    )
-
-    os.system(
-        f"git add {MAP_FILE}"
-    )
-
-    if os.system("git diff --cached --quiet") != 0:
-        os.system(
-            "git commit -m 'Update Discord issue mapping'"
+    if result.returncode != 0:
+        print(
+            f"Git command failed: {' '.join(args)}"
         )
-        os.system("git push")
+
+        if result.stdout:
+            print(result.stdout)
+
+        if result.stderr:
+            print(result.stderr)
+
+    return result.returncode
+
+
+def save_to_git():
+    run_git_command(
+        "git",
+        "config",
+        "user.name",
+        "github-actions[bot]",
+    )
+
+    run_git_command(
+        "git",
+        "config",
+        "user.email",
+        "41898282+github-actions[bot]@users.noreply.github.com",
+    )
+
+    if run_git_command(
+        "git",
+        "add",
+        MAP_FILE,
+    ) != 0:
+        return
+
+    result = subprocess.run(
+        ["git", "diff", "--cached", "--quiet"],
+        check=False,
+    )
+
+    # Exit code 0 means there are no staged changes.
+    if result.returncode == 0:
+        print("No mapping changes to commit.")
+        return
+
+    if run_git_command(
+        "git",
+        "commit",
+        "-m",
+        "Update Discord issue mapping",
+    ) != 0:
+        return
+
+    run_git_command(
+        "git",
+        "push",
+    )
 
 
 def main():
     event = get_event()
 
-    # Manual Run button = sync EVERYTHING.
+    # Manual workflow run = sync everything.
     if "issue" not in event:
         print("Manual workflow run detected.")
+
         sync_all()
         save_to_git()
+
         return
 
     # GitHub issue event = sync that issue.
@@ -300,3 +424,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
