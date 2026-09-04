@@ -680,5 +680,4 @@ steps:
           f"Discord tags: {len(existing_tags)}"
       )
       print("========================================")
- open GitHub issues come back. 💀🔥
-```
+
