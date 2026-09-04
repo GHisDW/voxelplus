@@ -1,25 +1,35 @@
+```yaml
 name: Sync GitHub Issues to Discord Forum
 
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  issues: read
+
 jobs:
   sync:
     runs-on: ubuntu-latest
 
-    permissions:
-      contents: read
-      issues: read
+    env:
+      DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+      GITHUB_TOKEN: ${{ github.token }}
+      DISCORD_FORUM_ID: "1545409517745995886"
+      REPOSITORY: ${{ github.repository }}
 
     steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install dependencies
+        run: python -m pip install requests
+
       - name: Sync GitHub Issues to Discord
-        env:
-          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
-          GITHUB_TOKEN: ${{ github.token }}
-          DISCORD_FORUM_ID: "1545409517745995886"
-          GITHUB_REPOSITORY: ${{ github.repository }}
+        shell: python
         run: |
-          python - <<'PY'
           import os
           import sys
           import time
@@ -28,7 +38,7 @@ jobs:
           DISCORD_TOKEN = os.environ["DISCORD_TOKEN"]
           GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
           FORUM_ID = os.environ["DISCORD_FORUM_ID"]
-          REPO = os.environ["GITHUB_REPOSITORY"]
+          REPO = os.environ["REPOSITORY"]
 
           DISCORD_API = "https://discord.com/api/v10"
           GITHUB_API = "https://api.github.com"
@@ -36,16 +46,15 @@ jobs:
           discord_headers = {
               "Authorization": f"Bot {DISCORD_TOKEN}",
               "Content-Type": "application/json",
-              "User-Agent": "VoxelPlus-GitHub-Issue-Sync"
           }
 
           github_headers = {
               "Authorization": f"Bearer {GITHUB_TOKEN}",
               "Accept": "application/vnd.github+json",
-              "X-GitHub-Api-Version": "2022-11-28"
+              "X-GitHub-Api-Version": "2022-11-28",
           }
 
-          MARKER = "<!-- voxelplus-github-sync -->"
+          SYNC_MARKER = "<!-- voxelplus-github-sync -->"
 
           def discord_request(method, url, **kwargs):
               while True:
@@ -57,228 +66,405 @@ jobs:
                   )
 
                   if response.status_code == 429:
-                      retry = float(response.headers.get("Retry-After", "2"))
-                      print(f"Discord rate limit. Waiting {retry}s...")
-                      time.sleep(retry)
+                      retry_after = response.json().get("retry_after", 1)
+                      print(f"Discord rate limit. Waiting {retry_after}s...")
+                      time.sleep(float(retry_after) + 0.2)
                       continue
-
-                  if not response.ok:
-                      print(
-                          f"Discord API error {response.status_code}: "
-                          f"{response.text}"
-                      )
-                      response.raise_for_status()
 
                   return response
 
-          print("🚀 Starting Voxel+ GitHub → Discord sync...")
+          def github_get(url, params=None):
+              response = requests.get(
+                  url,
+                  headers=github_headers,
+                  params=params
+              )
+
+              if not response.ok:
+                  print(
+                      f"GitHub API error {response.status_code}: "
+                      f"{response.text}"
+                  )
+                  response.raise_for_status()
+
+              return response.json()
+
+          print("========================================")
+          print(" Voxel+ GitHub → Discord Forum Sync")
+          print("========================================")
 
           # ------------------------------------------------------------
-          # 1. Get Discord forum information
+          # 1. Verify forum channel
           # ------------------------------------------------------------
 
-          print("📡 Reading Discord forum...")
+          print("\nChecking Discord forum channel...")
 
           forum_response = discord_request(
               "GET",
               f"{DISCORD_API}/channels/{FORUM_ID}"
           )
 
+          if not forum_response.ok:
+              print(
+                  f"Could not access forum channel: "
+                  f"{forum_response.status_code} {forum_response.text}"
+              )
+              sys.exit(1)
+
           forum = forum_response.json()
 
           if forum.get("type") != 15:
               print(
-                  f"❌ Channel {FORUM_ID} is not a Discord Forum channel."
-              )
+                  f"ERROR: Channel {FORUM_ID} is not a Forum channel."
+            )
               sys.exit(1)
 
-          available_tags = {
-              tag["name"].lower(): tag["id"]
-              for tag in forum.get("available_tags", [])
-          }
+          print(f"Forum found: {forum.get('name')}")
+
+          # ------------------------------------------------------------
+          # 2. Read existing forum tags
+          # ------------------------------------------------------------
+
+          existing_tags = {}
+
+          for tag in forum.get("available_tags", []):
+              name = tag.get("name", "").strip().lower()
+
+              if name:
+                  existing_tags[name] = tag["id"]
+
+          print(f"Existing Discord tags: {len(existing_tags)}")
+
+          # ------------------------------------------------------------
+          # 3. Get ALL GitHub issues
+          # ------------------------------------------------------------
+
+          print("\nFetching GitHub issues...")
+
+          issues = []
+
+          for page in range(1, 100):
+              page_issues = github_get(
+                  f"{GITHUB_API}/repos/{REPO}/issues",
+                  params={
+                      "state": "all",
+                      "per_page": 100,
+                      "page": page,
+                  }
+              )
+
+              if not page_issues:
+                  break
+
+              issues.extend(page_issues)
+
+              if len(page_issues) < 100:
+                  break
+
+          # Pull requests also appear in the Issues API.
+          # Remove them.
+          issues = [
+              issue
+              for issue in issues
+              if "pull_request" not in issue
+          ]
+
+          issues.sort(key=lambda issue: issue["number"])
+
+          print(f"GitHub issues found: {len(issues)}")
+
+          # ------------------------------------------------------------
+          # 4. Collect all GitHub labels
+          # ------------------------------------------------------------
+
+          github_labels = {}
+
+          for issue in issues:
+              for label in issue.get("labels", []):
+                  name = label.get("name", "").strip()
+
+                  if name:
+                      github_labels[name.lower()] = name
+
+          print(f"GitHub labels found: {len(github_labels)}")
+
+          # ------------------------------------------------------------
+          # 5. Automatically create missing Discord forum tags
+          # ------------------------------------------------------------
+
+          if github_labels:
+              print("\nChecking Discord forum tags...")
+
+          for normalized_name, original_name in sorted(
+              github_labels.items()
+          ):
+              if normalized_name in existing_tags:
+                  continue
+
+              print(f"Creating Discord forum tag: {original_name}")
+
+              # Discord forum tags have a maximum name length.
+              tag_name = original_name[:20]
+
+              # Re-check in case the truncated name already exists.
+              if tag_name.lower() in existing_tags:
+                  continue
+
+              updated_tags = [
+                  {
+                      "id": tag["id"],
+                      "name": tag["name"],
+                      "moderated": tag.get("moderated", False),
+                  }
+                  for tag in forum.get("available_tags", [])
+              ]
+
+              updated_tags.append({
+                  "name": tag_name,
+                  "moderated": False,
+              })
+
+              update_response = discord_request(
+                  "PATCH",
+                  f"{DISCORD_API}/channels/{FORUM_ID}",
+                  json={
+                      "available_tags": updated_tags
+                  }
+              )
+
+              if not update_response.ok:
+                  print(
+                      f"WARNING: Could not create tag "
+                      f"'{tag_name}': "
+                      f"{update_response.status_code} "
+                      f"{update_response.text}"
+                  )
+                  continue
+
+              forum = update_response.json()
+
+              existing_tags = {}
+
+              for tag in forum.get("available_tags", []):
+                  name = tag.get("name", "").strip().lower()
+
+                  if name:
+                      existing_tags[name] = tag["id"]
+
+              time.sleep(0.3)
 
           print(
-              f"🏷️ Found {len(available_tags)} Discord forum tags."
+              f"Discord forum tags after setup: "
+              f"{len(existing_tags)}"
           )
 
           # ------------------------------------------------------------
-          # 2. Get existing active forum posts
+          # 6. Find active + archived forum posts
           # ------------------------------------------------------------
 
-          print("🧹 Finding existing synced forum posts...")
+          print("\nFinding existing synced forum posts...")
 
+          threads = []
+
+          # Active threads
           active_response = discord_request(
               "GET",
               f"{DISCORD_API}/guilds/{forum['guild_id']}/threads/active"
           )
 
-          active_threads = active_response.json().get("threads", [])
+          if active_response.ok:
+              for thread in active_response.json().get("threads", []):
+                  if thread.get("parent_id") == FORUM_ID:
+                      threads.append(thread)
 
-          synced_threads = [
-              thread
-              for thread in active_threads
-              if thread.get("parent_id") == FORUM_ID
-          ]
+          # Archived public threads
+          before = None
+
+          while True:
+              params = {
+                  "limit": 100
+              }
+
+              if before:
+                  params["before"] = before
+
+              archived_response = discord_request(
+                  "GET",
+                  f"{DISCORD_API}/channels/{FORUM_ID}/threads/archived/public",
+                  params=params
+              )
+
+              if not archived_response.ok:
+                  print(
+                      "Could not read archived forum posts: "
+                      f"{archived_response.status_code} "
+                      f"{archived_response.text}"
+                  )
+                  break
+
+              data = archived_response.json()
+              archived_threads = data.get("threads", [])
+
+              if not archived_threads:
+                  break
+
+              threads.extend(archived_threads)
+
+              if not data.get("has_more"):
+                  break
+
+              before = archived_threads[-1]["id"]
+
+          print(f"Forum posts found: {len(threads)}")
 
           # ------------------------------------------------------------
-          # 3. Delete only posts created by this workflow
+          # 7. Delete only posts created by this sync
           # ------------------------------------------------------------
 
           deleted = 0
 
-          for thread in synced_threads:
+          for thread in threads:
               thread_id = thread["id"]
 
-              messages_response = discord_request(
+              starter_response = discord_request(
                   "GET",
-                  f"{DISCORD_API}/channels/{thread_id}/messages",
-                  params={"limit": 10}
+                  f"{DISCORD_API}/channels/{thread_id}/messages/{thread_id}"
               )
 
-              messages = messages_response.json()
+              is_synced = False
 
-              is_synced = any(
-                  MARKER in message.get("content", "")
-                  for message in messages
+              if starter_response.ok:
+                  starter_message = starter_response.json()
+
+                  if SYNC_MARKER in starter_message.get(
+                      "content",
+                      ""
+                  ):
+                      is_synced = True
+
+              if not is_synced:
+                  continue
+
+              print(
+                  f"Deleting synced forum post: "
+                  f"{thread.get('name', thread_id)}"
               )
 
-              if is_synced:
-                  print(
-                      f"🗑️ Deleting synced forum post: "
-                      f"{thread.get('name', thread_id)}"
-                  )
+              delete_response = discord_request(
+                  "DELETE",
+                  f"{DISCORD_API}/channels/{thread_id}"
+              )
 
-                  discord_request(
-                      "DELETE",
-                      f"{DISCORD_API}/channels/{thread_id}"
-                  )
-
+              if delete_response.ok or delete_response.status_code == 404:
                   deleted += 1
 
-          print(f"🧹 Deleted {deleted} previous synced posts.")
+              time.sleep(0.4)
+
+          print(f"Deleted synced posts: {deleted}")
 
           # ------------------------------------------------------------
-          # 4. Get GitHub Issues
-          # ------------------------------------------------------------
-
-          print("📋 Reading GitHub Issues...")
-
-          issues = []
-          page = 1
-
-          while True:
-              response = requests.get(
-                  f"{GITHUB_API}/repos/{REPO}/issues",
-                  headers=github_headers,
-                  params={
-                      "state": "all",
-                      "per_page": 100,
-                      "page": page
-                  }
-              )
-
-              if not response.ok:
-                  print(
-                      f"❌ GitHub API error {response.status_code}: "
-                      f"{response.text}"
-                  )
-                  response.raise_for_status()
-
-              batch = response.json()
-
-              if not batch:
-                  break
-
-              # GitHub's Issues API also returns pull requests.
-              for issue in batch:
-                  if "pull_request" not in issue:
-                      issues.append(issue)
-
-              if len(batch) < 100:
-                  break
-
-              page += 1
-
-          print(f"📋 Found {len(issues)} GitHub Issues.")
-
-          # ------------------------------------------------------------
-          # 5. Create Discord forum posts
+          # 8. Create fresh forum posts
           # ------------------------------------------------------------
 
           created = 0
 
-          for issue in sorted(
-              issues,
-              key=lambda item: item["number"]
-          ):
+          for issue in issues:
               number = issue["number"]
-              title = issue["title"]
-              body = issue.get("body") or "*No description provided.*"
-              state = issue["state"]
-              issue_url = issue["html_url"]
+              title = issue["title"].strip()
+              body = issue.get("body") or "_No description provided._"
+              state = issue["state"].lower()
 
-              labels = [
-                  label["name"]
-                  for label in issue.get("labels", [])
-              ]
+              status_header = (
+                  "🟢 OPEN"
+                  if state == "open"
+                  else "🔴 CLOSED"
+              )
 
-              applied_tags = []
+              labels = issue.get("labels", [])
+
+              label_lines = []
 
               for label in labels:
-                  tag_id = available_tags.get(label.lower())
+                  label_name = label.get("name", "").strip()
 
-                  if tag_id:
-                      applied_tags.append(tag_id)
+                  if label_name:
+                      label_lines.append(f"`{label_name}`")
 
-              status = "🟢 OPEN" if state == "open" else "🔴 CLOSED"
+              labels_text = (
+                  ", ".join(label_lines)
+                  if label_lines
+                  else "_No labels_"
+              )
 
-              content = f"""{MARKER}
-
-          ## {status}
+              content = f"""## {status_header}
 
           **GitHub Issue #{number}**
 
           {body}
 
-          ---
+          **Labels:** {labels_text}
 
-          🏷️ **Labels:** {", ".join(labels) if labels else "None"}
+          🔗 [View on GitHub]({issue["html_url"]})
 
-          🔗 **GitHub:** {issue_url}
+          {SYNC_MARKER}
           """
 
-              # Discord forum post names have a practical length limit.
-              post_name = f"#{number} — {title}"
+              # Discord thread names are limited.
+              thread_name = f"#{number} — {title}"
+              thread_name = thread_name[:100]
 
-              if len(post_name) > 100:
-                  post_name = post_name[:97] + "..."
+              # Match GitHub labels to Discord tags.
+              applied_tag_ids = []
+
+              for label in labels:
+                  label_name = label.get("name", "").strip().lower()
+
+                  if label_name in existing_tags:
+                      applied_tag_ids.append(
+                          existing_tags[label_name]
+                      )
 
               payload = {
-                  "name": post_name,
+                  "name": thread_name,
                   "message": {
-                      "content": content
-                  }
+                      "content": content[:2000]
+                  },
               }
 
-              if applied_tags:
-                  payload["applied_tags"] = applied_tags
+              if applied_tag_ids:
+                  payload["applied_tags"] = applied_tag_ids[:5]
 
-              print(f"📝 Creating #{number}: {title}")
+              print(
+                  f"Creating #{number}: {title}"
+              )
 
-              discord_request(
+              create_response = discord_request(
                   "POST",
                   f"{DISCORD_API}/channels/{FORUM_ID}/threads",
                   json=payload
               )
 
-              created += 1
+              if not create_response.ok:
+                  print(
+                      f"ERROR creating issue #{number}: "
+                      f"{create_response.status_code} "
+                      f"{create_response.text}"
+                  )
+                  continue
 
-          print()
+              created += 1
+              time.sleep(0.5)
+
+          # ------------------------------------------------------------
+          # 9. Summary
+          # ------------------------------------------------------------
+
+          print("\n========================================")
+          print(" Sync complete!")
           print("========================================")
-          print("🎉 Voxel+ Discord sync complete!")
+          print(f"GitHub issues:        {len(issues)}")
+          print(f"Posts deleted:        {deleted}")
+          print(f"Posts created:        {created}")
+          print(f"Discord forum tags:   {len(existing_tags)}")
           print("========================================")
-          print(f"🧹 Deleted: {deleted}")
-          print(f"📝 Created: {created}")
-          print(f"📋 GitHub Issues: {len(issues)}")
-          print("========================================")
-          PY
+```
