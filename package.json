@@ -25,7 +25,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build && tsc -p tsconfig.node.json",
-    "app:dev": "node scripts/dev.js",
+    "app:dev": "vite",
     "start": "node scripts/start.js"
   },
   "dependencies": {
