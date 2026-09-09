@@ -1,5 +1,58 @@
 export type ThemeMode = 'dark' | 'light' | 'system';
 
+/** Standardized error categories used across all Voxel+ subsystems. */
+export type VoxelErrorCategory =
+  | 'JAVA'
+  | 'MINECRAFT'
+  | 'FABRIC'
+  | 'LOOM'
+  | 'GRADLE'
+  | 'MOD'
+  | 'RESOURCE_PACK'
+  | 'SHADER'
+  | 'INSTANCE'
+  | 'DOWNLOAD'
+  | 'NETWORK'
+  | 'FILESYSTEM'
+  | 'IPC'
+  | 'CONFIGURATION'
+  | 'UNKNOWN';
+
+/** Standardized severity levels used across all Voxel+ subsystems. */
+export type VoxelErrorSeverity = 'INFO' | 'WARNING' | 'ERROR' | 'FATAL';
+
+/**
+ * Serializable, IPC-safe representation of a structured Voxel+ error.
+ * The renderer receives this payload (JSON-encoded) instead of raw exceptions.
+ */
+export interface VoxelErrorPayload {
+  /** Short, user-facing headline, e.g. "Minecraft Launch Failed". */
+  title: string;
+  /** Clear explanation of what happened, in user-facing language. */
+  message: string;
+  /** Likely root cause, when known. */
+  cause?: string;
+  /** Actionable troubleshooting step for the user. */
+  suggestedAction?: string;
+  /** Stable technical identifier, e.g. JAVA_VERSION_MISMATCH. */
+  code?: string;
+  category: VoxelErrorCategory;
+  severity: VoxelErrorSeverity;
+  /** Technical/debug details (raw exception text, context) for logs. */
+  details?: string;
+}
+
+/**
+ * Error object the renderer receives when an IPC handler fails.
+ * `payload` carries the full structured error; `message` keeps a short
+ * user-facing string so existing `e.message` consumers keep working.
+ */
+export interface VoxelIpcError {
+  isVoxelError: true;
+  message: string;
+  payload: VoxelErrorPayload;
+}
+
 export type ProcessStatus =
   | 'READY'
   | 'PREPARING'

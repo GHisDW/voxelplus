@@ -1,4 +1,5 @@
 import { ModrinthProject, ModrinthVersion } from '../../types';
+import { VoxelError } from '../diagnostics';
 
 export class ModrinthClient {
   private static readonly BASE_URL = 'https://api.modrinth.com/v2';
@@ -40,7 +41,16 @@ export class ModrinthClient {
       });
 
       if (!response.ok) {
-        throw new Error(`Modrinth API responded with status ${response.status}`);
+        throw new VoxelError({
+          title: 'Modrinth Search Failed',
+          message: 'Modrinth did not respond correctly while searching for projects.',
+          cause: `The Modrinth API responded with HTTP ${response.status}.`,
+          suggestedAction: 'Try again in a few minutes; if it persists, check https://status.modrinth.com.',
+          code: 'MODRINTH_API_ERROR',
+          category: 'NETWORK',
+          severity: 'ERROR',
+          details: `URL: ${searchUrl.toString()}; HTTP status: ${response.status}`
+        });
       }
 
       const data = await response.json();
@@ -65,7 +75,22 @@ export class ModrinthClient {
         total_hits: data.total_hits || 0
       };
     } catch (e: any) {
-      console.error('Modrinth search failed:', e);
+      // Network/DNS/offline failures surface as TypeError from fetch.
+      const error =
+        e instanceof VoxelError
+          ? e
+          : new VoxelError({
+              title: 'Modrinth Search Failed',
+              message: 'Modrinth could not be reached while searching for projects.',
+              cause: 'The network is unavailable, offline, or blocked by a firewall.',
+              suggestedAction: 'Check your internet connection and try again.',
+              code: 'NETWORK_UNREACHABLE',
+              category: 'NETWORK',
+              severity: 'ERROR',
+              details: `URL: ${searchUrl.toString()}`,
+              originalError: e
+            });
+      error.log();
       return { hits: [], total_hits: 0 };
     }
   }
@@ -76,7 +101,21 @@ export class ModrinthClient {
         headers: { 'User-Agent': this.USER_AGENT }
       });
 
-      if (!response.ok) return null;
+      if (!response.ok) {
+        if (response.status === 404) {
+          return null;
+        }
+        throw new VoxelError({
+          title: 'Modrinth Project Unavailable',
+          message: `Details for "${slugOrId}" could not be loaded from Modrinth.`,
+          cause: `The Modrinth API responded with HTTP ${response.status}.`,
+          suggestedAction: 'Try again in a few minutes; the project page can still be opened on modrinth.com.',
+          code: 'MODRINTH_API_ERROR',
+          category: 'NETWORK',
+          severity: 'ERROR',
+          details: `Project: ${slugOrId}; HTTP status: ${response.status}`
+        });
+      }
       const data = await response.json();
       return {
         id: data.id,
@@ -94,7 +133,17 @@ export class ModrinthClient {
         project_type: data.project_type
       };
     } catch (e) {
-      console.error(`Failed to fetch project ${slugOrId}:`, e);
+      new VoxelError({
+        title: 'Modrinth Project Unavailable',
+        message: `Details for "${slugOrId}" could not be loaded from Modrinth.`,
+        cause: 'The network is unavailable, offline, or blocked by a firewall.',
+        suggestedAction: 'Check your internet connection and try again.',
+        code: 'NETWORK_UNREACHABLE',
+        category: 'NETWORK',
+        severity: 'ERROR',
+        details: `Project: ${slugOrId}`,
+        originalError: e
+      }).log();
       return null;
     }
   }
@@ -139,7 +188,17 @@ export class ModrinthClient {
         }))
       }));
     } catch (e) {
-      console.error(`Failed to get versions for ${slugOrId}:`, e);
+      new VoxelError({
+        title: 'Modrinth Versions Unavailable',
+        message: `Version history for "${slugOrId}" could not be loaded.`,
+        cause: 'The network is unavailable, offline, or Modrinth is temporarily down.',
+        suggestedAction: 'Check your internet connection and reopen the project page.',
+        code: 'NETWORK_UNREACHABLE',
+        category: 'NETWORK',
+        severity: 'ERROR',
+        details: `Project: ${slugOrId}`,
+        originalError: e
+      }).log();
       return [];
     }
   }

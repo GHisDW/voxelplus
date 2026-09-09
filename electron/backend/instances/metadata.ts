@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { InstanceMetadata, CreateInstancePayload } from '../../types';
+import { VoxelError } from '../diagnostics';
 
 export class InstanceMetadataStore {
   public static readonly METADATA_FILENAME = 'voxel-instance.json';
@@ -68,7 +69,19 @@ export class InstanceMetadataStore {
 
       return parsed;
     } catch (e) {
-      console.error(`Failed to parse instance metadata at ${instanceDir}:`, e);
+      // Metadata is user data on disk; a corrupt file should not crash the
+      // launcher, so we log through the diagnostics system and skip the instance.
+      new VoxelError({
+        title: 'Instance Metadata Unreadable',
+        message: `The metadata file for an instance could not be read and the instance will be hidden.`,
+        cause: 'voxel-instance.json is corrupt or has invalid JSON syntax.',
+        suggestedAction: 'Fix or delete voxel-instance.json inside the instance folder; other instances are unaffected.',
+        code: 'INSTANCE_METADATA_CORRUPT',
+        category: 'INSTANCE',
+        severity: 'WARNING',
+        details: `Path: ${metaFile}`,
+        originalError: e
+      }).log();
       return null;
     }
   }
@@ -81,7 +94,17 @@ export class InstanceMetadataStore {
       const metaFile = path.join(instanceDir, this.METADATA_FILENAME);
       fs.writeFileSync(metaFile, JSON.stringify(metadata, null, 2), 'utf-8');
     } catch (e) {
-      console.warn(`Failed to write instance metadata at ${instanceDir}:`, e);
+      new VoxelError({
+        title: 'Instance Metadata Not Saved',
+        message: 'Changes to this instance could not be saved to disk.',
+        cause: 'The instance folder may be read-only, locked, or on a disconnected drive.',
+        suggestedAction: 'Check folder permissions and available disk space, then try again.',
+        code: 'INSTANCE_METADATA_WRITE_FAILED',
+        category: 'FILESYSTEM',
+        severity: 'ERROR',
+        details: `Path: ${path.join(instanceDir, this.METADATA_FILENAME)}`,
+        originalError: e
+      }).log();
     }
   }
 }

@@ -1,6 +1,7 @@
 ﻿import fs from 'node:fs';
 import { AppSettings, ThemeMode } from '../../types';
 import { PathManager } from './paths';
+import { VoxelError } from '../diagnostics';
 
 const DEFAULT_SETTINGS: AppSettings = {
   theme: 'dark',
@@ -46,7 +47,17 @@ export class ConfigStore {
       this.cachedSettings = settings;
       return settings;
     } catch (e) {
-      console.error('Failed to read config, returning defaults:', e);
+      new VoxelError({
+        title: 'Settings Could Not Be Read',
+        message: 'Your settings file is corrupt and defaults have been restored.',
+        cause: 'config.json contains invalid JSON or could not be parsed.',
+        suggestedAction: 'No action needed; customize your settings again from the Settings page.',
+        code: 'CONFIG_CORRUPT',
+        category: 'CONFIGURATION',
+        severity: 'WARNING',
+        details: `Config file: ${configFile}`,
+        originalError: e
+      }).log();
       const fallback: AppSettings = {
         ...DEFAULT_SETTINGS,
         instanceDirectory: PathManager.getDefaultInstancesDir()
@@ -88,7 +99,17 @@ export class ConfigStore {
       this.saveSettings({ instanceDirectory: newPath });
       return true;
     } catch (e) {
-      console.error('Failed to set instance directory:', e);
+      new VoxelError({
+        title: 'Storage Location Not Changed',
+        message: 'The new instance storage directory could not be created or used.',
+        cause: 'The path may be invalid, read-only, or on a disconnected drive.',
+        suggestedAction: 'Choose a different folder with write permissions and try again.',
+        code: 'CONFIG_INSTANCE_DIR_INVALID',
+        category: 'FILESYSTEM',
+        severity: 'ERROR',
+        details: `Requested path: ${newPath}`,
+        originalError: e
+      }).log();
       return false;
     }
   }
