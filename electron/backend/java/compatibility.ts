@@ -2,16 +2,24 @@ import { JavaRuntime } from '../../types';
 
 export class JavaCompatibilityResolver {
   /**
-   * Resolves the required Java major version for a given Minecraft version string.
+   * Resolves the minimum required Java major version for a given Minecraft version string.
+   * This represents the CLIENT Java requirement (not Gradle daemon requirement).
+   * Gradle 8.x requires Java 17+ regardless of the MC client version.
    */
   public static getRequiredJavaMajorVersion(minecraftVersion: string): number {
+    // 26.x non-obfuscated new-era Minecraft — requires Java 24+
+    if (minecraftVersion.startsWith('26.')) {
+      return 24;
+    }
+
     const parts = minecraftVersion.split('.').map(p => parseInt(p, 10) || 0);
     const major = parts[0] || 1;
     const minor = parts[1] || 0;
     const patch = parts[2] || 0;
 
+    // Guard for future major versions beyond 26.x
     if (major > 1) {
-      return 21; // Future MC 2.x+
+      return 21;
     }
 
     if (minor >= 21) {
@@ -19,21 +27,21 @@ export class JavaCompatibilityResolver {
     }
 
     if (minor === 20) {
-      // 1.20.5+ requires Java 21, 1.20.0 - 1.20.4 requires Java 17
+      // 1.20.5+ requires Java 21; 1.20.0–1.20.4 requires Java 17
       return patch >= 5 ? 21 : 17;
     }
 
     if (minor >= 18) {
-      // 1.18.0 - 1.19.4 requires Java 17
+      // 1.18.0–1.19.4 requires Java 17
       return 17;
     }
 
     if (minor === 17) {
-      // 1.17.x requires Java 16 or 17
-      return 17;
+      // 1.17.x requires Java 16 minimum, Java 17 recommended
+      return 16;
     }
 
-    // 1.16.5 and older run on Java 8
+    // 1.16.5 and below: Java 8 is sufficient (Java 17+ also works via Loom)
     return 8;
   }
 
@@ -98,14 +106,19 @@ export class JavaCompatibilityResolver {
     if (java.architecture === 'x64') pros.push('64-bit Architecture');
     if (java.isValid) pros.push('Runtime tested successfully');
 
-    if (java.majorVersion >= 21) {
+    if (java.majorVersion >= 24) {
+      pros.push('Modern high-performance runtime (Java 24+)');
+      pros.push('Full compatibility with Minecraft 1.20.5+, 1.21.x, and 26.x');
+    } else if (java.majorVersion >= 21) {
       pros.push('Modern high-performance ZGC / G1GC improvements');
-      pros.push('Full compatibility with Minecraft 1.20.5+ & 1.21+');
-    } else if (java.majorVersion === 17) {
-      pros.push('Standard compatibility with Minecraft 1.18 – 1.20.4');
-    } else if (java.majorVersion === 8) {
-      pros.push('Legacy compatibility with Minecraft 1.16.5 and older');
-      cons.push('Outdated runtime — not compatible with modern Minecraft');
+      pros.push('Full compatibility with Minecraft 1.20.5+ and 1.21.x');
+    } else if (java.majorVersion >= 17) {
+      pros.push('Standard compatibility with Minecraft 1.17–1.20.4');
+    } else if (java.majorVersion >= 8) {
+      pros.push('Legacy compatibility with Minecraft 1.15.x–1.16.x');
+      if (java.majorVersion === 8) {
+        cons.push('Outdated runtime — not compatible with Minecraft 1.17+');
+      }
     }
 
     if (java.architecture === 'x86') {
@@ -117,12 +130,14 @@ export class JavaCompatibilityResolver {
     }
 
     let compatibilityDescription = '';
-    if (java.majorVersion >= 21) {
-      compatibilityDescription = 'Compatible with all modern Minecraft versions (1.20.5+, 1.21.x)';
+    if (java.majorVersion >= 24) {
+      compatibilityDescription = 'Compatible with all Minecraft versions including 26.x (1.20.5+, 1.21.x, 26.x)';
+    } else if (java.majorVersion >= 21) {
+      compatibilityDescription = 'Compatible with Minecraft 1.20.5 through 1.21.x (not 26.x)';
     } else if (java.majorVersion >= 17) {
-      compatibilityDescription = 'Compatible with Minecraft 1.18 through 1.20.4';
-    } else if (java.majorVersion === 8) {
-      compatibilityDescription = 'Compatible with legacy Minecraft 1.16.5 and older';
+      compatibilityDescription = 'Compatible with Minecraft 1.17 through 1.20.4';
+    } else if (java.majorVersion >= 8) {
+      compatibilityDescription = 'Compatible with legacy Minecraft 1.15.x–1.16.x (via Loom)';
     } else {
       compatibilityDescription = `Java ${java.majorVersion} runtime`;
     }

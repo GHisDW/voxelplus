@@ -46,18 +46,26 @@ This is deliberately exploiting current Loom behaviour. It will break — probab
 
 ## 📦 Supported versions
 
-| Minecraft | Java    | Gradle  | Loom         |
-|:--------:|:-------:|:-------:|:------------:|
-| 1.15.x    | 8       | 6.0     | 0.4-SNAPSHOT  |
-| 1.16.x    | 8       | 7.0     | 0.8-SNAPSHOT  |
-| 1.17.x    | 16      | 7.3     | 0.9-SNAPSHOT  |
-| 1.18.x    | 17      | 8.10.2  | 1.8.13        |
-| 1.19.x    | 17      | 8.10.2  | 1.8.13        |
-| 1.20.x    | 17 / 21 | 8.10.2  | 1.8.13        |
-| 1.21.x    | 21      | 8.10.2  | 1.8.13        |
+Voxel⁺ currently provides verified Fabric development profiles for:
 
-> Note: Java column shows the recommended major version. We try to detect and match the correct JRE automatically. 🕵️‍♂️
+| Minecraft | Java | Status |
+|:---------:|:----:|:------:|
+| 26.2 | 25 | ✅ Supported |
+| 26.1.2 | 25 | ✅ Supported |
+| 26.1.1 | 25 | ✅ Supported |
+| 1.21.4 | 21 | ✅ Supported |
+| 1.21.1 | 21 | ✅ Supported |
+| 1.20.6 | 21 | ✅ Supported |
+| 1.20.1 | 17 | ✅ Supported |
+| 1.19.4 | 17 | ✅ Supported |
+| 1.18.2 | 17 | ✅ Supported |
+| 1.17.1 | 17 | ✅ Supported |
+| 1.16.5 | 8 | ✅ Supported |
+| 1.15.2 | 8 | ✅ Supported |
 
+> **Note:** Java shows the recommended major version for each Minecraft version. Voxel⁺ automatically detects and selects a compatible Java runtime when possible. 🕵️‍♂️
+
+Versions not listed above are not currently advertised as verified by the launcher.
 
 ## ⬇️ Download & Install
 
@@ -166,3 +174,5 @@ This client exists because Loom currently permits this workflow. That window may
 Built with Electron, Vite, TypeScript, Fabric Loom, Gradle, and a complete lack of respect for "intended behaviour".
 
 If this README made you smile, consider starring the repo ⭐ — or at least leaving a funny issue. 😂
+
+
