@@ -1,5 +1,5 @@
 import { ModrinthProject, ModrinthVersion } from '../../types';
-import { VoxelError } from '../diagnostics';
+import { VoxelError, toVoxelError } from '../diagnostics';
 
 export class ModrinthClient {
   private static readonly BASE_URL = 'https://api.modrinth.com/v2';
@@ -133,16 +133,14 @@ export class ModrinthClient {
         project_type: data.project_type
       };
     } catch (e) {
-      new VoxelError({
+      toVoxelError(e, {
         title: 'Modrinth Project Unavailable',
         message: `Details for "${slugOrId}" could not be loaded from Modrinth.`,
         cause: 'The network is unavailable, offline, or blocked by a firewall.',
         suggestedAction: 'Check your internet connection and try again.',
         code: 'NETWORK_UNREACHABLE',
         category: 'NETWORK',
-        severity: 'ERROR',
-        details: `Project: ${slugOrId}`,
-        originalError: e
+        severity: 'ERROR'
       }).log();
       return null;
     }
@@ -188,16 +186,14 @@ export class ModrinthClient {
         }))
       }));
     } catch (e) {
-      new VoxelError({
+      toVoxelError(e, {
         title: 'Modrinth Versions Unavailable',
         message: `Version history for "${slugOrId}" could not be loaded.`,
         cause: 'The network is unavailable, offline, or Modrinth is temporarily down.',
         suggestedAction: 'Check your internet connection and reopen the project page.',
         code: 'NETWORK_UNREACHABLE',
         category: 'NETWORK',
-        severity: 'ERROR',
-        details: `Project: ${slugOrId}`,
-        originalError: e
+        severity: 'ERROR'
       }).log();
       return [];
     }

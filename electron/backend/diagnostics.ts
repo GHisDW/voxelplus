@@ -1,7 +1,8 @@
 import {
   VoxelErrorCategory,
   VoxelErrorPayload,
-  VoxelErrorSeverity
+  VoxelErrorSeverity,
+  VOXEL_IPC_ERROR_MARKER
 } from '../types';
 import { LogStreamer } from './processes/logStreamer';
 
@@ -84,6 +85,9 @@ export function toVoxelError(
   error: unknown,
   fallback?: {
     title?: string;
+    /** User-facing message to use instead of the raw error text. */
+    message?: string;
+    cause?: string;
     category?: VoxelErrorCategory;
     severity?: VoxelErrorSeverity;
     code?: string;
@@ -101,15 +105,25 @@ export function toVoxelError(
         ? error
         : safeStringify(error);
 
+  // Keep the original error text/stack available for debugging when a
+  // friendlier fallback message replaces it.
+  const technicalParts: string[] = [];
+  if (fallback?.message && fallback.message !== rawMessage) {
+    technicalParts.push(`Original error: ${rawMessage}`);
+  }
+  if (error instanceof Error && error.stack) {
+    technicalParts.push(error.stack);
+  }
+
   return new VoxelError({
     title: fallback?.title || 'Unexpected Error',
-    message: rawMessage || 'An unexpected error occurred.',
+    message: fallback?.message || rawMessage || 'An unexpected error occurred.',
+    cause: fallback?.cause,
     category: fallback?.category || 'UNKNOWN',
     severity: fallback?.severity || 'ERROR',
     code: fallback?.code,
     suggestedAction: fallback?.suggestedAction,
-    details: error instanceof Error ? error.stack : undefined,
-    originalError: error instanceof Error ? undefined : error
+    details: technicalParts.length > 0 ? technicalParts.join('\n') : undefined
   });
 }
 
@@ -127,6 +141,26 @@ export function serializeErrorForIpc(
   // Log centrally so every IPC failure leaves a consistent trace.
   voxelError.log();
   return payload;
+}
+
+/**
+ * Build the Error to throw from an `ipcMain.handle` handler so the renderer
+ * receives a structured, IPC-safe failure.
+ *
+ * Electron only forwards the error's `message` string across `invoke`
+ * (custom properties are stripped and the renderer prefixes the channel
+ * name), so the payload is embedded in the message as
+ * `...VOXEL_ERROR::{json}` and reconstructed by the renderer via
+ * `parseVoxelIpcError()` (frontend/src/services/errors.ts).
+ */
+export function encodeVoxelIpcError(
+  error: unknown,
+  fallback?: Parameters<typeof toVoxelError>[1]
+): Error {
+  const payload = serializeErrorForIpc(error, fallback);
+  const wrapped = new Error(`${VOXEL_IPC_ERROR_MARKER}${JSON.stringify(payload)}`);
+  wrapped.name = 'VoxelIpcError';
+  return wrapped;
 }
 
 function logLevelFor(severity: VoxelErrorSeverity): 'INFO' | 'WARN' | 'ERROR' {

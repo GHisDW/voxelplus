@@ -43,9 +43,19 @@ export interface VoxelErrorPayload {
 }
 
 /**
- * Error object the renderer receives when an IPC handler fails.
- * `payload` carries the full structured error; `message` keeps a short
- * user-facing string so existing `e.message` consumers keep working.
+ * Marker prefix used to transport a structured VoxelErrorPayload across IPC.
+ *
+ * Electron only forwards the `message` string of errors thrown from
+ * `ipcMain.handle` to the renderer (it does NOT transfer custom error
+ * properties), so the main process embeds the serialized payload in the
+ * message as `VOXEL_ERROR::{...json...}` and the renderer parses it back out.
+ */
+export const VOXEL_IPC_ERROR_MARKER = 'VOXEL_ERROR::';
+
+/**
+ * Parsed representation of a structured IPC failure, as reconstructed by the
+ * renderer (see frontend/src/services/errors.ts). `message` keeps the raw
+ * Electron error text so `e.message` consumers keep working.
  */
 export interface VoxelIpcError {
   isVoxelError: true;

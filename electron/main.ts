@@ -5,7 +5,7 @@ import { PathManager } from './backend/storage/paths';
 import { LogStreamer } from './backend/processes/logStreamer';
 import { ProcessManager } from './backend/processes/processManager';
 import { DownloadManager } from './backend/modrinth/downloader';
-import { serializeErrorForIpc } from './backend/diagnostics';
+import { encodeVoxelIpcError } from './backend/diagnostics';
 import { VoxelErrorCategory } from './types';
 
 let mainWindow: BrowserWindow | null = null;
@@ -15,9 +15,13 @@ let mainWindow: BrowserWindow | null = null;
  * IPC-safe, structured payload instead of Electron's default raw
  * "Error invoking remote method 'channel': ..." exception text.
  *
- * The renderer receives a rejected promise whose value is a VoxelIpcError
- * ({ isVoxelError: true, message, payload }). Result values are passed
- * through untouched, so successful calls behave exactly as before.
+ * The renderer receives a rejected promise carrying an Error whose message
+ * embeds the structured payload as `...VOXEL_ERROR::{json}` — Electron only
+ * forwards the error `message` across IPC (custom properties are stripped
+ * and the channel name is prefixed), so the payload travels inside the
+ * message; frontend/src/services/errors.ts parses it back into a
+ * VoxelIpcError. Result values pass through untouched, so successful calls
+ * behave exactly as before.
  */
 function wrapIpcHandler<TResult>(
   channel: string,
@@ -28,7 +32,7 @@ function wrapIpcHandler<TResult>(
     try {
       return await handler(...args);
     } catch (error) {
-      throw serializeErrorForIpc(error, { title: 'Operation Failed', category });
+      throw encodeVoxelIpcError(error, { title: 'Operation Failed', category });
     }
   };
 }

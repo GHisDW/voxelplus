@@ -24,7 +24,7 @@
   "homepage": "https://github.com/GHisDW/voxelplus#readme",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build && tsc -p tsconfig.node.json",
+    "build": "tsc && vite build && tsc -p tsconfig.node.json --noEmit",
     "app:dev": "vite",
     "start": "node scripts/start.js"
   },
