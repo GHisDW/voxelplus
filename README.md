@@ -150,7 +150,8 @@ For developers who want to run Voxel⁺ from source:
 git clone https://github.com/GHisDW/voxelplus.git
 cd voxelplus
 npm install
-npm run app:dev
+npm run build
+npm start
 ```
 
 Or grab a release from the Releases page and follow [`DOWNLOADING.md`](DOWNLOADING.md) for the user-friendly installation process.
