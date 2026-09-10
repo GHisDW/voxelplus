@@ -1,52 +1,9 @@
-import { defineConfig } from 'vite';
-import electron from 'vite-plugin-electron';
+﻿import { defineConfig } from 'vite';
 import path from 'node:path';
 
 export default defineConfig({
-  root: 'frontend',
-  plugins: [
-    electron([
-      {
-        entry: path.resolve(__dirname, 'electron/main.ts'),
-        vite: {
-          build: {
-            outDir: path.resolve(__dirname, 'dist-electron'),
-            rollupOptions: {
-              external: [
-                'electron',
-                'adm-zip',
-                'node:child_process',
-                'node:fs',
-                'node:fs/promises',
-                'node:path',
-                'node:os',
-                'node:crypto',
-                'node:events',
-                'node:https',
-                'node:http',
-                'node:stream',
-                'node:url'
-              ]
-            }
-          }
-        }
-      },
-      {
-        entry: path.resolve(__dirname, 'electron/preload.ts'),
-        onstart(options) {
-          options.reload();
-        },
-        vite: {
-          build: {
-            outDir: path.resolve(__dirname, 'dist-electron'),
-            rollupOptions: {
-              external: ['electron']
-            }
-          }
-        }
-      }
-    ])
-  ],
+  base: './',
+root: 'frontend',
   build: {
     outDir: path.resolve(__dirname, 'dist'),
     emptyOutDir: true
@@ -60,3 +17,4 @@ export default defineConfig({
     port: 5173
   }
 });
+
