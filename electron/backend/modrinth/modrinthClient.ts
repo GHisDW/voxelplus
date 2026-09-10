@@ -43,7 +43,7 @@ export class ModrinthClient {
         throw new Error(`Modrinth API responded with status ${response.status}`);
       }
 
-      const data = await response.json();
+      const data = await response.json() as any;
       const hits: ModrinthProject[] = (data.hits || []).map((h: any) => ({
         id: h.project_id || h.id,
         slug: h.slug,
@@ -77,7 +77,7 @@ export class ModrinthClient {
       });
 
       if (!response.ok) return null;
-      const data = await response.json();
+      const data = await response.json() as any;
       return {
         id: data.id,
         slug: data.slug,
@@ -118,7 +118,7 @@ export class ModrinthClient {
       });
 
       if (!response.ok) return [];
-      const data = await response.json();
+      const data = await response.json() as any;
 
       return (data || []).map((v: any) => ({
         id: v.id,

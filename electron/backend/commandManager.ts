@@ -13,7 +13,10 @@ import {
   ProcessStatus,
   ResourcePackInfo,
   ShaderPackInfo,
-  SystemScanResult
+  SystemScanResult,
+  SkinMetadata,
+  SkinSearchResult,
+  SkinValidationResult
 } from '../types';
 import { ConfigStore } from './storage/configStore';
 import { SystemScanner } from './system/systemScanner';
@@ -29,6 +32,7 @@ import { ContentImporter } from './content/contentImporter';
 import { ModrinthClient } from './modrinth/modrinthClient';
 import { DownloadManager } from './modrinth/downloader';
 import { LogStreamer } from './processes/logStreamer';
+import { SkinManager } from './skins/skinManager';
 
 export class CommandManager {
   // Settings
@@ -77,6 +81,10 @@ export class CommandManager {
 
   public static async updateInstance(id: string, updates: Partial<InstanceMetadata>): Promise<InstanceMetadata | null> {
     return InstanceManager.updateInstance(id, updates);
+  }
+
+  public static async setInstanceSkin(instanceId: string, skinId: string | null): Promise<InstanceMetadata | null> {
+    return InstanceManager.setInstanceSkin(instanceId, skinId);
   }
 
   public static async duplicateInstance(id: string): Promise<InstanceMetadata | null> {
@@ -232,5 +240,50 @@ export class CommandManager {
     });
     if (result.canceled || !result.filePath) return null;
     return result.filePath;
+  }
+
+  // Skins
+  public static async listSkins(): Promise<SkinMetadata[]> {
+    return SkinManager.getAllSkins();
+  }
+
+  public static async getSkin(skinId: string): Promise<SkinMetadata | null> {
+    return SkinManager.getSkin(skinId);
+  }
+
+  public static async getActiveSkin(): Promise<SkinMetadata | null> {
+    return SkinManager.getActiveSkin();
+  }
+
+  public static async importSkin(filePath: string, customName?: string): Promise<{ success: boolean; skin?: SkinMetadata; error?: string }> {
+    return SkinManager.importSkin(filePath, customName);
+  }
+
+  public static async downloadSkin(username: string, customName?: string): Promise<{ success: boolean; skin?: SkinMetadata; error?: string }> {
+    return SkinManager.downloadSkin(username, customName);
+  }
+
+  public static async searchPlayer(username: string): Promise<{ success: boolean; result?: SkinSearchResult; error?: string }> {
+    return SkinManager.searchPlayer(username);
+  }
+
+  public static async setActiveSkin(skinId: string): Promise<{ success: boolean; error?: string }> {
+    return SkinManager.setActiveSkin(skinId);
+  }
+
+  public static async renameSkin(skinId: string, newName: string): Promise<{ success: boolean; error?: string }> {
+    return SkinManager.renameSkin(skinId, newName);
+  }
+
+  public static async deleteSkin(skinId: string): Promise<{ success: boolean; error?: string }> {
+    return SkinManager.deleteSkin(skinId);
+  }
+
+  public static async validateSkin(filePath: string): Promise<SkinValidationResult> {
+    return SkinManager.validateSkin(filePath);
+  }
+
+  public static async clearSkins(): Promise<void> {
+    SkinManager.clearLibrary();
   }
 }

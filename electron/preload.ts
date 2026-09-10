@@ -15,6 +15,9 @@ import {
   ProcessStatusEvent,
   ResourcePackInfo,
   ShaderPackInfo,
+  SkinMetadata,
+  SkinSearchResult,
+  SkinValidationResult,
   SystemScanResult
 } from './types';
 
@@ -40,6 +43,7 @@ const api = {
   duplicateInstance: (id: string): Promise<InstanceMetadata | null> => ipcRenderer.invoke('instance:duplicate', id),
   deleteInstance: (id: string): Promise<boolean> => ipcRenderer.invoke('instance:delete', id),
   openInstanceFolder: (id: string): Promise<boolean> => ipcRenderer.invoke('instance:openFolder', id),
+  setInstanceSkin: (id: string, skinId: string | null): Promise<InstanceMetadata | null> => ipcRenderer.invoke('instance:setSkin', id, skinId),
 
   // Process Controls (PLAY / STOP)
   launchInstance: (id: string): Promise<LaunchResult> => ipcRenderer.invoke('process:launch', id),
@@ -75,6 +79,19 @@ const api = {
   selectFolderDialog: (): Promise<string | null> => ipcRenderer.invoke('dialog:selectFolder'),
   selectFileDialog: (filters?: any): Promise<string | null> => ipcRenderer.invoke('dialog:selectFile', filters),
   selectSaveFileDialog: (defaultName: string, filters?: any): Promise<string | null> => ipcRenderer.invoke('dialog:selectSaveFile', defaultName, filters),
+
+  // Skins
+  listSkins: (): Promise<SkinMetadata[]> => ipcRenderer.invoke('skins:list'),
+  getSkin: (skinId: string): Promise<SkinMetadata | null> => ipcRenderer.invoke('skins:get', skinId),
+  getActiveSkin: (): Promise<SkinMetadata | null> => ipcRenderer.invoke('skins:getActive'),
+  importSkin: (filePath: string, customName?: string): Promise<{ success: boolean; skin?: SkinMetadata; error?: string }> => ipcRenderer.invoke('skins:import', filePath, customName),
+  downloadSkin: (username: string, customName?: string): Promise<{ success: boolean; skin?: SkinMetadata; error?: string }> => ipcRenderer.invoke('skins:download', username, customName),
+  searchPlayer: (username: string): Promise<{ success: boolean; result?: SkinSearchResult; error?: string }> => ipcRenderer.invoke('skins:search', username),
+  setActiveSkin: (skinId: string): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('skins:setActive', skinId),
+  renameSkin: (skinId: string, newName: string): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('skins:rename', skinId, newName),
+  deleteSkin: (skinId: string): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('skins:delete', skinId),
+  validateSkin: (filePath: string): Promise<SkinValidationResult> => ipcRenderer.invoke('skins:validate', filePath),
+  clearSkins: (): Promise<void> => ipcRenderer.invoke('skins:clear'),
 
   // Real-time Event Subscriptions
   onLog: (callback: (entry: LogEntry) => void) => {

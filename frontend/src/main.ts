@@ -2,6 +2,7 @@ import { PageId, Sidebar } from './components/Sidebar';
 import { Header, HeaderFilters } from './components/Header';
 import { InstancesPage } from './pages/InstancesPage';
 import { ContentPage } from './pages/ContentPage';
+import { SkinsPage } from './pages/SkinsPage';
 import { LogsPage } from './pages/LogsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { OnboardingPage } from './pages/OnboardingPage';
@@ -17,6 +18,7 @@ class VoxelApp {
   private header!: Header;
   private instancesPage!: InstancesPage;
   private contentPage!: ContentPage;
+  private skinsPage!: SkinsPage;
   private logsPage!: LogsPage;
   private settingsPage!: SettingsPage;
 
@@ -67,6 +69,7 @@ class VoxelApp {
       }
     });
     this.contentPage = new ContentPage();
+    this.skinsPage = new SkinsPage();
     this.logsPage = new LogsPage();
     this.settingsPage = new SettingsPage({
       onRedoOnboarding: () => this.showOnboarding()
@@ -128,6 +131,8 @@ class VoxelApp {
       pageContainer.appendChild(await this.instancesPage.render());
     } else if (this.activePage === 'content') {
       pageContainer.appendChild(await this.contentPage.render());
+    } else if (this.activePage === 'skins') {
+      pageContainer.appendChild(await this.skinsPage.render());
     } else if (this.activePage === 'logs') {
       pageContainer.appendChild(await this.logsPage.render());
     } else if (this.activePage === 'settings') {

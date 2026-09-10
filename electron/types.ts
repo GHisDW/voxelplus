@@ -94,6 +94,7 @@ export interface EnvironmentCheckResult {
 export interface InstanceAppearance {
   artwork: string | null; // Data URL or preset name
   item: string; // e.g. "minecraft:diamond"
+  skinId?: string | null; // Reference to skin in skin library
 }
 
 export interface InstanceRuntime {
@@ -268,4 +269,48 @@ export interface MinecraftVersionOption {
   releaseTime: string;
   recommendedJava: number;
   fabricSupported: boolean;
+}
+
+// Skin Manager Types
+export type SkinModel = 'steve' | 'alex';
+
+export interface SkinMetadata {
+  id: string;
+  name: string;
+  filePath: string;
+  model: SkinModel;
+  dimensions: { width: number; height: number };
+  sizeBytes: number;
+  source: 'import' | 'download';
+  sourceUsername?: string; // For downloaded skins
+  downloadedAt?: string;
+  isActive: boolean;
+  createdAt: string;
+  thumbnail: string; // Data URL for preview
+}
+
+export interface SkinValidationResult {
+  isValid: boolean;
+  error?: string;
+  dimensions?: { width: number; height: number };
+  model?: SkinModel;
+  sizeBytes?: number;
+}
+
+export interface SkinSearchResult {
+  username: string;
+  uuid: string;
+  skinUrl: string;
+  capeUrl?: string;
+  nameHistory: Array<{ name: string; changed_at: string }>;
+}
+
+export interface SkinDownloadProgress {
+  downloadId: string;
+  username: string;
+  bytesReceived: number;
+  totalBytes: number;
+  percentage: number;
+  status: 'downloading' | 'validating' | 'completed' | 'failed';
+  error?: string;
 }

@@ -1,6 +1,6 @@
-# Changelog
+﻿# Changelog
 
-All notable changes to Voxel⁺ will be documented in this file.
+All notable changes to Voxelâº will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+
+- Minecraft Skin Manager with persistent local skin library
+- Minecraft skin PNG validation for supported formats and dimensions
+- Minecraft player skin search and skin downloading
+- Interactive 3D skin previews using `skinview3d`
+- Active skin selection with persistence across restarts
+- Skin library rename and delete functionality
+- Click-to-open full 3D skin preview for search results
+- Actionable validation and skin management error handling
 - Dynamic compatibility resolution system for Minecraft versions
 - Centralized Java runtime selection with deterministic preferences
 - Automatic environment resolution for different Minecraft eras
@@ -37,7 +46,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0] - 2026-09-03
 
 ### Added
-- Initial release of Voxel⁺
+
+- Minecraft Skin Manager with persistent local skin library
+- Minecraft skin PNG validation for supported formats and dimensions
+- Minecraft player skin search and skin downloading
+- Interactive 3D skin previews using `skinview3d`
+- Active skin selection with persistence across restarts
+- Skin library rename and delete functionality
+- Click-to-open full 3D skin preview for search results
+- Actionable validation and skin management error handling
+- Initial release of Voxelâº
 - Electron-based desktop application
 - Automatic Java detection and validation
 - Instance management system
@@ -53,6 +71,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - Development
 
 ### Added
+
+- Minecraft Skin Manager with persistent local skin library
+- Minecraft skin PNG validation for supported formats and dimensions
+- Minecraft player skin search and skin downloading
+- Interactive 3D skin previews using `skinview3d`
+- Active skin selection with persistence across restarts
+- Skin library rename and delete functionality
+- Click-to-open full 3D skin preview for search results
+- Actionable validation and skin management error handling
 - Project structure and basic architecture
 - TypeScript configuration
 - Vite build system

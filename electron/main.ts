@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+﻿import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'node:path';
 import { CommandManager } from './backend/commandManager';
 import { PathManager } from './backend/storage/paths';
@@ -16,7 +16,7 @@ function createWindow() {
     minHeight: 650,
     frame: true,
     titleBarStyle: 'default',
-    title: 'Voxel⁺ Launcher',
+    title: 'Voxelâº Launcher',
     backgroundColor: '#0a0d14',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -82,6 +82,7 @@ function registerIpcHandlers() {
   ipcMain.handle('instance:duplicate', async (_, id) => CommandManager.duplicateInstance(id));
   ipcMain.handle('instance:delete', async (_, id) => CommandManager.deleteInstance(id));
   ipcMain.handle('instance:openFolder', async (_, id) => CommandManager.openInstanceFolder(id));
+  ipcMain.handle('instance:setSkin', async (_, id, skinId) => CommandManager.setInstanceSkin(id, skinId));
 
   // Process (PLAY / STOP)
   ipcMain.handle('process:launch', async (_, id) => CommandManager.launchInstance(id));
@@ -97,6 +98,19 @@ function registerIpcHandlers() {
   ipcMain.handle('content:scanShaders', async (_, id) => CommandManager.scanShaders(id));
   ipcMain.handle('content:removeShader', async (_, id, fn) => CommandManager.removeShader(id, fn));
   ipcMain.handle('content:importFile', async (_, id, fp, type) => CommandManager.importFile(id, fp, type));
+
+  // Skins
+  ipcMain.handle('skins:list', async () => CommandManager.listSkins());
+  ipcMain.handle('skins:get', async (_, id) => CommandManager.getSkin(id));
+  ipcMain.handle('skins:getActive', async () => CommandManager.getActiveSkin());
+  ipcMain.handle('skins:import', async (_, filePath, customName) => CommandManager.importSkin(filePath, customName));
+  ipcMain.handle('skins:download', async (_, username, customName) => CommandManager.downloadSkin(username, customName));
+  ipcMain.handle('skins:search', async (_, username) => CommandManager.searchPlayer(username));
+  ipcMain.handle('skins:setActive', async (_, id) => CommandManager.setActiveSkin(id));
+  ipcMain.handle('skins:rename', async (_, id, newName) => CommandManager.renameSkin(id, newName));
+  ipcMain.handle('skins:delete', async (_, id) => CommandManager.deleteSkin(id));
+  ipcMain.handle('skins:validate', async (_, filePath) => CommandManager.validateSkin(filePath));
+  ipcMain.handle('skins:clear', async () => CommandManager.clearSkins());
 
   // Modrinth
   ipcMain.handle('modrinth:search', async (_, params) => CommandManager.searchModrinth(params));
@@ -136,3 +150,4 @@ app.on('window-all-closed', () => {
     app.quit();
   }
 });
+
