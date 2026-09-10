@@ -14,6 +14,9 @@ import {
   ProcessStatusEvent,
   ResourcePackInfo,
   ShaderPackInfo,
+  SkinMetadata,
+  SkinSearchResult,
+  SkinValidationResult,
   SystemScanResult
 } from '../../../electron/types';
 
@@ -42,6 +45,7 @@ export const api = {
   duplicateInstance: (id: string): Promise<InstanceMetadata | null> => electronApi.duplicateInstance(id),
   deleteInstance: (id: string): Promise<boolean> => electronApi.deleteInstance(id),
   openInstanceFolder: (id: string): Promise<boolean> => electronApi.openInstanceFolder(id),
+  setInstanceSkin: (id: string, skinId: string | null): Promise<InstanceMetadata | null> => electronApi.setInstanceSkin(id, skinId),
 
   // Process Controls (PLAY / STOP)
   launchInstance: (id: string): Promise<LaunchResult> => electronApi.launchInstance(id),
@@ -77,6 +81,19 @@ export const api = {
   selectFolderDialog: (): Promise<string | null> => electronApi.selectFolderDialog(),
   selectFileDialog: (filters?: any): Promise<string | null> => electronApi.selectFileDialog(filters),
   selectSaveFileDialog: (defaultName: string, filters?: any): Promise<string | null> => electronApi.selectSaveFileDialog(defaultName, filters),
+
+  // Skins
+  listSkins: (): Promise<SkinMetadata[]> => electronApi.listSkins(),
+  getSkin: (skinId: string): Promise<SkinMetadata | null> => electronApi.getSkin(skinId),
+  getActiveSkin: (): Promise<SkinMetadata | null> => electronApi.getActiveSkin(),
+  importSkin: (filePath: string, customName?: string): Promise<{ success: boolean; skin?: SkinMetadata; error?: string }> => electronApi.importSkin(filePath, customName),
+  downloadSkin: (username: string, customName?: string): Promise<{ success: boolean; skin?: SkinMetadata; error?: string }> => electronApi.downloadSkin(username, customName),
+  searchPlayer: (username: string): Promise<{ success: boolean; result?: SkinSearchResult; error?: string }> => electronApi.searchPlayer(username),
+  setActiveSkin: (skinId: string): Promise<{ success: boolean; error?: string }> => electronApi.setActiveSkin(skinId),
+  renameSkin: (skinId: string, newName: string): Promise<{ success: boolean; error?: string }> => electronApi.renameSkin(skinId, newName),
+  deleteSkin: (skinId: string): Promise<{ success: boolean; error?: string }> => electronApi.deleteSkin(skinId),
+  validateSkin: (filePath: string): Promise<SkinValidationResult> => electronApi.validateSkin(filePath),
+  clearSkins: (): Promise<void> => electronApi.clearSkins(),
 
   // Real-time Event Subscriptions
   onLog: (callback: (entry: LogEntry) => void) => electronApi.onLog(callback),

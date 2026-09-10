@@ -86,6 +86,15 @@ export class InstanceManager {
     return updated;
   }
 
+  public static async setInstanceSkin(instanceId: string, skinId: string | null): Promise<InstanceMetadata | null> {
+    return this.updateInstance(instanceId, {
+      appearance: {
+        ...(await this.getInstance(instanceId))?.appearance || { artwork: null, item: 'minecraft:diamond' },
+        skinId: skinId
+      }
+    });
+  }
+
   public static async duplicateInstance(instanceId: string): Promise<InstanceMetadata | null> {
     const sourceDir = await this.getInstanceDir(instanceId);
     if (!sourceDir) return null;
