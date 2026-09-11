@@ -18,6 +18,8 @@ import {
   SkinMetadata,
   SkinSearchResult,
   SkinValidationResult,
+  SkinModel,
+  PlayerProfile,
   SystemScanResult
 } from './types';
 
@@ -80,6 +82,13 @@ const api = {
   selectFileDialog: (filters?: any): Promise<string | null> => ipcRenderer.invoke('dialog:selectFile', filters),
   selectSaveFileDialog: (defaultName: string, filters?: any): Promise<string | null> => ipcRenderer.invoke('dialog:selectSaveFile', defaultName, filters),
 
+  // Player Manager
+  getPlayerProfile: (): Promise<PlayerProfile> => ipcRenderer.invoke('player:get'),
+  getUsername: (): Promise<string> => ipcRenderer.invoke('player:getUsername'),
+  setUsername: (username: string): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('player:setUsername', username),
+  getModel: (): Promise<SkinModel> => ipcRenderer.invoke('player:getModel'),
+  setModel: (model: SkinModel | 'wide' | 'slim'): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('player:setModel', model),
+
   // Skins
   listSkins: (): Promise<SkinMetadata[]> => ipcRenderer.invoke('skins:list'),
   getSkin: (skinId: string): Promise<SkinMetadata | null> => ipcRenderer.invoke('skins:get', skinId),
@@ -87,7 +96,7 @@ const api = {
   importSkin: (filePath: string, customName?: string): Promise<{ success: boolean; skin?: SkinMetadata; error?: string }> => ipcRenderer.invoke('skins:import', filePath, customName),
   downloadSkin: (username: string, customName?: string): Promise<{ success: boolean; skin?: SkinMetadata; error?: string }> => ipcRenderer.invoke('skins:download', username, customName),
   searchPlayer: (username: string): Promise<{ success: boolean; result?: SkinSearchResult; error?: string }> => ipcRenderer.invoke('skins:search', username),
-  setActiveSkin: (skinId: string): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('skins:setActive', skinId),
+  setActiveSkin: (skinId: string | null): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('skins:setActive', skinId),
   renameSkin: (skinId: string, newName: string): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('skins:rename', skinId, newName),
   deleteSkin: (skinId: string): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('skins:delete', skinId),
   validateSkin: (filePath: string): Promise<SkinValidationResult> => ipcRenderer.invoke('skins:validate', filePath),

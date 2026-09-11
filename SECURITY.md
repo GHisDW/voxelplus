@@ -33,54 +33,32 @@ Instead, please:
 - **Regular updates** on the remediation progress
 - **Coordinated disclosure** when a fix is ready
 
-### Security Best Practices
+## Architecture & Security Model
 
-The Voxel⁺ team follows these security practices:
+Voxel⁺ is an Electron-based launcher designed for local Minecraft mod development using Fabric Loom and Gradle.
 
-- **Electron Security**: 
+### Enforced Protections (Implemented)
+
+- **Electron Security Boundary**:
   - `contextIsolation: true`
   - `nodeIntegration: false`
-  - No arbitrary shell command execution from renderer
-  
-- **Data Protection**:
-  - No storage of sensitive credentials
-  - Secure IPC communication
-  - Input validation and sanitization
-  
-- **Dependencies**:
-  - Regular dependency updates
-  - Security audit of third-party packages
-  - No unnecessary dependencies
+  - Preload script (`preload.ts`) exposes a controlled, typed IPC API via `contextBridge` (`window.voxelApi`).
+  - The renderer process cannot require arbitrary Node.js native modules or access the underlying filesystem directly.
 
-## Security Features
+- **IPC Input Validation & Error Handling**:
+  - Username inputs are validated using strict alphanumeric regex rules (`/^[a-zA-Z0-9_]{3,16}$/`) before persistence.
+  - Skin imports perform PNG magic-number and dimension checks (`64x32` or `64x64`) before acceptance.
+  - IPC handler exceptions are intercepted, categorized (`VoxelErrorPayload`), and sanitized before being serialized across the IPC boundary.
 
-Voxel⁺ includes several security features:
+- **Controlled Process Execution**:
+  - Minecraft client processes are spawned directly via the local Gradle wrapper (`gradlew.bat` / `gradlew`) within designated instance directories.
+  - Program arguments and JVM environment variables are sanitized and constructed server-side in the main process.
 
-- **Sandboxed Renderer Process**: The frontend runs in a sandboxed environment
-- **Typed IPC Bridge**: All communication between renderer and main process is type-safe
-- **No Arbitrary Shell Execution**: Renderer cannot execute arbitrary commands
-- **Input Validation**: All user inputs are validated before processing
-- **Secure File Operations**: File operations are restricted to designated directories
+### Executable Code Scope & Limitations
 
-## Responsible Disclosure
-
-We appreciate responsible disclosure and will:
-
-- **Work with you** to understand and resolve the issue
-- **Give credit** for the discovery (if desired)
-- **Maintain confidentiality** during the fix process
-- **Coordinate public disclosure** when appropriate
-
-## Non-Security Issues
-
-For general bugs, feature requests, or non-security issues, please use the normal [issue tracker](https://github.com/GHisDW/voxelplus/issues).
-
-## Contact
-
-For security-related questions:
-- **Discord dm**: DisGamerWorld
-- **GitHub**: [@GHisDW](https://github.com/GHisDW)
-- **Discord Server**: https://discord.gg/msYWkqa4k
+- **Minecraft Mods and Runtime Integration**:
+  - Executable Java mods and Fabric Loom code run inside the JVM with standard user process permissions.
+  - Minecraft mods are **not sandboxed** by Voxel⁺ or the Java runtime. Users should only install mods from trusted sources (such as Modrinth).
 
 ---
 

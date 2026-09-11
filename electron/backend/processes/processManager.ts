@@ -9,6 +9,8 @@ import { LogStreamer } from './logStreamer';
 import { ConfigStore } from '../storage/configStore';
 import { VoxelError } from '../diagnostics';
 import { createInterface } from 'node:readline';
+import { PlayerManager } from '../player/playerManager';
+import { LoomProjectGenerator } from '../instances/loomGenerator';
 
 interface ActiveProcess {
   instanceId: string;
@@ -160,6 +162,22 @@ export class ProcessManager {
     LogStreamer.addLog(`[Voxel+] Verified Java executable: ${verifiedJavaExecutable}`, 'INFO', instanceId, metadata.name);
     LogStreamer.addLog(`[Voxel+] Verified JAVA_HOME: ${verifiedJavaHome}`, 'INFO', instanceId, metadata.name);
 
+    // Prepare Player Manager state (Username, Offline UUID, Active Skin, Model)
+    const playerProfile = PlayerManager.getPlayerProfile();
+    const playerConfigFile = path.join(instanceDir, 'voxelplus-player.json');
+    const playerConfigData = {
+      username: playerProfile.username,
+      uuid: playerProfile.uuid,
+      model: playerProfile.model,
+      activeSkinPath: playerProfile.activeSkinPath || ''
+    };
+    fs.writeFileSync(playerConfigFile, JSON.stringify(playerConfigData, null, 2), 'utf-8');
+
+    // Ensure Java runtime skin integration files exist in instance
+    LoomProjectGenerator.writeRuntimeIntegration(instanceDir, metadata.minecraft.version);
+
+    LogStreamer.addLog(`[Voxel+] Player Identity: "${playerProfile.username}" (UUID: ${playerProfile.uuid}, Model: ${playerProfile.model})`, 'INFO', instanceId, metadata.name);
+
     const settings = ConfigStore.getSettings();
     const jvmArgs = metadata.runtime.jvmArgs || settings.advancedJvmArgs || '';
     if (jvmArgs) {
@@ -171,9 +189,10 @@ export class ProcessManager {
 
     try {
       const comspec = process.env.ComSpec || 'cmd.exe';
+      const gradleCmd = `gradlew.bat runClient -Pvoxelplus_username="${playerProfile.username}" -Pvoxelplus_uuid="${playerProfile.uuid}"`;
       const child = spawn(
         comspec,
-        ['/d', '/c', 'gradlew.bat runClient'],
+        ['/d', '/c', gradleCmd],
         {
           cwd: instanceDir,
           env,

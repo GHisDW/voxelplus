@@ -335,8 +335,16 @@ export interface MinecraftVersionOption {
   fabricSupported: boolean;
 }
 
-// Skin Manager Types
+// Player / Skin Manager Types
 export type SkinModel = 'steve' | 'alex';
+
+export interface PlayerProfile {
+  username: string;
+  uuid: string;
+  model: SkinModel;
+  activeSkin: SkinMetadata | null;
+  activeSkinPath: string | null;
+}
 
 export interface SkinMetadata {
   id: string;
