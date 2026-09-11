@@ -4,6 +4,7 @@ import { ARTWORK_PRESETS, getArtworkStyle } from '../assets/artworks';
 import { getItemDataUrl, getItemDefinition } from '../assets/items';
 import { ItemPickerModal } from './ItemPickerModal';
 import { NotificationToast } from './NotificationToast';
+import { describeIpcError } from '../services/errors';
 
 const SUPPORTED_MC_VERSIONS = [
   { ver: '26.2', label: '26.2 (Latest)', default: true },
@@ -257,7 +258,7 @@ export class CreateInstanceModal {
             NotificationToast.show(`Instance "${created.name}" created & pre-built!`, 'success');
             setTimeout(() => close(created), 600);
           } catch (e: any) {
-            NotificationToast.show(`Failed to create instance: ${e.message}`, 'error');
+            NotificationToast.show(describeIpcError(e), 'error');
             close(null);
           }
         };

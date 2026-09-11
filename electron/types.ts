@@ -1,5 +1,69 @@
 export type ThemeMode = 'dark' | 'light' | 'system';
 
+/** Standardized error categories used across all Voxel+ subsystems. */
+export type VoxelErrorCategory =
+  | 'JAVA'
+  | 'MINECRAFT'
+  | 'FABRIC'
+  | 'LOOM'
+  | 'GRADLE'
+  | 'MOD'
+  | 'RESOURCE_PACK'
+  | 'SHADER'
+  | 'INSTANCE'
+  | 'SKIN'
+  | 'DOWNLOAD'
+  | 'NETWORK'
+  | 'FILESYSTEM'
+  | 'IPC'
+  | 'CONFIGURATION'
+  | 'UNKNOWN';
+
+/** Standardized severity levels used across all Voxel+ subsystems. */
+export type VoxelErrorSeverity = 'INFO' | 'WARNING' | 'ERROR' | 'FATAL';
+
+/**
+ * Serializable, IPC-safe representation of a structured Voxel+ error.
+ * The renderer receives this payload (JSON-encoded) instead of raw exceptions.
+ */
+export interface VoxelErrorPayload {
+  /** Short, user-facing headline, e.g. "Minecraft Launch Failed". */
+  title: string;
+  /** Clear explanation of what happened, in user-facing language. */
+  message: string;
+  /** Likely root cause, when known. */
+  cause?: string;
+  /** Actionable troubleshooting step for the user. */
+  suggestedAction?: string;
+  /** Stable technical identifier, e.g. JAVA_VERSION_MISMATCH. */
+  code?: string;
+  category: VoxelErrorCategory;
+  severity: VoxelErrorSeverity;
+  /** Technical/debug details (raw exception text, context) for logs. */
+  details?: string;
+}
+
+/**
+ * Marker prefix used to transport a structured VoxelErrorPayload across IPC.
+ *
+ * Electron only forwards the `message` string of errors thrown from
+ * `ipcMain.handle` to the renderer (it does NOT transfer custom error
+ * properties), so the main process embeds the serialized payload in the
+ * message as `VOXEL_ERROR::{...json...}` and the renderer parses it back out.
+ */
+export const VOXEL_IPC_ERROR_MARKER = 'VOXEL_ERROR::';
+
+/**
+ * Parsed representation of a structured IPC failure, as reconstructed by the
+ * renderer (see frontend/src/services/errors.ts). `message` keeps the raw
+ * Electron error text so `e.message` consumers keep working.
+ */
+export interface VoxelIpcError {
+  isVoxelError: true;
+  message: string;
+  payload: VoxelErrorPayload;
+}
+
 export type ProcessStatus =
   | 'READY'
   | 'PREPARING'

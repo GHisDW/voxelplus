@@ -7,6 +7,7 @@ import { JavaDetector } from '../java/javaDetector';
 import { MinecraftCompatibilityResolver } from '../instances/minecraftCompatibilityResolver';
 import { LogStreamer } from './logStreamer';
 import { ConfigStore } from '../storage/configStore';
+import { VoxelError } from '../diagnostics';
 import { createInterface } from 'node:readline';
 
 interface ActiveProcess {
@@ -69,14 +70,24 @@ export class ProcessManager {
     );
 
     if (!resolvedEnv.isCompatible || !resolvedEnv.javaRuntime) {
-      const errorMsg = `No compatible Java runtime found for Minecraft ${metadata.minecraft.version}. Please install Java ${resolvedEnv.compatibility.java.recommended} LTS.`;
-      this.updateStatus(instanceId, 'ERROR', undefined, null, errorMsg);
-      LogStreamer.addLog(`[Voxel+ ERROR] ${errorMsg}`, 'ERROR', instanceId, metadata.name);
+      const recommended = resolvedEnv.compatibility?.java?.recommended ?? 'compatible';
+      const error = new VoxelError({
+        title: 'Minecraft Launch Failed',
+        message: `No compatible Java runtime was found for Minecraft ${metadata.minecraft.version}.`,
+        cause: 'The selected Java runtime is incompatible with this Minecraft version, or no Java runtime was detected.',
+        suggestedAction: `Install Java ${recommended} LTS (Java Manager or Adoptium) and launch again.`,
+        code: 'JAVA_VERSION_MISMATCH',
+        category: 'JAVA',
+        severity: 'ERROR',
+        details: `Minecraft version: ${metadata.minecraft.version}; recommended Java: ${recommended}; configured runtime: ${metadata.runtime.java}`
+      });
+      this.updateStatus(instanceId, 'ERROR', undefined, null, error.message);
+      error.log(instanceId, metadata.name);
       return {
         success: false,
         instanceId,
-        message: errorMsg,
-        errorDetails: `A compatible 64-bit Java ${resolvedEnv.compatibility.java.recommended} runtime must be installed.`
+        message: `${error.message} ${error.suggestedAction ?? ''}`.trim(),
+        errorDetails: error.technicalDetails
       };
     }
 
@@ -86,20 +97,37 @@ export class ProcessManager {
 
     const gradlewBat = path.join(instanceDir, 'gradlew.bat');
     if (!fs.existsSync(gradlewBat)) {
-      const err = `gradlew.bat missing in ${instanceDir}`;
-      this.updateStatus(instanceId, 'ERROR', undefined, null, err);
-      LogStreamer.addLog(`[Voxel+ ERROR] ${err}`, 'ERROR', instanceId, metadata.name);
-      return { success: false, instanceId, message: err };
+      const error = new VoxelError({
+        title: 'Instance Files Incomplete',
+        message: `The Gradle wrapper (gradlew.bat) is missing from the instance folder.`,
+        cause: 'The instance directory is incomplete or files were removed manually.',
+        suggestedAction: 'Re-create the instance, or restore gradlew.bat, then launch again.',
+        code: 'GRADLE_WRAPPER_MISSING',
+        category: 'GRADLE',
+        severity: 'ERROR',
+        details: `Expected wrapper at: ${gradlewBat}`
+      });
+      this.updateStatus(instanceId, 'ERROR', undefined, null, error.message);
+      error.log(instanceId, metadata.name);
+      return { success: false, instanceId, message: `${error.message} ${error.suggestedAction ?? ''}`.trim() };
     }
 
     const verifiedJavaHome = resolvedEnv.javaHome;
     const verifiedJavaExecutable = resolvedEnv.javaExecutable;
 
     if (!verifiedJavaHome || !verifiedJavaExecutable) {
-      const err = 'Resolved Java environment is invalid';
-      this.updateStatus(instanceId, 'ERROR', undefined, null, err);
-      LogStreamer.addLog(`[Voxel+ ERROR] ${err}`, 'ERROR', instanceId, metadata.name);
-      return { success: false, instanceId, message: err };
+      const error = new VoxelError({
+        title: 'Minecraft Launch Failed',
+        message: 'The selected Java environment could not be resolved.',
+        cause: 'Java detection succeeded but returned an incomplete runtime configuration.',
+        suggestedAction: 'Re-scan Java in the Java Manager and select a runtime, then launch again.',
+        code: 'JAVA_ENV_INVALID',
+        category: 'JAVA',
+        severity: 'ERROR'
+      });
+      this.updateStatus(instanceId, 'ERROR', undefined, null, error.message);
+      error.log(instanceId, metadata.name);
+      return { success: false, instanceId, message: `${error.message} ${error.suggestedAction ?? ''}`.trim() };
     }
 
     if (
@@ -108,14 +136,19 @@ export class ProcessManager {
       path.normalize(path.join(verifiedJavaHome, 'bin', 'java.exe')).toLowerCase() !==
         verifiedJavaExecutable.toLowerCase()
     ) {
-      const err = `Selected Java runtime is no longer valid: ${verifiedJavaExecutable}`;
-      this.updateStatus(instanceId, 'ERROR', undefined, null, err);
-      LogStreamer.addLog(`[Voxel+ ERROR] ${err}`, 'ERROR', instanceId, metadata.name);
-      return {
-        success: false,
-        instanceId,
-        message: 'Selected Java runtime is no longer available.'
-      };
+      const error = new VoxelError({
+        title: 'Java Runtime Unavailable',
+        message: 'The selected Java runtime is no longer available on this system.',
+        cause: `The runtime previously used by this instance could not be found: ${verifiedJavaExecutable}`,
+        suggestedAction: 'Open the Java Manager, re-scan or install a runtime, and select it for this instance.',
+        code: 'JAVA_RUNTIME_NOT_FOUND',
+        category: 'JAVA',
+        severity: 'ERROR',
+        details: `JAVA_HOME: ${verifiedJavaHome}; executable: ${verifiedJavaExecutable}`
+      });
+      this.updateStatus(instanceId, 'ERROR', undefined, null, error.message);
+      error.log(instanceId, metadata.name);
+      return { success: false, instanceId, message: `${error.message} ${error.suggestedAction ?? ''}`.trim() };
     }
 
     const env: NodeJS.ProcessEnv = {
@@ -197,11 +230,21 @@ export class ProcessManager {
       });
 
       child.on('error', (err) => {
-        LogStreamer.addLog(`[Voxel+ ERROR] Failed to start process: ${err.message}`, 'ERROR', instanceId, metadata.name);
+        const error = new VoxelError({
+          title: 'Minecraft Launch Failed',
+          message: 'The Minecraft development client process could not be started.',
+          cause: 'The Gradle process failed to spawn, possibly because the instance folder is inaccessible or blocked by antivirus.',
+          suggestedAction: 'Check the instance folder is accessible, then launch again. See the logs page for technical details.',
+          code: 'GRADLE_PROCESS_SPAWN_FAILED',
+          category: 'GRADLE',
+          severity: 'ERROR',
+          details: err.stack || err.message
+        });
+        error.log(instanceId, metadata.name);
         this.activeProcesses.delete(instanceId);
         metadata.status = 'ERROR';
         InstanceMetadataStore.writeMetadata(instanceDir, metadata);
-        this.updateStatus(instanceId, 'ERROR', undefined, null, err.message);
+        this.updateStatus(instanceId, 'ERROR', undefined, null, error.message);
       });
 
       return {
@@ -211,12 +254,21 @@ export class ProcessManager {
         message: `Instance "${metadata.name}" launched successfully.`
       };
     } catch (e: any) {
-      this.updateStatus(instanceId, 'ERROR', undefined, null, e.message);
-      LogStreamer.addLog(`[Voxel+ ERROR] Launch exception: ${e.message}`, 'ERROR', instanceId, metadata.name);
+      const error = new VoxelError({
+        title: 'Minecraft Launch Failed',
+        message: 'An unexpected error occurred while launching this instance.',
+        suggestedAction: 'Check the logs page for technical details, then try again.',
+        code: 'LAUNCH_UNEXPECTED_FAILURE',
+        category: 'MINECRAFT',
+        severity: 'ERROR',
+        originalError: e
+      });
+      this.updateStatus(instanceId, 'ERROR', undefined, null, error.message);
+      error.log(instanceId, metadata.name);
       return {
         success: false,
         instanceId,
-        message: `Launch error: ${e.message}`
+        message: `${error.message} ${error.suggestedAction ?? ''}`.trim()
       };
     }
   }

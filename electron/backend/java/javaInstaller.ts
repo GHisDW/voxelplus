@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { JavaRuntime } from '../../types';
 import { JavaDetector } from './javaDetector';
+import { VoxelError } from '../diagnostics';
 
 export class JavaInstaller {
   /**
@@ -55,17 +56,41 @@ export class JavaInstaller {
             runtime: target || runtimes[0]
           });
         } else {
+          const error = new VoxelError({
+            title: 'Java Installation Failed',
+            message: `Eclipse Temurin ${version} could not be installed via the Windows package manager.`,
+            cause: errorOutput
+              ? 'winget reported an error during download or installation.'
+              : 'The winget installer exited unexpectedly.',
+            suggestedAction: 'Ensure winget is available and up to date, then retry. You can also install the JDK manually from Adoptium.',
+            code: 'JAVA_INSTALL_FAILED',
+            category: 'JAVA',
+            severity: 'ERROR',
+            details: `winget exit code: ${code}${errorOutput ? `; output: ${errorOutput.trim()}` : ''}`
+          });
+          error.log();
           resolve({
             success: false,
-            error: errorOutput || `Winget exited with status code ${code}`
+            error: `${error.message} ${error.suggestedAction ?? ''}`.trim()
           });
         }
       });
 
       child.on('error', (err) => {
+        const error = new VoxelError({
+          title: 'Java Installation Failed',
+          message: 'The Windows package manager (winget) could not be started.',
+          cause: 'winget is not installed or not found on PATH.',
+          suggestedAction: 'Install winget via the Microsoft Store, or download the JDK manually from Adoptium.',
+          code: 'JAVA_INSTALL_WINGET_MISSING',
+          category: 'JAVA',
+          severity: 'ERROR',
+          details: err.stack || err.message
+        });
+        error.log();
         resolve({
           success: false,
-          error: err.message
+          error: `${error.message} ${error.suggestedAction ?? ''}`.trim()
         });
       });
     });

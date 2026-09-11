@@ -9,6 +9,7 @@ import { LoomProjectGenerator } from './loomGenerator';
 import { ConfigStore } from '../storage/configStore';
 import { PathManager } from '../storage/paths';
 import { ProcessManager } from '../processes/processManager';
+import { VoxelError } from '../diagnostics';
 
 export class InstanceManager {
   public static async listInstances(): Promise<InstanceMetadata[]> {
@@ -142,7 +143,17 @@ export class InstanceManager {
       fs.rmSync(instanceDir, { recursive: true, force: true });
       return true;
     } catch (e) {
-      console.error(`Failed to delete instance at ${instanceDir}:`, e);
+      new VoxelError({
+        title: 'Instance Deletion Failed',
+        message: `The instance folder could not be deleted.`,
+        cause: 'Files may be locked by another program (e.g. a still-running Minecraft or Gradle process).',
+        suggestedAction: 'Close any programs using the instance folder, then delete the instance again or remove the folder manually.',
+        code: 'INSTANCE_DELETE_FAILED',
+        category: 'INSTANCE',
+        severity: 'ERROR',
+        details: `Instance folder: ${instanceDir}`,
+        originalError: e
+      }).log();
       return false;
     }
   }
@@ -194,13 +205,35 @@ export class InstanceManager {
       zip.writeZip(exportDestinationZip);
       return true;
     } catch (e) {
-      console.error('Failed to export instance:', e);
+      new VoxelError({
+        title: 'Instance Export Failed',
+        message: 'The instance could not be exported to a zip package.',
+        cause: 'The target path may be read-only, out of disk space, or the instance folder may be partially locked.',
+        suggestedAction: 'Choose a different save location with enough free space and try again.',
+        code: 'INSTANCE_EXPORT_FAILED',
+        category: 'FILESYSTEM',
+        severity: 'ERROR',
+        details: `Instance: ${instanceDir}; target: ${exportDestinationZip}`,
+        originalError: e
+      }).log();
       return false;
     }
   }
 
   public static async importInstance(importZipPath: string, customName?: string): Promise<InstanceMetadata | null> {
-    if (!fs.existsSync(importZipPath)) return null;
+    if (!fs.existsSync(importZipPath)) {
+      new VoxelError({
+        title: 'Instance Import Failed',
+        message: 'The selected package could not be found on disk.',
+        cause: 'The file may have been moved or deleted after being selected.',
+        suggestedAction: 'Re-select the .voxelplus package and try again.',
+        code: 'SOURCE_FILE_NOT_FOUND',
+        category: 'FILESYSTEM',
+        severity: 'ERROR',
+        details: `Package path: ${importZipPath}`
+      }).log();
+      return null;
+    }
 
     try {
       const zip = new AdmZip(importZipPath);
@@ -234,7 +267,17 @@ export class InstanceManager {
       InstanceMetadataStore.writeMetadata(targetDir, meta);
       return meta;
     } catch (e) {
-      console.error('Failed to import instance:', e);
+      new VoxelError({
+        title: 'Instance Import Failed',
+        message: 'The selected package could not be imported as an instance.',
+        cause: 'The file may be corrupt, not a Voxel⁺/zip package, or locked by another program.',
+        suggestedAction: 'Verify the package file (a valid .voxelplus zip) and that it is not open elsewhere, then try again.',
+        code: 'INSTANCE_IMPORT_FAILED',
+        category: 'INSTANCE',
+        severity: 'ERROR',
+        details: `Package path: ${importZipPath}`,
+        originalError: e
+      }).log();
       return null;
     }
   }

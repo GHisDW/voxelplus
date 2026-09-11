@@ -4,6 +4,7 @@ import { getArtworkStyle } from '../assets/artworks';
 import { getItemDataUrl } from '../assets/items';
 import { ConfirmDialog } from './ConfirmDialog';
 import { NotificationToast } from './NotificationToast';
+import { describeIpcError } from '../services/errors';
 
 export interface InstanceCardEvents {
   onOpenDetails: (instanceId: string) => void;
@@ -180,7 +181,7 @@ export class InstanceCard {
         } catch (err: any) {
           playBtn.disabled = false;
           playBtn.innerHTML = '▶ PLAY';
-          NotificationToast.show(`Error: ${err.message}`, 'error');
+          NotificationToast.show(describeIpcError(err), 'error');
         }
       };
     }

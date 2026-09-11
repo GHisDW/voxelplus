@@ -5,8 +5,116 @@ import { PathManager } from './backend/storage/paths';
 import { LogStreamer } from './backend/processes/logStreamer';
 import { ProcessManager } from './backend/processes/processManager';
 import { DownloadManager } from './backend/modrinth/downloader';
+import { encodeVoxelIpcError } from './backend/diagnostics';
+import { VoxelErrorCategory } from './types';
 
 let mainWindow: BrowserWindow | null = null;
+
+/**
+ * Wraps an IPC handler so that any thrown error is serialized into an
+ * IPC-safe, structured payload instead of Electron's default raw
+ * "Error invoking remote method 'channel': ..." exception text.
+ *
+ * The renderer receives a rejected promise carrying an Error whose message
+ * embeds the structured payload as `...VOXEL_ERROR::{json}` — Electron only
+ * forwards the error `message` across IPC (custom properties are stripped
+ * and the channel name is prefixed), so the payload travels inside the
+ * message; frontend/src/services/errors.ts parses it back into a
+ * VoxelIpcError. Result values pass through untouched, so successful calls
+ * behave exactly as before.
+ */
+function wrapIpcHandler<TResult>(
+  channel: string,
+  category: VoxelErrorCategory,
+  handler: (...args: any[]) => Promise<TResult>
+): (event: Electron.IpcMainInvokeEvent, ...args: any[]) => Promise<TResult> {
+  return async (...args) => {
+    try {
+      return await handler(...args);
+    } catch (error) {
+      throw encodeVoxelIpcError(error, { title: 'Operation Failed', category });
+    }
+  };
+}
+
+function registerIpcHandlers() {
+  const handle = <TResult>(
+    channel: string,
+    category: VoxelErrorCategory,
+    handler: (...args: any[]) => Promise<TResult>
+  ) => ipcMain.handle(channel, wrapIpcHandler(channel, category, handler));
+
+  // Settings
+  handle('settings:get', 'CONFIGURATION', async () => CommandManager.getAppSettings());
+  handle('settings:set', 'CONFIGURATION', async (_, settings) => CommandManager.setAppSettings(settings));
+
+  // System & Environment
+  handle('system:scan', 'MINECRAFT', async () => CommandManager.scanSystem());
+  handle('system:checkEnv', 'MINECRAFT', async () => CommandManager.runEnvironmentCheck());
+
+  // Java
+  handle('java:scan', 'JAVA', async () => CommandManager.scanJava());
+  handle('java:test', 'JAVA', async (_, p) => CommandManager.testJava(p));
+  handle('java:install', 'JAVA', async (_, version) => CommandManager.installJava(version));
+
+  // Instances
+  handle('instance:list', 'INSTANCE', async () => CommandManager.listInstances());
+  handle('instance:get', 'INSTANCE', async (_, id) => CommandManager.getInstance(id));
+  handle('instance:create', 'INSTANCE', async (_, payload) => CommandManager.createInstance(payload));
+  handle('instance:update', 'INSTANCE', async (_, id, updates) => CommandManager.updateInstance(id, updates));
+  handle('instance:duplicate', 'INSTANCE', async (_, id) => CommandManager.duplicateInstance(id));
+  handle('instance:delete', 'INSTANCE', async (_, id) => CommandManager.deleteInstance(id));
+  handle('instance:openFolder', 'INSTANCE', async (_, id) => CommandManager.openInstanceFolder(id));
+  handle('instance:setSkin', 'SKIN', async (_, id, skinId) => CommandManager.setInstanceSkin(id, skinId));
+
+  // Process (PLAY / STOP)
+  handle('process:launch', 'MINECRAFT', async (_, id) => CommandManager.launchInstance(id));
+  handle('process:stop', 'MINECRAFT', async (_, id) => CommandManager.stopInstance(id));
+  handle('process:status', 'MINECRAFT', async (_, id) => CommandManager.getInstanceStatus(id));
+
+  // Content
+  handle('content:scanMods', 'MOD', async (_, id) => CommandManager.scanMods(id));
+  handle('content:toggleMod', 'MOD', async (_, id, fn, en) => CommandManager.toggleMod(id, fn, en));
+  handle('content:removeMod', 'MOD', async (_, id, fn) => CommandManager.removeMod(id, fn));
+  handle('content:scanResourcePacks', 'RESOURCE_PACK', async (_, id) => CommandManager.scanResourcePacks(id));
+  handle('content:removeResourcePack', 'RESOURCE_PACK', async (_, id, fn) => CommandManager.removeResourcePack(id, fn));
+  handle('content:scanShaders', 'SHADER', async (_, id) => CommandManager.scanShaders(id));
+  handle('content:removeShader', 'SHADER', async (_, id, fn) => CommandManager.removeShader(id, fn));
+  handle('content:importFile', 'FILESYSTEM', async (_, id, fp, type) => CommandManager.importFile(id, fp, type));
+
+  // Skins
+  handle('skins:list', 'SKIN', async () => CommandManager.listSkins());
+  handle('skins:get', 'SKIN', async (_, id) => CommandManager.getSkin(id));
+  handle('skins:getActive', 'SKIN', async () => CommandManager.getActiveSkin());
+  handle('skins:import', 'SKIN', async (_, filePath, customName) => CommandManager.importSkin(filePath, customName));
+  handle('skins:download', 'SKIN', async (_, username, customName) => CommandManager.downloadSkin(username, customName));
+  handle('skins:search', 'SKIN', async (_, username) => CommandManager.searchPlayer(username));
+  handle('skins:setActive', 'SKIN', async (_, id) => CommandManager.setActiveSkin(id));
+  handle('skins:rename', 'SKIN', async (_, id, newName) => CommandManager.renameSkin(id, newName));
+  handle('skins:delete', 'SKIN', async (_, id) => CommandManager.deleteSkin(id));
+  handle('skins:validate', 'SKIN', async (_, filePath) => CommandManager.validateSkin(filePath));
+  handle('skins:clear', 'SKIN', async () => CommandManager.clearSkins());
+
+  // Modrinth
+  handle('modrinth:search', 'NETWORK', async (_, params) => CommandManager.searchModrinth(params));
+  handle('modrinth:getProject', 'NETWORK', async (_, slug) => CommandManager.getModrinthProject(slug));
+  handle('modrinth:getVersions', 'NETWORK', async (_, slug, loaders, versions) => CommandManager.getModrinthVersions(slug, loaders, versions));
+  handle('modrinth:install', 'DOWNLOAD', async (_, id, url, fn, title, type) => CommandManager.installModrinthContent(id, url, fn, title, type));
+
+  // Logs
+  handle('logs:get', 'IPC', async (_, id, level, q) => CommandManager.getLogs(id, level, q));
+  handle('logs:clear', 'IPC', async (_, id) => CommandManager.clearLogs(id));
+  handle('logs:export', 'IPC', async (_, id) => CommandManager.exportLogs(id));
+
+  // Import / Export
+  handle('instance:export', 'INSTANCE', async (_, id, targetPath) => CommandManager.exportInstance(id, targetPath));
+  handle('instance:import', 'INSTANCE', async (_, zipPath, name) => CommandManager.importInstance(zipPath, name));
+
+  // Dialogs
+  handle('dialog:selectFolder', 'IPC', async () => CommandManager.selectFolderDialog(mainWindow || undefined));
+  handle('dialog:selectFile', 'IPC', async (_, filters) => CommandManager.selectFileDialog(filters));
+  handle('dialog:selectSaveFile', 'IPC', async (_, name, filters) => CommandManager.selectSaveFileDialog(name, filters));
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -60,78 +168,6 @@ function createWindow() {
   });
 }
 
-function registerIpcHandlers() {
-  // Settings
-  ipcMain.handle('settings:get', async () => CommandManager.getAppSettings());
-  ipcMain.handle('settings:set', async (_, settings) => CommandManager.setAppSettings(settings));
-
-  // System & Environment
-  ipcMain.handle('system:scan', async () => CommandManager.scanSystem());
-  ipcMain.handle('system:checkEnv', async () => CommandManager.runEnvironmentCheck());
-
-  // Java
-  ipcMain.handle('java:scan', async () => CommandManager.scanJava());
-  ipcMain.handle('java:test', async (_, p) => CommandManager.testJava(p));
-  ipcMain.handle('java:install', async (_, version) => CommandManager.installJava(version));
-
-  // Instances
-  ipcMain.handle('instance:list', async () => CommandManager.listInstances());
-  ipcMain.handle('instance:get', async (_, id) => CommandManager.getInstance(id));
-  ipcMain.handle('instance:create', async (_, payload) => CommandManager.createInstance(payload));
-  ipcMain.handle('instance:update', async (_, id, updates) => CommandManager.updateInstance(id, updates));
-  ipcMain.handle('instance:duplicate', async (_, id) => CommandManager.duplicateInstance(id));
-  ipcMain.handle('instance:delete', async (_, id) => CommandManager.deleteInstance(id));
-  ipcMain.handle('instance:openFolder', async (_, id) => CommandManager.openInstanceFolder(id));
-  ipcMain.handle('instance:setSkin', async (_, id, skinId) => CommandManager.setInstanceSkin(id, skinId));
-
-  // Process (PLAY / STOP)
-  ipcMain.handle('process:launch', async (_, id) => CommandManager.launchInstance(id));
-  ipcMain.handle('process:stop', async (_, id) => CommandManager.stopInstance(id));
-  ipcMain.handle('process:status', async (_, id) => CommandManager.getInstanceStatus(id));
-
-  // Content
-  ipcMain.handle('content:scanMods', async (_, id) => CommandManager.scanMods(id));
-  ipcMain.handle('content:toggleMod', async (_, id, fn, en) => CommandManager.toggleMod(id, fn, en));
-  ipcMain.handle('content:removeMod', async (_, id, fn) => CommandManager.removeMod(id, fn));
-  ipcMain.handle('content:scanResourcePacks', async (_, id) => CommandManager.scanResourcePacks(id));
-  ipcMain.handle('content:removeResourcePack', async (_, id, fn) => CommandManager.removeResourcePack(id, fn));
-  ipcMain.handle('content:scanShaders', async (_, id) => CommandManager.scanShaders(id));
-  ipcMain.handle('content:removeShader', async (_, id, fn) => CommandManager.removeShader(id, fn));
-  ipcMain.handle('content:importFile', async (_, id, fp, type) => CommandManager.importFile(id, fp, type));
-
-  // Skins
-  ipcMain.handle('skins:list', async () => CommandManager.listSkins());
-  ipcMain.handle('skins:get', async (_, id) => CommandManager.getSkin(id));
-  ipcMain.handle('skins:getActive', async () => CommandManager.getActiveSkin());
-  ipcMain.handle('skins:import', async (_, filePath, customName) => CommandManager.importSkin(filePath, customName));
-  ipcMain.handle('skins:download', async (_, username, customName) => CommandManager.downloadSkin(username, customName));
-  ipcMain.handle('skins:search', async (_, username) => CommandManager.searchPlayer(username));
-  ipcMain.handle('skins:setActive', async (_, id) => CommandManager.setActiveSkin(id));
-  ipcMain.handle('skins:rename', async (_, id, newName) => CommandManager.renameSkin(id, newName));
-  ipcMain.handle('skins:delete', async (_, id) => CommandManager.deleteSkin(id));
-  ipcMain.handle('skins:validate', async (_, filePath) => CommandManager.validateSkin(filePath));
-  ipcMain.handle('skins:clear', async () => CommandManager.clearSkins());
-
-  // Modrinth
-  ipcMain.handle('modrinth:search', async (_, params) => CommandManager.searchModrinth(params));
-  ipcMain.handle('modrinth:getProject', async (_, slug) => CommandManager.getModrinthProject(slug));
-  ipcMain.handle('modrinth:getVersions', async (_, slug, loaders, versions) => CommandManager.getModrinthVersions(slug, loaders, versions));
-  ipcMain.handle('modrinth:install', async (_, id, url, fn, title, type) => CommandManager.installModrinthContent(id, url, fn, title, type));
-
-  // Logs
-  ipcMain.handle('logs:get', async (_, id, level, q) => CommandManager.getLogs(id, level, q));
-  ipcMain.handle('logs:clear', async (_, id) => CommandManager.clearLogs(id));
-  ipcMain.handle('logs:export', async (_, id) => CommandManager.exportLogs(id));
-
-  // Import / Export
-  ipcMain.handle('instance:export', async (_, id, targetPath) => CommandManager.exportInstance(id, targetPath));
-  ipcMain.handle('instance:import', async (_, zipPath, name) => CommandManager.importInstance(zipPath, name));
-
-  // Dialogs
-  ipcMain.handle('dialog:selectFolder', async () => CommandManager.selectFolderDialog(mainWindow || undefined));
-  ipcMain.handle('dialog:selectFile', async (_, filters) => CommandManager.selectFileDialog(filters));
-  ipcMain.handle('dialog:selectSaveFile', async (_, name, filters) => CommandManager.selectSaveFileDialog(name, filters));
-}
 
 app.whenReady().then(() => {
   PathManager.initialize();

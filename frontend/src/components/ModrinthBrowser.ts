@@ -1,6 +1,7 @@
 import { InstanceMetadata, ModrinthProject } from '../../../electron/types';
 import { api } from '../services/api';
 import { NotificationToast } from './NotificationToast';
+import { describeIpcError } from '../services/errors';
 
 export class ModrinthBrowser {
   private container: HTMLElement;
@@ -244,7 +245,7 @@ export class ModrinthBrowser {
             installBtn.textContent = 'Install';
           }
         } catch (e: any) {
-          NotificationToast.show(`Error: ${e.message}`, 'error');
+          NotificationToast.show(describeIpcError(e), 'error');
           installBtn.disabled = false;
           installBtn.textContent = 'Install';
         }
