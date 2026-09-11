@@ -40,6 +40,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 * Environment variable propagation to Gradle processes
 * Version-specific project generation issues
 * Mismatch between the Minecraft version chooser and backend compatibility profiles
+* Missing `loom.runs.client.runDir '.'` configuration in 26.x non-obfuscated build.gradle generation, which caused client data to be stored in the root loom output rather than instance root
+* Stale derived fields (`instancePath`, `modCount`, `resourcePackCount`, `shaderCount`) erroneously saved into `voxel-instance.json` on disk
+* Asynchronous race condition and missing lifecycle cleanup in `InstancesPage` during live status updates
+* Gradle harmless stderr diagnostics (progress lines, task announcements) being incorrectly logged at `WARN` severity instead of `INFO`
+* UTF-8 character encoding and mojibake corruption across UI templates (InstanceDetails, window title, CSS headers)
+* Heuristic target folder override in `ContentImporter` when explicit resourcepack/shader targets were provided
+* Target instance path verification in `InstanceManager.getInstanceDir` preventing phantom paths from being returned
+
+### Verified Runtime Testing (1.18.2, 1.21.1, 26.1.2)
+
+* **Minecraft 1.18.2 (Historical LTS Generation)**:
+  * **Java Environment**: Resolved to Java 21 (Eclipse Temurin 21.0.11), meeting minimum Java 17 requirement.
+  * **Mod Compatibility**: Verified with Fabric API 0.77.0+1.18.2, Sodium 0.4.1+build.15, and Xaero's Minimap 26.5.0.
+  * **Filesystem & Loom Isolation**: `build.gradle` generated with `loom { runs { client { runDir '.' } } }`. Real files verified at instance root: `options.txt`, `saves/`, `config/`, `logs/`, `xaero/`.
+  * **Play & World Launch**: Successfully initialized LWJGL 3.3.2-snapshot, OpenAL audio, sound engine, and resource reload.
+* **Minecraft 1.21.1 (Standard LTS Generation)**:
+  * **Java Environment**: Resolved to Java 21 (Eclipse Temurin 21.0.11), meeting Java 21 requirement.
+  * **Mod Compatibility & Diagnostics**: Tested with Fabric API 0.116.17+1.21.1 and Xaero's Minimap 26.5.0. Diagnosed Sodium 0.8.13 mixin conflict (`getColorIndex` `@Overwrite` required on `BakedQuadMixin`) as a known upstream mod incompatibility on vanilla Fabric 0.16.10; cleanly resolved and verified by using compatible Sodium 0.6.13+mc1.21.1.
+  * **Filesystem & Singleplayer World Launch**: `build.gradle` generated with `runDir '.'`. Verified singleplayer world (`saves/New World`) loading and instance root asset/config population.
+  * **Play Launch**: Fully initialized LWJGL 3.3.3-snapshot, texture atlases, OpenAL audio, and Xaero's Minimap stage 2/2.
+* **Minecraft 26.1.2 (New-Era Non-Obfuscated Generation)**:
+  * **Java Environment**: Automatically resolved to Java 25 (Microsoft OpenJDK 25.0.4) using Java 24+ new-era requirements.
+  * **Loom & Gradle**: Verified Gradle 9.4.0 + Loom 1.16.3 + Fabric Loader 0.19.5 with `runDir '.'`.
+  * **Mod Compatibility**: Verified with Fabric API 0.155.3+26.1.2, Sodium 0.9.2-beta.1+mc26.1.2, and Xaero's Minimap 26.5.0.
+  * **Play Launch**: OpenGL 3.3.0 initialized via NVIDIA GeForce RTX 5050 Laptop GPU, texture atlases baked, sound engine started, options saved directly to instance root (`options.txt`).
 
 ## [1.0.0] - 2026-09-03
 

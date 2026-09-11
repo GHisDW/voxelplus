@@ -48,8 +48,12 @@ export class InstanceManager {
   }
 
   public static async getInstanceDir(instanceId: string): Promise<string | null> {
+    if (!instanceId || typeof instanceId !== 'string') return null;
     const meta = await this.getInstance(instanceId);
-    return meta ? (meta.instancePath || null) : null;
+    if (meta && meta.instancePath && fs.existsSync(meta.instancePath)) {
+      return meta.instancePath;
+    }
+    return null;
   }
 
   public static async createInstance(payload: CreateInstancePayload): Promise<InstanceMetadata> {

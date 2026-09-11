@@ -616,6 +616,14 @@ base {
     archivesName = '${projectName}'
 }
 
+loom {
+    runs {
+        client {
+            runDir '.'
+        }
+    }
+}
+
 repositories {
     mavenCentral()
     maven {
@@ -655,6 +663,14 @@ group = '${groupId}'
 
 base {
     archivesName = '${projectName}'
+}
+
+loom {
+    runs {
+        client {
+            runDir '.'
+        }
+    }
 }
 
 repositories {

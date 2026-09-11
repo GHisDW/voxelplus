@@ -103,7 +103,11 @@ export class CommandManager {
   public static async launchInstance(id: string): Promise<LaunchResult> {
     const dir = await InstanceManager.getInstanceDir(id);
     if (!dir) {
-      return { success: false, instanceId: id, message: 'Instance folder not found' };
+      return {
+        success: false,
+        instanceId: id,
+        message: `Could not resolve instance "${id}" to an installation directory. The instance metadata is missing or invalid.`
+      };
     }
     return ProcessManager.launchInstance(dir);
   }

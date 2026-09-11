@@ -217,7 +217,18 @@ export class ProcessManager {
         const rlErr = createInterface({ input: child.stderr });
         rlErr.on('line', (line) => {
           if (!line.trim()) return;
-          LogStreamer.addLog(line, 'WARN', instanceId, metadata.name);
+          // Gradle routinely writes informational progress to stderr (task names,
+          // download progress, configuration output). Only escalate to WARN when
+          // the line looks like a genuine error or stack-trace entry.
+          const trimmed = line.trim();
+          const isError =
+            trimmed.startsWith('> Task :') === false &&
+            (trimmed.includes('ERROR') ||
+              trimmed.includes('FAILURE') ||
+              trimmed.includes('Exception') ||
+              trimmed.includes('error:') ||
+              /^\s+at [\w$.]+/.test(trimmed)); // stack trace entry
+          LogStreamer.addLog(line, isError ? 'WARN' : 'INFO', instanceId, metadata.name);
         });
       }
 

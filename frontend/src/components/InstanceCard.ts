@@ -295,6 +295,8 @@ export class InstanceCard {
   }
 
   private static javaVersionForMc(mcVersion: string): string {
+    // 26.x new-era (non-obfuscated) requires Java 25
+    if (mcVersion.startsWith('26.')) return '25';
     const parts = mcVersion.split('.').map(Number);
     const minor = parts[1] || 0;
     const patch = parts[2] || 0;

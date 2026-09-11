@@ -36,8 +36,8 @@ export class DownloadManager {
     if (!instanceDir) {
       const error = new VoxelError({
         title: 'Download Failed',
-        message: 'The selected instance could not be found.',
-        cause: 'The instance may have been deleted or moved while downloading.',
+        message: `Could not resolve instance "${instanceId}" to an installation directory. The instance metadata is missing or invalid.`,
+        cause: 'The instance folder or metadata file may have been moved or deleted.',
         suggestedAction: 'Refresh the instances list and select a valid target instance.',
         code: 'INSTANCE_NOT_FOUND',
         category: 'INSTANCE',

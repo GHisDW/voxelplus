@@ -92,7 +92,12 @@ export class InstanceMetadataStore {
     }
     try {
       const metaFile = path.join(instanceDir, this.METADATA_FILENAME);
-      fs.writeFileSync(metaFile, JSON.stringify(metadata, null, 2), 'utf-8');
+      // Strip runtime-only / derived fields before persisting.
+      // instancePath   – derived from the folder location at read time.
+      // modCount / resourcePackCount / shaderCount – counted at read time.
+      // (status IS intentionally persisted so crash/error state survives restarts.)
+      const { instancePath, modCount, resourcePackCount, shaderCount, ...persistable } = metadata as any;
+      fs.writeFileSync(metaFile, JSON.stringify(persistable, null, 2), 'utf-8');
     } catch (e) {
       new VoxelError({
         title: 'Instance Metadata Not Saved',

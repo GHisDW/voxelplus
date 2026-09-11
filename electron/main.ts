@@ -1,4 +1,4 @@
-﻿import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'node:path';
 import { CommandManager } from './backend/commandManager';
 import { PathManager } from './backend/storage/paths';
@@ -124,7 +124,7 @@ function createWindow() {
     minHeight: 650,
     frame: true,
     titleBarStyle: 'default',
-    title: 'Voxelâº Launcher',
+    title: 'Voxel⁺ Launcher',
     backgroundColor: '#0a0d14',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
