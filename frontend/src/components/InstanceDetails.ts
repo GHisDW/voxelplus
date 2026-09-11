@@ -1,4 +1,4 @@
-﻿import { InstanceMetadata, SkinMetadata } from '../../../electron/types';
+import { InstanceMetadata, SkinMetadata } from '../../../electron/types';
 import { api } from '../services/api';
 import { ARTWORK_PRESETS, getArtworkStyle } from '../assets/artworks';
 import { getItemDataUrl, getItemDefinition } from '../assets/items';
@@ -35,14 +35,14 @@ export class InstanceDetails {
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px;">
         <div style="display: flex; align-items: center; gap: 14px;">
           <button class="btn btn-secondary" id="btn-back" style="padding: 8px 14px;">
-            â† Back
+            ← Back
           </button>
           <div>
             <h2 style="font-size: 1.4rem; font-weight: 800; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
               ${this.escapeHtml(this.instance.name)}
             </h2>
             <div style="font-size: 0.86rem; color: var(--text-secondary);">
-              Minecraft ${this.instance.minecraft.version} Â· Fabric Loader Â·
+              Minecraft ${this.instance.minecraft.version} · Fabric Loader ·
               <span class="status-pill ${this.instance.status.toLowerCase()}" style="font-size: 0.72rem; padding: 2px 8px;">
                 ${this.instance.status}
               </span>
@@ -52,11 +52,11 @@ export class InstanceDetails {
 
         <div style="display: flex; align-items: center; gap: 10px;">
           ${isRunning
-            ? `<button class="btn btn-stop" id="details-btn-stop">â–  STOP</button>`
-            : `<button class="btn btn-play" id="details-btn-play">â–¶ PLAY</button>`
+            ? `<button class="btn btn-stop" id="details-btn-stop">■ STOP</button>`
+            : `<button class="btn btn-play" id="details-btn-play">▶ PLAY</button>`
           }
-          <button class="btn btn-secondary" id="details-btn-folder">ðŸ“ Open Folder</button>
-          <button class="btn btn-secondary" id="details-btn-logs">â–£ Logs</button>
+          <button class="btn btn-secondary" id="details-btn-folder">📁 Open Folder</button>
+          <button class="btn btn-secondary" id="details-btn-logs">▤ Logs</button>
         </div>
       </div>
 
@@ -199,7 +199,7 @@ export class InstanceDetails {
             <div class="form-group">
               <label class="form-label">Character Skin</label>
               <button type="button" class="btn btn-secondary" id="btn-edit-skin" style="width: 100%; display: flex; justify-content: flex-start; gap: 10px;">
-                <span style="font-size: 1.2rem;">ðŸ‘•</span>
+                <span style="font-size: 1.2rem;">👕</span>
                 <span id="edit-skin-text" style="font-size: 0.88rem; font-weight: 600;">
                   ${this.instance.appearance.skinId ? 'Custom Skin' : 'Default Skin'}
                 </span>
@@ -388,7 +388,7 @@ export class InstanceDetails {
         ">
           ${mod.icon
             ? `<img src="${mod.icon}" width="36" height="36" style="border-radius: 6px;" />`
-            : `<span style="font-size: 1.2rem;">ðŸ§©</span>`
+            : `<span style="font-size: 1.2rem;">🧩</span>`
           }
         </div>
 
@@ -408,7 +408,7 @@ export class InstanceDetails {
             <input type="checkbox" ${mod.enabled ? 'checked' : ''} class="mod-toggle" style="accent-color: var(--accent-primary); width: 16px; height: 16px;" />
             <span>${mod.enabled ? 'Enabled' : 'Disabled'}</span>
           </label>
-          <button class="btn btn-icon btn-delete-mod" style="color: #ef4444;" title="Delete mod">ðŸ—‘</button>
+          <button class="btn btn-icon btn-delete-mod" style="color: #ef4444;" title="Delete mod">🗑</button>
         </div>
       `;
 
@@ -495,13 +495,13 @@ export class InstanceDetails {
 
       card.innerHTML = `
         <div style="width: 42px; height: 42px; border-radius: var(--radius-md); background: var(--bg-surface); display: flex; align-items: center; justify-content: center; overflow: hidden;">
-          ${pack.icon ? `<img src="${pack.icon}" width="40" height="40" />` : `ðŸŽ¨`}
+          ${pack.icon ? `<img src="${pack.icon}" width="40" height="40" />` : `🎨`}
         </div>
         <div style="flex: 1; min-width: 0;">
           <h4 style="font-size: 1rem; font-weight: 700; color: var(--text-primary);">${this.escapeHtml(pack.name)}</h4>
           <p style="font-size: 0.82rem; color: var(--text-muted);">${this.escapeHtml(pack.description)}</p>
         </div>
-        <button class="btn btn-icon btn-del-pack" style="color: #ef4444;">ðŸ—‘</button>
+        <button class="btn btn-icon btn-del-pack" style="color: #ef4444;">🗑</button>
       `;
 
       (card.querySelector('.btn-del-pack') as HTMLElement).onclick = async () => {
@@ -575,12 +575,12 @@ export class InstanceDetails {
       `;
 
       card.innerHTML = `
-        <div style="font-size: 1.4rem;">âœ¨</div>
+        <div style="font-size: 1.4rem;">✨</div>
         <div style="flex: 1;">
           <h4 style="font-size: 1rem; font-weight: 700; color: var(--text-primary);">${this.escapeHtml(shader.name)}</h4>
           <p style="font-size: 0.82rem; color: var(--text-muted);">${(shader.sizeBytes / 1024 / 1024).toFixed(2)} MB</p>
         </div>
-        <button class="btn btn-icon btn-del-shader" style="color: #ef4444;">ðŸ—‘</button>
+        <button class="btn btn-icon btn-del-shader" style="color: #ef4444;">🗑</button>
       `;
 
       (card.querySelector('.btn-del-shader') as HTMLElement).onclick = async () => {
@@ -611,7 +611,7 @@ export class InstanceDetails {
         <div class="modal modal-lg animate-fade-in-up">
           <div class="modal-header">
             <h2>Select Skin</h2>
-            <button class="btn-close" title="Close">Ã—</button>
+            <button class="btn-close" title="Close">×</button>
           </div>
           
           <div class="modal-body">
@@ -626,11 +626,11 @@ export class InstanceDetails {
                   <div class="skin-info">
                     <div class="skin-name-row">
                       <span class="skin-name">${this.escapeHtml(skin.name)}</span>
-                      <span class="skin-model">${skin.model === 'alex' ? 'ðŸ‘©' : 'ðŸ‘¨'}</span>
+                      <span class="skin-model">${skin.model === 'alex' ? '👩' : '👨'}</span>
                     </div>
                     
                     <div class="skin-meta">
-                      <span class="skin-source">${skin.source === 'download' ? 'â¬‡' : 'ðŸ“'} ${skin.source === 'download' ? 'Downloaded' : 'Imported'}</span>
+                      <span class="skin-source">${skin.source === 'download' ? '⬇' : '📁'} ${skin.source === 'download' ? 'Downloaded' : 'Imported'}</span>
                     </div>
                   </div>
                 </div>
@@ -638,7 +638,7 @@ export class InstanceDetails {
               
               <div class="skin-card" data-skin-id="null" style="border-style: dashed; justify-content: center; align-items: center; min-height: 120px;">
                 <div style="text-align: center; color: var(--text-muted);">
-                  <div style="font-size: 2rem; margin-bottom: 8px;">ðŸš«</div>
+                  <div style="font-size: 2rem; margin-bottom: 8px;">🚫</div>
                   <div style="font-size: 0.9rem; font-weight: 600;">Remove Skin</div>
                   <div style="font-size: 0.8rem;">Use default skin</div>
                 </div>

@@ -17,6 +17,7 @@ export class InstancesPage {
   private filters: HeaderFilters = { search: '', filter: 'all', sort: 'recent' };
   private events: InstancesPageEvents;
   private unsubscribeStatus: (() => void) | null = null;
+  private currentRenderId: number = 0;
 
   constructor(events: InstancesPageEvents) {
     this.events = events;
@@ -30,28 +31,7 @@ export class InstancesPage {
   }
 
   public async render(): Promise<HTMLElement> {
-    this.container.innerHTML = '';
-
-    // If looking at details for a specific instance
-    if (this.activeDetailsId) {
-      const target = await api.getInstance(this.activeDetailsId);
-      if (target) {
-        const detailsView = new InstanceDetails(target, {
-          onBack: () => {
-            this.activeDetailsId = null;
-            this.render();
-          },
-          onOpenModrinthForInstance: (inst) => this.events.onOpenModrinthForInstance(inst),
-          onViewLogs: (id) => this.events.onViewLogs(id)
-        });
-        this.container.appendChild(await detailsView.render());
-        return this.container;
-      } else {
-        this.activeDetailsId = null;
-      }
-    }
-
-    this.instances = await api.listInstances();
+    const renderId = ++this.currentRenderId;
 
     // Subscribe to live status updates
     if (!this.unsubscribeStatus) {
@@ -63,6 +43,36 @@ export class InstancesPage {
         }
       });
     }
+
+    // If looking at details for a specific instance
+    if (this.activeDetailsId) {
+      const target = await api.getInstance(this.activeDetailsId);
+      if (renderId !== this.currentRenderId) return this.container;
+
+      if (target) {
+        const detailsView = new InstanceDetails(target, {
+          onBack: () => {
+            this.activeDetailsId = null;
+            this.render();
+          },
+          onOpenModrinthForInstance: (inst) => this.events.onOpenModrinthForInstance(inst),
+          onViewLogs: (id) => this.events.onViewLogs(id)
+        });
+        const detailsEl = await detailsView.render();
+        if (renderId !== this.currentRenderId) return this.container;
+
+        this.container.innerHTML = '';
+        this.container.appendChild(detailsEl);
+        return this.container;
+      } else {
+        this.activeDetailsId = null;
+      }
+    }
+
+    const fetchedInstances = await api.listInstances();
+    if (renderId !== this.currentRenderId) return this.container;
+
+    this.instances = fetchedInstances;
 
     // Apply filtering
     let displayed = [...this.instances];
@@ -88,6 +98,8 @@ export class InstancesPage {
     } else if (this.filters.sort === 'version') {
       displayed.sort((a, b) => b.minecraft.version.localeCompare(a.minecraft.version));
     }
+
+    this.container.innerHTML = '';
 
     // Empty state
     if (displayed.length === 0) {
@@ -148,5 +160,12 @@ export class InstancesPage {
 
     this.container.appendChild(listWrapper);
     return this.container;
+  }
+
+  public destroy(): void {
+    if (this.unsubscribeStatus) {
+      this.unsubscribeStatus();
+      this.unsubscribeStatus = null;
+    }
   }
 }

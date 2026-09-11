@@ -13,7 +13,8 @@ export class ContentImporter {
     if (!instanceDir) {
       const error = new VoxelError({
         title: 'Import Failed',
-        message: 'The selected instance could not be found.',
+        message: `Could not resolve instance "${instanceId}" to an installation directory. The instance metadata is missing or invalid.`,
+        cause: 'The instance folder or metadata file may have been moved or deleted.',
         suggestedAction: 'Refresh the instances list and select a valid target instance.',
         code: 'INSTANCE_NOT_FOUND',
         category: 'INSTANCE',
@@ -26,7 +27,7 @@ export class ContentImporter {
     if (!fs.existsSync(sourceFilePath)) {
       const error = new VoxelError({
         title: 'Import Failed',
-        message: 'The selected file could not be found on disk.',
+        message: `The selected file could not be found on disk at path: ${sourceFilePath}`,
         cause: 'The file may have been moved, renamed, or deleted after being selected.',
         suggestedAction: 'Re-select the file and try again.',
         code: 'SOURCE_FILE_NOT_FOUND',
@@ -43,8 +44,11 @@ export class ContentImporter {
     if (targetType === 'resourcepack') targetFolder = 'resourcepacks';
     if (targetType === 'shader') targetFolder = 'shaderpacks';
 
-    // Auto-detect if targetType not explicitly specified
-    if (filename.endsWith('.jar')) {
+    // Auto-detect only when the caller did not provide an explicit type.
+    // A .jar is always a mod — but only override when the target is still
+    // the default 'mods'; an explicit 'resourcepack' or 'shader' type must
+    // never be silently overridden by this heuristic.
+    if (targetType === 'mod' && filename.endsWith('.jar')) {
       targetFolder = 'mods';
     }
 
