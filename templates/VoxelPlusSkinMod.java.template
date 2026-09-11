@@ -1,0 +1,157 @@
+package com.voxelplus.runtime;
+
+import net.fabricmc.api.ClientModInitializer;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.texture.NativeImage;
+import net.minecraft.client.texture.NativeImageBackedTexture;
+import net.minecraft.util.Identifier;
+
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.UUID;
+
+public class VoxelPlusSkinMod implements ClientModInitializer {
+    public static Identifier CUSTOM_SKIN_IDENTIFIER = null;
+    public static String CUSTOM_MODEL = "default";
+    public static String TARGET_USERNAME = "DevPlayer";
+    public static String TARGET_UUID = "";
+
+    @Override
+    public void onInitializeClient() {
+        try {
+            Path configPath = Path.of("voxelplus-player.json");
+            if (!Files.exists(configPath)) {
+                return;
+            }
+
+            String content = Files.readString(configPath);
+            TARGET_USERNAME = extractJsonField(content, "username", "DevPlayer");
+            TARGET_UUID = extractJsonField(content, "uuid", "");
+            String modelSetting = extractJsonField(content, "model", "steve");
+            CUSTOM_MODEL = ("alex".equalsIgnoreCase(modelSetting) || "slim".equalsIgnoreCase(modelSetting)) ? "slim" : "default";
+
+            String skinPath = extractJsonField(content, "activeSkinPath", "");
+            if (skinPath != null && !skinPath.isEmpty() && Files.exists(Path.of(skinPath))) {
+                try (InputStream is = Files.newInputStream(Path.of(skinPath))) {
+                    NativeImage image = NativeImage.read(is);
+                    NativeImageBackedTexture texture = new NativeImageBackedTexture(image);
+
+                    Identifier id = createIdentifier("voxelplus", "textures/skin/" + sanitize(TARGET_USERNAME) + ".png");
+
+                    MinecraftClient.getInstance().execute(() -> {
+                        try {
+                            MinecraftClient.getInstance().getTextureManager().registerTexture(id, texture);
+                            CUSTOM_SKIN_IDENTIFIER = id;
+                            System.out.println("[Voxel+] Successfully registered local player skin: " + id);
+                        } catch (Exception e) {
+                            System.err.println("[Voxel+] Failed to register skin texture: " + e.getMessage());
+                        }
+                    });
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("[Voxel+] Error initializing Voxel+ Skin Runtime Integration: " + e.getMessage());
+        }
+    }
+
+    public static boolean hasCustomSkin() {
+        return CUSTOM_SKIN_IDENTIFIER != null;
+    }
+
+    public static boolean isTargetPlayer(String username, UUID uuid) {
+        if (username != null && username.equalsIgnoreCase(TARGET_USERNAME)) {
+            return true;
+        }
+        if (uuid != null && TARGET_UUID != null && !TARGET_UUID.isEmpty()) {
+            return uuid.toString().equalsIgnoreCase(TARGET_UUID);
+        }
+        return false;
+    }
+
+    public static Object getCustomSkinTexturesForPlayer(Object player) {
+        if (CUSTOM_SKIN_IDENTIFIER == null || player == null) return null;
+        try {
+            java.lang.reflect.Method method = player.getClass().getMethod("getSkinTextures");
+            Class<?> skinTexturesClass = method.getReturnType();
+            return buildSkinTextures(skinTexturesClass);
+        } catch (Exception e) {
+            try {
+                for (java.lang.reflect.Method m : player.getClass().getMethods()) {
+                    if (m.getParameterCount() == 0 && m.getReturnType().getSimpleName().contains("Skin")) {
+                        Object result = buildSkinTextures(m.getReturnType());
+                        if (result != null) return result;
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+        return null;
+    }
+
+    private static Object buildSkinTextures(Class<?> skinTexturesClass) {
+        if (skinTexturesClass == null) return null;
+        try {
+            Object modelEnum = null;
+            for (Class<?> declared : skinTexturesClass.getDeclaredClasses()) {
+                if (declared.isEnum() && declared.getSimpleName().equalsIgnoreCase("Model")) {
+                    for (Object enumConstant : declared.getEnumConstants()) {
+                        if ("slim".equalsIgnoreCase(CUSTOM_MODEL) && enumConstant.toString().equalsIgnoreCase("SLIM")) {
+                            modelEnum = enumConstant;
+                            break;
+                        } else if (!"slim".equalsIgnoreCase(CUSTOM_MODEL) && enumConstant.toString().equalsIgnoreCase("WIDE")) {
+                            modelEnum = enumConstant;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            for (java.lang.reflect.Constructor<?> ctor : skinTexturesClass.getConstructors()) {
+                Class<?>[] params = ctor.getParameterTypes();
+                if (params.length >= 1 && params[0] == Identifier.class) {
+                    Object[] args = new Object[params.length];
+                    args[0] = CUSTOM_SKIN_IDENTIFIER;
+                    for (int i = 1; i < params.length; i++) {
+                        if (params[i] == String.class) args[i] = null;
+                        else if (params[i] == Identifier.class) args[i] = null;
+                        else if (params[i].isEnum()) args[i] = modelEnum;
+                        else if (params[i] == boolean.class || params[i] == Boolean.class) args[i] = false;
+                    }
+                    return ctor.newInstance(args);
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("[Voxel+] Error building custom SkinTextures: " + e.getMessage());
+        }
+        return null;
+    }
+
+    private static String extractJsonField(String json, String field, String defaultValue) {
+        try {
+            String pattern = "\"" + field + "\"\\s*:\\s*\"([^\"]+)\"";
+            java.util.regex.Matcher matcher = java.util.regex.Pattern.compile(pattern).matcher(json);
+            if (matcher.find()) {
+                return matcher.group(1);
+            }
+        } catch (Exception ignored) {}
+        return defaultValue;
+    }
+
+    private static String sanitize(String input) {
+        return input.toLowerCase().replaceAll("[^a-z0-9_]", "_");
+    }
+
+    private static Identifier createIdentifier(String namespace, String path) {
+        try {
+            java.lang.reflect.Method ofMethod = Identifier.class.getMethod("of", String.class, String.class);
+            return (Identifier) ofMethod.invoke(null, namespace, path);
+        } catch (Exception e) {
+            try {
+                java.lang.reflect.Constructor<Identifier> constructor = Identifier.class.getConstructor(String.class, String.class);
+                return constructor.newInstance(namespace, path);
+            } catch (Exception ex) {
+                throw new RuntimeException("Could not instantiate Identifier", ex);
+            }
+        }
+    }
+}

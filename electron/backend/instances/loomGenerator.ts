@@ -78,19 +78,11 @@ export class LoomProjectGenerator {
       id: 'voxelplus_instance',
       version: '1.0.0',
       name: metadata.name,
-      description: 'Voxel+ Fabric instance with local skin & player identity support.',
+      description: 'Voxel+ Fabric instance. Drop mods into the mods/ folder.',
       authors: ['Voxel+'],
       contact: {},
       license: 'MIT',
       environment: 'client',
-      entrypoints: {
-        client: [
-          'com.voxelplus.runtime.VoxelPlusSkinMod'
-        ]
-      },
-      mixins: [
-        'voxelplus.mixins.json'
-      ],
       depends: {
         fabricloader: `>=${versionSpec.loaderVersion}`,
         minecraft: `~${mcVersion}`
@@ -101,8 +93,6 @@ export class LoomProjectGenerator {
       JSON.stringify(fabricModJson, null, 2),
       'utf-8'
     );
-
-    this.writeRuntimeIntegration(targetDir, mcVersion);
 
     const gradleWrapperProps = `distributionBase=GRADLE_USER_HOME
 distributionPath=wrapper/dists
@@ -120,6 +110,8 @@ zipStorePath=wrapper/dists
 
     this.ensureWrapperFiles(targetDir);
 
+    this.writeRuntimeIntegration(targetDir, mcVersion);
+
     InstanceMetadataStore.writeMetadata(targetDir, metadata);
 
     this.preDownloadDependencies(targetDir, metadata.id, metadata.name, mcVersion, compatibility)
@@ -128,10 +120,14 @@ zipStorePath=wrapper/dists
     return metadata;
   }
 
+
   public static writeRuntimeIntegration(targetDir: string, mcVersion: string): void {
-    const javaDir = path.join(targetDir, 'src/main/java/com/voxelplus/runtime');
-    const mixinDir = path.join(targetDir, 'src/main/java/com/voxelplus/runtime/mixin');
-    const resDir = path.join(targetDir, 'src/main/resources');
+    const isModern = mcVersion.startsWith("26.") || mcVersion.startsWith("1.21") || mcVersion.startsWith("1.20");
+    const srcSubdir = isModern ? "src/client/java" : "src/main/java";
+    const javaDir = path.join(targetDir, srcSubdir, "com/voxelplus/runtime");
+    const mixinDir = path.join(targetDir, srcSubdir, "com/voxelplus/runtime/mixin");
+    const resDir = path.join(targetDir, "src/main/resources");
+
 
     PathManager.ensureDirectory(javaDir);
     PathManager.ensureDirectory(mixinDir);
@@ -139,11 +135,11 @@ zipStorePath=wrapper/dists
 
     const mixinJson = {
       required: true,
-      minVersion: '0.8',
-      package: 'com.voxelplus.runtime.mixin',
-      compatibilityLevel: 'JAVA_17',
+      minVersion: "0.8",
+      package: "com.voxelplus.runtime.mixin",
+      compatibilityLevel: "JAVA_17",
       client: [
-        'AbstractClientPlayerEntityMixin'
+        "AbstractClientPlayerEntityMixin"
       ],
       injectors: {
         defaultRequire: 0
@@ -151,210 +147,19 @@ zipStorePath=wrapper/dists
     };
 
     fs.writeFileSync(
-      path.join(resDir, 'voxelplus.mixins.json'),
+      path.join(resDir, "voxelplus.mixins.json"),
       JSON.stringify(mixinJson, null, 2),
-      'utf-8'
+      "utf-8"
     );
 
-    const skinModJava = `package com.voxelplus.runtime;
+    const templateDir = path.resolve(__dirname, "../../../templates");
+    const modTemplatePath = path.join(templateDir, "VoxelPlusSkinMod.java.template");
+    const mixinTemplatePath = path.join(templateDir, "AbstractClientPlayerEntityMixin.java.template");
 
-import net.fabricmc.api.ClientModInitializer;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.texture.NativeImage;
-import net.minecraft.client.texture.NativeImageBackedTexture;
-import net.minecraft.util.Identifier;
-
-import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.UUID;
-
-public class VoxelPlusSkinMod implements ClientModInitializer {
-    public static Identifier CUSTOM_SKIN_IDENTIFIER = null;
-    public static String CUSTOM_MODEL = "default";
-    public static String TARGET_USERNAME = "DevPlayer";
-    public static String TARGET_UUID = "";
-
-    @Override
-    public void onInitializeClient() {
-        try {
-            Path configPath = Path.of("voxelplus-player.json");
-            if (!Files.exists(configPath)) {
-                return;
-            }
-
-            String content = Files.readString(configPath);
-            TARGET_USERNAME = extractJsonField(content, "username", "DevPlayer");
-            TARGET_UUID = extractJsonField(content, "uuid", "");
-            String modelSetting = extractJsonField(content, "model", "steve");
-            CUSTOM_MODEL = ("alex".equalsIgnoreCase(modelSetting) || "slim".equalsIgnoreCase(modelSetting)) ? "slim" : "default";
-
-            String skinPath = extractJsonField(content, "activeSkinPath", "");
-            if (skinPath != null && !skinPath.isEmpty() && Files.exists(Path.of(skinPath))) {
-                try (InputStream is = Files.newInputStream(Path.of(skinPath))) {
-                    NativeImage image = NativeImage.read(is);
-                    NativeImageBackedTexture texture = new NativeImageBackedTexture(image);
-
-                    Identifier id = createIdentifier("voxelplus", "textures/skin/" + sanitize(TARGET_USERNAME) + ".png");
-
-                    MinecraftClient.getInstance().execute(() -> {
-                        try {
-                            MinecraftClient.getInstance().getTextureManager().registerTexture(id, texture);
-                            CUSTOM_SKIN_IDENTIFIER = id;
-                            System.out.println("[Voxel+] Successfully registered local player skin: " + id);
-                        } catch (Exception e) {
-                            System.err.println("[Voxel+] Failed to register skin texture: " + e.getMessage());
-                        }
-                    });
-                }
-            }
-        } catch (Exception e) {
-            System.err.println("[Voxel+] Error initializing Voxel+ Skin Runtime Integration: " + e.getMessage());
-        }
+    if (fs.existsSync(modTemplatePath) && fs.existsSync(mixinTemplatePath)) {
+      fs.copyFileSync(modTemplatePath, path.join(javaDir, "VoxelPlusSkinMod.java"));
+      fs.copyFileSync(mixinTemplatePath, path.join(mixinDir, "AbstractClientPlayerEntityMixin.java"));
     }
-
-    public static boolean hasCustomSkin() {
-        return CUSTOM_SKIN_IDENTIFIER != null;
-    }
-
-    public static boolean isTargetPlayer(String username, UUID uuid) {
-        if (username != null && username.equalsIgnoreCase(TARGET_USERNAME)) {
-            return true;
-        }
-        if (uuid != null && TARGET_UUID != null && !TARGET_UUID.isEmpty()) {
-            return uuid.toString().equalsIgnoreCase(TARGET_UUID);
-        }
-        return false;
-    }
-
-    public static Object getCustomSkinTextures(Class<?> skinTexturesClass) {
-        if (CUSTOM_SKIN_IDENTIFIER == null || skinTexturesClass == null) return null;
-        try {
-            Object modelEnum = null;
-            for (Class<?> declared : skinTexturesClass.getDeclaredClasses()) {
-                if (declared.isEnum() && declared.getSimpleName().equalsIgnoreCase("Model")) {
-                    for (Object enumConstant : declared.getEnumConstants()) {
-                        if ("slim".equalsIgnoreCase(CUSTOM_MODEL) && enumConstant.toString().equalsIgnoreCase("SLIM")) {
-                            modelEnum = enumConstant;
-                            break;
-                        } else if (!"slim".equalsIgnoreCase(CUSTOM_MODEL) && enumConstant.toString().equalsIgnoreCase("WIDE")) {
-                            modelEnum = enumConstant;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            for (java.lang.reflect.Constructor<?> ctor : skinTexturesClass.getConstructors()) {
-                Class<?>[] params = ctor.getParameterTypes();
-                if (params.length >= 1 && params[0] == Identifier.class) {
-                    Object[] args = new Object[params.length];
-                    args[0] = CUSTOM_SKIN_IDENTIFIER;
-                    for (int i = 1; i < params.length; i++) {
-                        if (params[i] == String.class) args[i] = null;
-                        else if (params[i] == Identifier.class) args[i] = null;
-                        else if (params[i].isEnum()) args[i] = modelEnum;
-                        else if (params[i] == boolean.class || params[i] == Boolean.class) args[i] = false;
-                    }
-                    return ctor.newInstance(args);
-                }
-            }
-        } catch (Exception e) {
-            System.err.println("[Voxel+] Error building custom SkinTextures: " + e.getMessage());
-        }
-        return null;
-    }
-
-    private static String extractJsonField(String json, String field, String defaultValue) {
-        try {
-            String pattern = "\\"" + field + "\\"\\\\s*:\\\\s*\\"([^\\"]+)\\"";
-            java.util.regex.Matcher matcher = java.util.regex.Pattern.compile(pattern).matcher(json);
-            if (matcher.find()) {
-                return matcher.group(1);
-            }
-        } catch (Exception ignored) {}
-        return defaultValue;
-    }
-
-    private static String sanitize(String input) {
-        return input.toLowerCase().replaceAll("[^a-z0-9_]", "_");
-    }
-
-    private static Identifier createIdentifier(String namespace, String path) {
-        try {
-            java.lang.reflect.Method ofMethod = Identifier.class.getMethod("of", String.class, String.class);
-            return (Identifier) ofMethod.invoke(null, namespace, path);
-        } catch (Exception e) {
-            try {
-                java.lang.reflect.Constructor<Identifier> constructor = Identifier.class.getConstructor(String.class, String.class);
-                return constructor.newInstance(namespace, path);
-            } catch (Exception ex) {
-                throw new RuntimeException("Could not instantiate Identifier", ex);
-            }
-        }
-    }
-
-    @Inject(method = "getSkinTextures", at = @At("HEAD"), cancellable = true, require = 0)
-    private void voxelplus$getSkinTextures(CallbackInfoReturnable cir) {
-        if (VoxelPlusSkinMod.hasCustomSkin()) {
-            AbstractClientPlayerEntity player = (AbstractClientPlayerEntity) (Object) this;
-            if (VoxelPlusSkinMod.isTargetPlayer(player.getGameProfile().getName(), player.getGameProfile().getId())) {
-                Object customTextures = VoxelPlusSkinMod.getCustomSkinTextures(cir.getReturnType());
-                if (customTextures != null) {
-                    cir.setReturnValue(customTextures);
-                }
-            }
-        }
-    }
-}
-`;
-
-    fs.writeFileSync(
-      path.join(javaDir, 'VoxelPlusSkinMod.java'),
-      skinModJava,
-      'utf-8'
-    );
-
-    const playerMixinJava = `package com.voxelplus.runtime.mixin;
-
-import com.voxelplus.runtime.VoxelPlusSkinMod;
-import net.minecraft.client.network.AbstractClientPlayerEntity;
-import net.minecraft.util.Identifier;
-import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
-
-@Mixin(AbstractClientPlayerEntity.class)
-public abstract class AbstractClientPlayerEntityMixin {
-
-    @Inject(method = "getSkinTexture", at = @At("HEAD"), cancellable = true, require = 0)
-    private void voxelplus$getSkinTexture(CallbackInfoReturnable<Identifier> cir) {
-        if (VoxelPlusSkinMod.hasCustomSkin()) {
-            AbstractClientPlayerEntity player = (AbstractClientPlayerEntity) (Object) this;
-            if (VoxelPlusSkinMod.isTargetPlayer(player.getGameProfile().getName(), player.getGameProfile().getId())) {
-                cir.setReturnValue(VoxelPlusSkinMod.CUSTOM_SKIN_IDENTIFIER);
-            }
-        }
-    }
-
-    @Inject(method = "getModel", at = @At("HEAD"), cancellable = true, require = 0)
-    private void voxelplus$getModel(CallbackInfoReturnable<String> cir) {
-        if (VoxelPlusSkinMod.hasCustomSkin()) {
-            AbstractClientPlayerEntity player = (AbstractClientPlayerEntity) (Object) this;
-            if (VoxelPlusSkinMod.isTargetPlayer(player.getGameProfile().getName(), player.getGameProfile().getId())) {
-                cir.setReturnValue(VoxelPlusSkinMod.CUSTOM_MODEL);
-            }
-        }
-    }
-}
-`;
-
-    fs.writeFileSync(
-      path.join(mixinDir, 'AbstractClientPlayerEntityMixin.java'),
-      playerMixinJava,
-      'utf-8'
-    );
   }
 
   private static ensureWrapperFiles(targetDir: string): void {

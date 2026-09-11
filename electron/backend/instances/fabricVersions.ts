@@ -640,7 +640,7 @@ dependencies {
 
 sourceSets {
     main {
-        java { srcDirs = ['src/main/java'] }
+        java { srcDirs = ['src/main/java', 'src/client/java'] }
         resources { srcDirs = ['src/main/resources'] }
     }
 }
