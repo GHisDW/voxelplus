@@ -2,27 +2,41 @@
 
 Thank you for your interest in contributing to Voxel⁺! This document provides guidelines and instructions for contributing to the project.
 
+## 🦸 Contributors Are Heroes
+
+Voxel⁺ is built not only by its maintainers, but also by everyone who takes the time to contribute to the project.
+
+Whether you add a major feature, fix a small bug, improve documentation, report an issue, or help test something, **your contribution matters.** Every contribution helps make Voxel⁺ better. ❤️
+
+### 🌟 Our Contributors
+
+|                                                 Contributor                                                 | What they contributed                                                                                                                                                                                                                                                         |
+| :---------------------------------------------------------------------------------------------------------: | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| <img src="https://github.com/ThoriaDevelopment.png?size=80" width="60" height="60" alt="ThoriaDevelopment"> | **[@ThoriaDevelopment](https://github.com/ThoriaDevelopment)**<br>🛠️ **Standardized Error Handling & Diagnostics**<br>Introduced structured error categories, error codes, diagnostics, IPC error handling, safe error serialization, and improved frontend error reporting. |
+
+> 🚀 **Want to join the contributors?** Check out the guidelines below and help make Voxel⁺ even better!
+
 ## 🤝 How to Contribute
 
 ### Reporting Bugs
 
 Before creating bug reports, please check the existing issues to avoid duplicates. When creating a bug report, please include:
 
-- **Clear description** of the problem
-- **Steps to reproduce** the issue
-- **Expected behavior** vs. **actual behavior**
-- **Screenshots** if applicable
-- **Your system information** (Windows version, installed Java versions, etc.)
-- **Voxel⁺ version** (from About dialog)
+* **Clear description** of the problem
+* **Steps to reproduce** the issue
+* **Expected behavior** vs. **actual behavior**
+* **Screenshots** if applicable
+* **Your system information** (Windows version, installed Java versions, etc.)
+* **Voxel⁺ version** (from About dialog)
 
 ### Suggesting Enhancements
 
 We welcome feature suggestions! Please:
 
-- **Use a clear and descriptive title**
-- **Provide a detailed description** of the proposed enhancement
-- **Explain why** this enhancement would be useful
-- **Consider** if this applies to most users or is a personal preference
+* **Use a clear and descriptive title**
+* **Provide a detailed description** of the proposed enhancement
+* **Explain why** this enhancement would be useful
+* **Consider** if this applies to most users or is a personal preference
 
 ### Pull Requests
 
@@ -37,25 +51,28 @@ We welcome feature suggestions! Please:
 
 ### Prerequisites
 
-- **Node.js 18+**
-- **Git**
-- **Windows 10/11** (primary development platform)
-- **Multiple Java versions** (8, 17, 21) for testing
+* **Node.js 18+**
+* **Git**
+* **Windows 10/11** (primary development platform)
+* **Multiple Java versions** (8, 17, 21) for testing
 
 ### Setting Up
 
 1. **Clone your fork**
+
    ```bash
    git clone https://github.com/YOUR_USERNAME/voxelplus.git
    cd voxelplus
    ```
 
 2. **Install dependencies**
+
    ```bash
    npm install
    ```
 
 3. **Run in development mode**
+
    ```bash
    npm run app:dev
    ```
@@ -64,26 +81,26 @@ We welcome feature suggestions! Please:
 
 ### TypeScript
 
-- **Use TypeScript strict mode**
-- **Follow existing naming conventions**
-- **Add type annotations** for all function parameters and return types
-- **Prefer interfaces over types** for object shapes
-- **Use const/let** instead of var
+* **Use TypeScript strict mode**
+* **Follow existing naming conventions**
+* **Add type annotations** for all function parameters and return types
+* **Prefer interfaces over types** for object shapes
+* **Use const/let** instead of var
 
 ### Code Style
 
-- **Use 2 spaces** for indentation
-- **Use single quotes** for strings
-- **Add semicolons** at the end of statements
-- **Keep functions small** and focused
-- **Add meaningful comments** for complex logic
+* **Use 2 spaces** for indentation
+* **Use single quotes** for strings
+* **Add semicolons** at the end of statements
+* **Keep functions small** and focused
+* **Add meaningful comments** for complex logic
 
 ### File Organization
 
-- **Keep related files together**
-- **Use descriptive filenames**
-- **Follow the existing directory structure**
-- **Separate concerns** (UI, logic, data)
+* **Keep related files together**
+* **Use descriptive filenames**
+* **Follow the existing directory structure**
+* **Separate concerns** (UI, logic, data)
 
 ## 🧪 Testing
 
@@ -91,35 +108,36 @@ We welcome feature suggestions! Please:
 
 Before submitting a PR, please test:
 
-- [ ] **Instance creation** for different Minecraft versions
-- [ ] **Java detection** works correctly
-- [ ] **Mod installation** from Modrinth
-- [ ] **Instance launch** and proper shutdown
-- [ ] **Error handling** for edge cases
-- [ ] **UI responsiveness** and layout
+* [ ] **Instance creation** for different Minecraft versions
+* [ ] **Java detection** works correctly
+* [ ] **Mod installation** from Modrinth
+* [ ] **Instance launch** and proper shutdown
+* [ ] **Error handling** for edge cases
+* [ ] **UI responsiveness** and layout
 
 ### Compatibility Testing
 
 Test with:
-- **Java 8, 17, and 21** installed
-- **Different Minecraft versions** (1.15.2, 1.16.5, 1.20.1, 1.21.1)
-- **Various mod combinations**
+
+* **Java 8, 17, and 21** installed
+* **Different Minecraft versions** (1.15.2, 1.16.5, 1.20.1, 1.21.1)
+* **Various mod combinations**
 
 ## 📚 Documentation
 
 ### Code Documentation
 
-- **Add JSDoc comments** for public functions
-- **Document complex algorithms**
-- **Explain non-obvious logic**
-- **Keep documentation up to date** with code changes
+* **Add JSDoc comments** for public functions
+* **Document complex algorithms**
+* **Explain non-obvious logic**
+* **Keep documentation up to date** with code changes
 
 ### User Documentation
 
-- **Update README.md** for new features
-- **Add screenshots** for UI changes
-- **Document configuration options**
-- **Provide examples** where helpful
+* **Update README.md** for new features
+* **Add screenshots** for UI changes
+* **Document configuration options**
+* **Provide examples** where helpful
 
 ## 🐛 Bug Fix Guidelines
 
@@ -143,25 +161,25 @@ When adding features:
 
 ## 🎨 UI/UX Guidelines
 
-- **Keep the interface clean** and intuitive
-- **Follow the existing design language**
-- **Ensure good contrast** and readability
-- **Provide feedback** for user actions
-- **Handle errors gracefully** with helpful messages
+* **Keep the interface clean** and intuitive
+* **Follow the existing design language**
+* **Ensure good contrast** and readability
+* **Provide feedback** for user actions
+* **Handle errors gracefully** with helpful messages
 
 ## 🔒 Security Considerations
 
-- **Never expose sensitive data** in logs
-- **Validate all user inputs**
-- **Use environment variables** for secrets
-- **Follow Electron security best practices**
-- **Keep dependencies updated**
+* **Never expose sensitive data** in logs
+* **Validate all user inputs**
+* **Use environment variables** for secrets
+* **Follow Electron security best practices**
+* **Keep dependencies updated**
 
 ## 📤 Commit Messages
 
 Follow conventional commit format:
 
-```
+```text
 type(scope): description
 
 [optional body]
@@ -170,16 +188,18 @@ type(scope): description
 ```
 
 Types:
-- `feat`: New feature
-- `fix`: Bug fix
-- `docs`: Documentation changes
-- `style`: Code style changes (formatting, etc.)
-- `refactor`: Code refactoring
-- `test`: Adding or updating tests
-- `chore`: Maintenance tasks
+
+* `feat`: New feature
+* `fix`: Bug fix
+* `docs`: Documentation changes
+* `style`: Code style changes (formatting, etc.)
+* `refactor`: Code refactoring
+* `test`: Adding or updating tests
+* `chore`: Maintenance tasks
 
 Examples:
-```
+
+```text
 feat(instances): add support for Minecraft 1.21.2
 fix(java): resolve Java detection on Windows 11
 docs(readme): update installation instructions
@@ -187,27 +207,29 @@ docs(readme): update installation instructions
 
 ## 🤝 Community Guidelines
 
-- **Be respectful** and constructive
-- **Welcome newcomers** and help them learn
-- **Focus on what is best** for the community
-- **Show empathy** towards other community members
-- **Gracefully accept constructive criticism**
+* **Be respectful** and constructive
+* **Welcome newcomers** and help them learn
+* **Focus on what is best** for the community
+* **Show empathy** towards other community members
+* **Gracefully accept constructive criticism**
 
 ## 📧 Getting Help
 
 If you need help contributing:
 
-- **Open an issue** with your question
-- **Join discussions** in existing issues
-- **Email**: mokshadshetty@gmail.com
-- **GitHub**: [@GHisDW](https://github.com/GHisDW)
+* **Open an issue** with your question
+* **Join discussions** in existing issues
+* **Email**: [mokshadshetty@gmail.com](mailto:mokshadshetty@gmail.com)
+* **GitHub**: [@GHisDW](https://github.com/GHisDW)
 
 ## 🎉 Recognition
 
 Contributors will be:
-- **Listed in the README**
-- **Acknowledged in release notes**
-- **Invited to become maintainers** for significant contributions
+
+* **Listed in the README**
+* **Acknowledged in release notes**
+* **Recognized in the contributor list**
+* **Invited to become maintainers** for significant contributions
 
 ---
 
