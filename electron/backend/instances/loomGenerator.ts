@@ -83,6 +83,14 @@ export class LoomProjectGenerator {
       contact: {},
       license: 'MIT',
       environment: 'client',
+      entrypoints: {
+        client: [
+          'com.voxelplus.runtime.VoxelPlusSkinMod'
+        ]
+      },
+      mixins: [
+        'voxelplus.mixins.json'
+      ],
       depends: {
         fabricloader: `>=${versionSpec.loaderVersion}`,
         minecraft: `~${mcVersion}`
@@ -128,7 +136,6 @@ zipStorePath=wrapper/dists
     const mixinDir = path.join(targetDir, srcSubdir, "com/voxelplus/runtime/mixin");
     const resDir = path.join(targetDir, "src/main/resources");
 
-
     PathManager.ensureDirectory(javaDir);
     PathManager.ensureDirectory(mixinDir);
     PathManager.ensureDirectory(resDir);
@@ -152,9 +159,13 @@ zipStorePath=wrapper/dists
       "utf-8"
     );
 
+    const isNonObfuscated = mcVersion.startsWith("26.");
+    const modTemplateFileName = isNonObfuscated ? "VoxelPlusSkinMod_Mojang.java.template" : "VoxelPlusSkinMod.java.template";
+    const mixinTemplateFileName = isNonObfuscated ? "AbstractClientPlayerEntityMixin_Mojang.java.template" : "AbstractClientPlayerEntityMixin.java.template";
+
     const templateDir = path.resolve(__dirname, "../../../templates");
-    const modTemplatePath = path.join(templateDir, "VoxelPlusSkinMod.java.template");
-    const mixinTemplatePath = path.join(templateDir, "AbstractClientPlayerEntityMixin.java.template");
+    const modTemplatePath = path.join(templateDir, modTemplateFileName);
+    const mixinTemplatePath = path.join(templateDir, mixinTemplateFileName);
 
     if (fs.existsSync(modTemplatePath) && fs.existsSync(mixinTemplatePath)) {
       fs.copyFileSync(modTemplatePath, path.join(javaDir, "VoxelPlusSkinMod.java"));

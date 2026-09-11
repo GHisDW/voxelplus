@@ -12,6 +12,7 @@ export class SkinsPage {
   constructor() {
     this.container = document.createElement('div');
     this.container.className = 'page-container';
+    this.container.style.cssText = 'flex: 1; overflow-y: auto; padding: 24px; box-sizing: border-box; display: flex; flex-direction: column;';
 
     window.addEventListener(
       'voxelplus-skin-changed',
