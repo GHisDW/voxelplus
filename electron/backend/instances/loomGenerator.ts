@@ -160,8 +160,8 @@ zipStorePath=wrapper/dists
     );
 
     const isNonObfuscated = mcVersion.startsWith("26.");
-    const modTemplateFileName = isNonObfuscated ? "VoxelPlusSkinMod_Mojang.java.template" : "VoxelPlusSkinMod.java.template";
-    const mixinTemplateFileName = isNonObfuscated ? "AbstractClientPlayerEntityMixin_Mojang.java.template" : "AbstractClientPlayerEntityMixin.java.template";
+    const modTemplateFileName = isNonObfuscated ? "VoxelPlusSkinMod_Mojang.java.template" : "VoxelPlusSkinMod_Yarn.java.template";
+    const mixinTemplateFileName = isNonObfuscated ? "AbstractClientPlayerEntityMixin_Mojang.java.template" : "AbstractClientPlayerEntityMixin_Yarn.java.template";
 
     const templateDir = path.resolve(__dirname, "../../../templates");
     const modTemplatePath = path.join(templateDir, modTemplateFileName);
