@@ -4,7 +4,6 @@ import net.fabricmc.api.ClientModInitializer;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.texture.NativeImage;
 import net.minecraft.client.texture.NativeImageBackedTexture;
-import net.minecraft.client.util.SkinTextures;
 import net.minecraft.util.Identifier;
 
 import java.io.InputStream;
@@ -68,14 +67,6 @@ public class VoxelPlusSkinMod implements ClientModInitializer {
             return uuid.toString().equalsIgnoreCase(TARGET_UUID);
         }
         return false;
-    }
-
-    public static SkinTextures getCustomSkinTextures(SkinTextures original) {
-        if (CUSTOM_SKIN_IDENTIFIER == null) return original;
-        SkinTextures.Model modelEnum = "slim".equalsIgnoreCase(CUSTOM_MODEL) ? SkinTextures.Model.SLIM : SkinTextures.Model.WIDE;
-        Identifier cape = original != null ? original.capeTexture() : null;
-        Identifier elytra = original != null ? original.elytraTexture() : null;
-        return new SkinTextures(CUSTOM_SKIN_IDENTIFIER, null, cape, elytra, modelEnum, false);
     }
 
     private static String extractJsonField(String json, String field, String defaultValue) {

@@ -159,9 +159,30 @@ zipStorePath=wrapper/dists
       "utf-8"
     );
 
-    const isNonObfuscated = mcVersion.startsWith("26.");
-    const modTemplateFileName = isNonObfuscated ? "VoxelPlusSkinMod_Mojang.java.template" : "VoxelPlusSkinMod_Yarn.java.template";
-    const mixinTemplateFileName = isNonObfuscated ? "AbstractClientPlayerEntityMixin_Mojang.java.template" : "AbstractClientPlayerEntityMixin_Yarn.java.template";
+    const isMojang = mcVersion.startsWith("26.");
+    let isLegacyYarn = false;
+    if (!isMojang) {
+      const match = mcVersion.match(/^1\.(\d+)(?:\.(\d+))?$/);
+      if (match) {
+        const minor = parseInt(match[1], 10);
+        const patch = match[2] ? parseInt(match[2], 10) : 0;
+        if (minor < 20 || (minor === 20 && patch < 2)) {
+          isLegacyYarn = true;
+        }
+      }
+    }
+
+    const modTemplateFileName = isMojang
+      ? "VoxelPlusSkinMod_Mojang.java.template"
+      : isLegacyYarn
+      ? "VoxelPlusSkinMod_LegacyYarn.java.template"
+      : "VoxelPlusSkinMod_Yarn.java.template";
+
+    const mixinTemplateFileName = isMojang
+      ? "AbstractClientPlayerEntityMixin_Mojang.java.template"
+      : isLegacyYarn
+      ? "AbstractClientPlayerEntityMixin_LegacyYarn.java.template"
+      : "AbstractClientPlayerEntityMixin_Yarn.java.template";
 
     const templateDir = path.resolve(__dirname, "../../../templates");
     const modTemplatePath = path.join(templateDir, modTemplateFileName);

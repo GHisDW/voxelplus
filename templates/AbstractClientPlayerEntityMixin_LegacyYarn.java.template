@@ -2,7 +2,6 @@ package com.voxelplus.runtime.mixin;
 
 import com.voxelplus.runtime.VoxelPlusSkinMod;
 import net.minecraft.client.network.AbstractClientPlayerEntity;
-import net.minecraft.client.util.SkinTextures;
 import net.minecraft.util.Identifier;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -28,20 +27,6 @@ public abstract class AbstractClientPlayerEntityMixin {
             AbstractClientPlayerEntity player = (AbstractClientPlayerEntity) (Object) this;
             if (VoxelPlusSkinMod.isTargetPlayer(player.getGameProfile().getName(), player.getGameProfile().getId())) {
                 cir.setReturnValue(VoxelPlusSkinMod.CUSTOM_MODEL);
-            }
-        }
-    }
-
-    @Inject(method = "getSkinTextures", at = @At("HEAD"), cancellable = true, require = 0)
-    private void voxelplus$getSkinTextures(CallbackInfoReturnable<SkinTextures> cir) {
-        if (VoxelPlusSkinMod.hasCustomSkin()) {
-            AbstractClientPlayerEntity player = (AbstractClientPlayerEntity) (Object) this;
-            if (VoxelPlusSkinMod.isTargetPlayer(player.getGameProfile().getName(), player.getGameProfile().getId())) {
-                SkinTextures original = cir.getReturnValue();
-                SkinTextures custom = VoxelPlusSkinMod.getCustomSkinTextures(original);
-                if (custom != null) {
-                    cir.setReturnValue(custom);
-                }
             }
         }
     }
