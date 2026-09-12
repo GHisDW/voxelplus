@@ -21,21 +21,13 @@ export class Sidebar {
     this.container.innerHTML = `
       <!-- Brand Logo -->
       <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 32px; padding: 4px 6px;">
-        <div style="
-          width: 36px;
-          height: 36px;
+        <img src="/kk.png" alt="Voxel⁺ Logo" style="
+          width: 38px;
+          height: 38px;
           border-radius: var(--radius-md);
-          background: var(--accent-gradient);
-          display: flex;
-          align-items: center;
-          justify-content: center;
           box-shadow: 0 4px 14px var(--accent-glow);
-          color: white;
-          font-size: 1.2rem;
-          font-weight: 900;
-        ">
-          V
-        </div>
+          object-fit: cover;
+        " />
         <div class="brand-title">
           VOXEL<span class="plus-badge">⁺</span>
         </div>
@@ -54,8 +46,8 @@ export class Sidebar {
         </button>
 
         <button class="nav-item ${this.activePage === 'skins' ? 'active' : ''}" data-page="skins" style="${this.navItemStyle(this.activePage === 'skins')}">
-          <span style="font-size: 1.2rem;">👕</span>
-          <span>Skins</span>
+          <span style="font-size: 1.2rem;">👤</span>
+          <span>Player Manager</span>
         </button>
 
         <button class="nav-item ${this.activePage === 'logs' ? 'active' : ''}" data-page="logs" style="${this.navItemStyle(this.activePage === 'logs')}">

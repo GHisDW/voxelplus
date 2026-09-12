@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'node:path';
+import fs from 'node:fs';
 import { CommandManager } from './backend/commandManager';
 import { PathManager } from './backend/storage/paths';
 import { LogStreamer } from './backend/processes/logStreamer';
@@ -82,6 +83,13 @@ function registerIpcHandlers() {
   handle('content:removeShader', 'SHADER', async (_, id, fn) => CommandManager.removeShader(id, fn));
   handle('content:importFile', 'FILESYSTEM', async (_, id, fp, type) => CommandManager.importFile(id, fp, type));
 
+  // Player Manager
+  handle('player:get', 'SKIN', async () => CommandManager.getPlayer());
+  handle('player:getUsername', 'SKIN', async () => CommandManager.getUsername());
+  handle('player:setUsername', 'SKIN', async (_, username) => CommandManager.setUsername(username));
+  handle('player:getModel', 'SKIN', async () => CommandManager.getModel());
+  handle('player:setModel', 'SKIN', async (_, model) => CommandManager.setModel(model));
+
   // Skins
   handle('skins:list', 'SKIN', async () => CommandManager.listSkins());
   handle('skins:get', 'SKIN', async (_, id) => CommandManager.getSkin(id));
@@ -117,6 +125,8 @@ function registerIpcHandlers() {
 }
 
 function createWindow() {
+  const iconPath = path.join(__dirname, '../kk.png');
+
   mainWindow = new BrowserWindow({
     width: 1240,
     height: 780,
@@ -125,6 +135,7 @@ function createWindow() {
     frame: true,
     titleBarStyle: 'default',
     title: 'Voxel⁺ Launcher',
+    icon: fs.existsSync(iconPath) ? iconPath : undefined,
     backgroundColor: '#0a0d14',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

@@ -620,6 +620,7 @@ loom {
     runs {
         client {
             runDir '.'
+            programArgs '--username', (project.hasProperty('voxelplus_username') ? project.property('voxelplus_username') : 'DevPlayer'), '--uuid', (project.hasProperty('voxelplus_uuid') ? project.property('voxelplus_uuid') : 'c06173a0-7212-3b2d-986d-0683a4f6d148')
         }
     }
 }
@@ -639,7 +640,7 @@ dependencies {
 
 sourceSets {
     main {
-        java { srcDirs = [] }
+        java { srcDirs = ['src/main/java', 'src/client/java'] }
         resources { srcDirs = ['src/main/resources'] }
     }
 }
@@ -669,6 +670,7 @@ loom {
     runs {
         client {
             runDir '.'
+            programArgs '--username', (project.hasProperty('voxelplus_username') ? project.property('voxelplus_username') : 'DevPlayer'), '--uuid', (project.hasProperty('voxelplus_uuid') ? project.property('voxelplus_uuid') : 'c06173a0-7212-3b2d-986d-0683a4f6d148')
         }
     }
 }
@@ -689,7 +691,7 @@ dependencies {
 
 sourceSets {
     main {
-        java { srcDirs = [] }
+        java { srcDirs = ['src/main/java', 'src/client/java'] }
         resources { srcDirs = ['src/main/resources'] }
     }
 }

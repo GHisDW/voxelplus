@@ -1,0 +1,99 @@
+package com.voxelplus.runtime;
+
+import com.mojang.blaze3d.platform.NativeImage;
+import net.fabricmc.api.ClientModInitializer;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.texture.DynamicTexture;
+import net.minecraft.core.ClientAsset;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.entity.player.PlayerModelType;
+import net.minecraft.world.entity.player.PlayerSkin;
+
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.UUID;
+
+public class VoxelPlusSkinMod implements ClientModInitializer {
+    public static Identifier CUSTOM_SKIN_IDENTIFIER = null;
+    public static PlayerModelType CUSTOM_MODEL = PlayerModelType.WIDE;
+    public static String TARGET_USERNAME = "DevPlayer";
+    public static String TARGET_UUID = "";
+
+    @Override
+    public void onInitializeClient() {
+        try {
+            Path configPath = Path.of("voxelplus-player.json");
+            if (!Files.exists(configPath)) {
+                return;
+            }
+
+            String content = Files.readString(configPath);
+            TARGET_USERNAME = extractJsonField(content, "username", "DevPlayer");
+            TARGET_UUID = extractJsonField(content, "uuid", "");
+            String modelSetting = extractJsonField(content, "model", "steve");
+            CUSTOM_MODEL = ("alex".equalsIgnoreCase(modelSetting) || "slim".equalsIgnoreCase(modelSetting))
+                    ? PlayerModelType.SLIM
+                    : PlayerModelType.WIDE;
+
+            String skinPath = extractJsonField(content, "activeSkinPath", "");
+            if (skinPath != null && !skinPath.isEmpty() && Files.exists(Path.of(skinPath))) {
+                try (InputStream is = Files.newInputStream(Path.of(skinPath))) {
+                    NativeImage image = NativeImage.read(is);
+                    DynamicTexture texture = new DynamicTexture(() -> "voxelplus_skin", image);
+
+                    Identifier id = Identifier.fromNamespaceAndPath("voxelplus", "textures/skin/" + sanitize(TARGET_USERNAME) + ".png");
+
+                    Minecraft.getInstance().execute(() -> {
+                        try {
+                            Minecraft.getInstance().getTextureManager().register(id, texture);
+                            CUSTOM_SKIN_IDENTIFIER = id;
+                            System.out.println("[Voxel+] Successfully registered local player skin: " + id);
+                        } catch (Exception e) {
+                            System.err.println("[Voxel+] Failed to register skin texture: " + e.getMessage());
+                        }
+                    });
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("[Voxel+] Error initializing Voxel+ Skin Runtime Integration: " + e.getMessage());
+        }
+    }
+
+    public static boolean hasCustomSkin() {
+        return CUSTOM_SKIN_IDENTIFIER != null;
+    }
+
+    public static boolean isTargetPlayer(String username, UUID uuid) {
+        if (username != null && username.equalsIgnoreCase(TARGET_USERNAME)) {
+            return true;
+        }
+        if (uuid != null && TARGET_UUID != null && !TARGET_UUID.isEmpty()) {
+            return uuid.toString().equalsIgnoreCase(TARGET_UUID);
+        }
+        return false;
+    }
+
+    public static PlayerSkin getCustomPlayerSkin(PlayerSkin original) {
+        if (CUSTOM_SKIN_IDENTIFIER == null) return original;
+        ClientAsset.Texture skinTexture = new ClientAsset.ResourceTexture(CUSTOM_SKIN_IDENTIFIER);
+        ClientAsset.Texture cape = original != null ? original.cape() : null;
+        ClientAsset.Texture elytra = original != null ? original.elytra() : null;
+        return PlayerSkin.insecure(skinTexture, cape, elytra, CUSTOM_MODEL);
+    }
+
+    private static String extractJsonField(String json, String field, String defaultValue) {
+        try {
+            String pattern = "\"" + field + "\"\\s*:\\s*\"([^\"]+)\"";
+            java.util.regex.Matcher matcher = java.util.regex.Pattern.compile(pattern).matcher(json);
+            if (matcher.find()) {
+                return matcher.group(1);
+            }
+        } catch (Exception ignored) {}
+        return defaultValue;
+    }
+
+    private static String sanitize(String input) {
+        return input.toLowerCase().replaceAll("[^a-z0-9_]", "_");
+    }
+}

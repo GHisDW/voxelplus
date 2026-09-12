@@ -83,6 +83,14 @@ export class LoomProjectGenerator {
       contact: {},
       license: 'MIT',
       environment: 'client',
+      entrypoints: {
+        client: [
+          'com.voxelplus.runtime.VoxelPlusSkinMod'
+        ]
+      },
+      mixins: [
+        'voxelplus.mixins.json'
+      ],
       depends: {
         fabricloader: `>=${versionSpec.loaderVersion}`,
         minecraft: `~${mcVersion}`
@@ -110,12 +118,77 @@ zipStorePath=wrapper/dists
 
     this.ensureWrapperFiles(targetDir);
 
+    this.writeRuntimeIntegration(targetDir, mcVersion);
+
     InstanceMetadataStore.writeMetadata(targetDir, metadata);
 
     this.preDownloadDependencies(targetDir, metadata.id, metadata.name, mcVersion, compatibility)
       .catch(err => console.warn('[LoomGenerator] Pre-download error:', err));
 
     return metadata;
+  }
+
+
+  public static writeRuntimeIntegration(targetDir: string, mcVersion: string): void {
+    const isModern = mcVersion.startsWith("26.") || mcVersion.startsWith("1.21") || mcVersion.startsWith("1.20");
+    const srcSubdir = isModern ? "src/client/java" : "src/main/java";
+    const javaDir = path.join(targetDir, srcSubdir, "com/voxelplus/runtime");
+    const mixinDir = path.join(targetDir, srcSubdir, "com/voxelplus/runtime/mixin");
+    const resDir = path.join(targetDir, "src/main/resources");
+
+    PathManager.ensureDirectory(javaDir);
+    PathManager.ensureDirectory(mixinDir);
+    PathManager.ensureDirectory(resDir);
+
+    const mixinJson = {
+      required: true,
+      minVersion: "0.8",
+      package: "com.voxelplus.runtime.mixin",
+      compatibilityLevel: "JAVA_17",
+      client: [
+        "AbstractClientPlayerEntityMixin"
+      ]
+    };
+
+    fs.writeFileSync(
+      path.join(resDir, "voxelplus.mixins.json"),
+      JSON.stringify(mixinJson, null, 2),
+      "utf-8"
+    );
+
+    const isMojang = mcVersion.startsWith("26.");
+    let isLegacyYarn = false;
+    if (!isMojang) {
+      const match = mcVersion.match(/^1\.(\d+)(?:\.(\d+))?$/);
+      if (match) {
+        const minor = parseInt(match[1], 10);
+        const patch = match[2] ? parseInt(match[2], 10) : 0;
+        if (minor < 20 || (minor === 20 && patch < 2)) {
+          isLegacyYarn = true;
+        }
+      }
+    }
+
+    const modTemplateFileName = isMojang
+      ? "VoxelPlusSkinMod_Mojang.java.template"
+      : isLegacyYarn
+      ? "VoxelPlusSkinMod_LegacyYarn.java.template"
+      : "VoxelPlusSkinMod_Yarn.java.template";
+
+    const mixinTemplateFileName = isMojang
+      ? "AbstractClientPlayerEntityMixin_Mojang.java.template"
+      : isLegacyYarn
+      ? "AbstractClientPlayerEntityMixin_LegacyYarn.java.template"
+      : "AbstractClientPlayerEntityMixin_Yarn.java.template";
+
+    const templateDir = path.resolve(__dirname, "../../../templates");
+    const modTemplatePath = path.join(templateDir, modTemplateFileName);
+    const mixinTemplatePath = path.join(templateDir, mixinTemplateFileName);
+
+    if (fs.existsSync(modTemplatePath) && fs.existsSync(mixinTemplatePath)) {
+      fs.copyFileSync(modTemplatePath, path.join(javaDir, "VoxelPlusSkinMod.java"));
+      fs.copyFileSync(mixinTemplatePath, path.join(mixinDir, "AbstractClientPlayerEntityMixin.java"));
+    }
   }
 
   private static ensureWrapperFiles(targetDir: string): void {

@@ -17,6 +17,8 @@ import {
   SkinMetadata,
   SkinSearchResult,
   SkinValidationResult,
+  SkinModel,
+  PlayerProfile,
   SystemScanResult
 } from '../../../electron/types';
 
@@ -82,6 +84,13 @@ export const api = {
   selectFileDialog: (filters?: any): Promise<string | null> => electronApi.selectFileDialog(filters),
   selectSaveFileDialog: (defaultName: string, filters?: any): Promise<string | null> => electronApi.selectSaveFileDialog(defaultName, filters),
 
+  // Player Manager
+  getPlayerProfile: (): Promise<PlayerProfile> => electronApi.getPlayerProfile(),
+  getUsername: (): Promise<string> => electronApi.getUsername(),
+  setUsername: (username: string): Promise<{ success: boolean; error?: string }> => electronApi.setUsername(username),
+  getModel: (): Promise<SkinModel> => electronApi.getModel(),
+  setModel: (model: SkinModel | 'wide' | 'slim'): Promise<{ success: boolean; error?: string }> => electronApi.setModel(model),
+
   // Skins
   listSkins: (): Promise<SkinMetadata[]> => electronApi.listSkins(),
   getSkin: (skinId: string): Promise<SkinMetadata | null> => electronApi.getSkin(skinId),
@@ -89,7 +98,7 @@ export const api = {
   importSkin: (filePath: string, customName?: string): Promise<{ success: boolean; skin?: SkinMetadata; error?: string }> => electronApi.importSkin(filePath, customName),
   downloadSkin: (username: string, customName?: string): Promise<{ success: boolean; skin?: SkinMetadata; error?: string }> => electronApi.downloadSkin(username, customName),
   searchPlayer: (username: string): Promise<{ success: boolean; result?: SkinSearchResult; error?: string }> => electronApi.searchPlayer(username),
-  setActiveSkin: (skinId: string): Promise<{ success: boolean; error?: string }> => electronApi.setActiveSkin(skinId),
+  setActiveSkin: (skinId: string | null): Promise<{ success: boolean; error?: string }> => electronApi.setActiveSkin(skinId),
   renameSkin: (skinId: string, newName: string): Promise<{ success: boolean; error?: string }> => electronApi.renameSkin(skinId, newName),
   deleteSkin: (skinId: string): Promise<{ success: boolean; error?: string }> => electronApi.deleteSkin(skinId),
   validateSkin: (filePath: string): Promise<SkinValidationResult> => electronApi.validateSkin(filePath),

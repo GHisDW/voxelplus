@@ -22,7 +22,7 @@ export class SkinManagerModal {
       <div class="modal modal-lg skin-manager-modal animate-fade-in-up">
         <div class="modal-header skin-manager-header">
           <div>
-            <h2>Skin Manager</h2>
+            <h2>Player Manager — Skin Library</h2>
             <p class="skin-manager-subtitle">Manage your Minecraft skin library</p>
           </div>
 
