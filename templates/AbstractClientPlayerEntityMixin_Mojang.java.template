@@ -1,53 +1,27 @@
 package com.voxelplus.runtime.mixin;
 
 import com.voxelplus.runtime.VoxelPlusSkinMod;
+import net.minecraft.client.player.AbstractClientPlayer;
+import net.minecraft.world.entity.player.PlayerSkin;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-@Mixin(targets = "net.minecraft.client.player.AbstractClientPlayer", remap = false)
-public class AbstractClientPlayerEntityMixin {
-
-    @Inject(method = "getSkinTexture", at = @At("HEAD"), cancellable = true, require = 0)
-    private void voxelplus$getSkinTexture(CallbackInfoReturnable<Object> cir) {
-        if (VoxelPlusSkinMod.hasCustomSkin()) {
-            try {
-                java.lang.reflect.Method getProfileMethod = this.getClass().getMethod("getGameProfile");
-                com.mojang.authlib.GameProfile profile = (com.mojang.authlib.GameProfile) getProfileMethod.invoke(this);
-                if (profile != null && VoxelPlusSkinMod.isTargetPlayer(profile.getName(), profile.getId())) {
-                    cir.setReturnValue(VoxelPlusSkinMod.CUSTOM_SKIN_IDENTIFIER);
-                }
-            } catch (Exception ignored) {}
-        }
-    }
-
-    @Inject(method = "getModel", at = @At("HEAD"), cancellable = true, require = 0)
-    private void voxelplus$getModel(CallbackInfoReturnable<String> cir) {
-        if (VoxelPlusSkinMod.hasCustomSkin()) {
-            try {
-                java.lang.reflect.Method getProfileMethod = this.getClass().getMethod("getGameProfile");
-                com.mojang.authlib.GameProfile profile = (com.mojang.authlib.GameProfile) getProfileMethod.invoke(this);
-                if (profile != null && VoxelPlusSkinMod.isTargetPlayer(profile.getName(), profile.getId())) {
-                    cir.setReturnValue(VoxelPlusSkinMod.CUSTOM_MODEL);
-                }
-            } catch (Exception ignored) {}
-        }
-    }
+@Mixin(AbstractClientPlayer.class)
+public abstract class AbstractClientPlayerEntityMixin {
 
     @Inject(method = "getSkin", at = @At("HEAD"), cancellable = true, require = 0)
-    private void voxelplus$getSkin(CallbackInfoReturnable<Object> cir) {
+    private void voxelplus$getSkin(CallbackInfoReturnable<PlayerSkin> cir) {
         if (VoxelPlusSkinMod.hasCustomSkin()) {
-            try {
-                java.lang.reflect.Method getProfileMethod = this.getClass().getMethod("getGameProfile");
-                com.mojang.authlib.GameProfile profile = (com.mojang.authlib.GameProfile) getProfileMethod.invoke(this);
-                if (profile != null && VoxelPlusSkinMod.isTargetPlayer(profile.getName(), profile.getId())) {
-                    Object customTextures = VoxelPlusSkinMod.getCustomSkinTexturesForPlayer(this);
-                    if (customTextures != null) {
-                        cir.setReturnValue(customTextures);
-                    }
+            AbstractClientPlayer player = (AbstractClientPlayer) (Object) this;
+            if (VoxelPlusSkinMod.isTargetPlayer(player.getGameProfile().getName(), player.getGameProfile().getId())) {
+                PlayerSkin original = cir.getReturnValue();
+                PlayerSkin custom = VoxelPlusSkinMod.getCustomPlayerSkin(original);
+                if (custom != null) {
+                    cir.setReturnValue(custom);
                 }
-            } catch (Exception ignored) {}
+            }
         }
     }
 }
