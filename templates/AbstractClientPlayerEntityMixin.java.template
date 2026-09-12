@@ -2,7 +2,7 @@ package com.voxelplus.runtime.mixin;
 
 import com.voxelplus.runtime.VoxelPlusSkinMod;
 import net.minecraft.client.network.AbstractClientPlayerEntity;
-import net.minecraft.util.Identifier;
+import net.minecraft.client.util.SkinTextures;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -11,34 +11,15 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(AbstractClientPlayerEntity.class)
 public abstract class AbstractClientPlayerEntityMixin {
 
-    @Inject(method = "getSkinTexture", at = @At("HEAD"), cancellable = true, require = 0)
-    private void voxelplus$getSkinTexture(CallbackInfoReturnable<Identifier> cir) {
+    @Inject(method = "getSkinTextures", at = @At("HEAD"), cancellable = true)
+    private void voxelplus$getSkinTextures(CallbackInfoReturnable<SkinTextures> cir) {
         if (VoxelPlusSkinMod.hasCustomSkin()) {
             AbstractClientPlayerEntity player = (AbstractClientPlayerEntity) (Object) this;
             if (VoxelPlusSkinMod.isTargetPlayer(player.getGameProfile().getName(), player.getGameProfile().getId())) {
-                cir.setReturnValue(VoxelPlusSkinMod.CUSTOM_SKIN_IDENTIFIER);
-            }
-        }
-    }
-
-    @Inject(method = "getModel", at = @At("HEAD"), cancellable = true, require = 0)
-    private void voxelplus$getModel(CallbackInfoReturnable<String> cir) {
-        if (VoxelPlusSkinMod.hasCustomSkin()) {
-            AbstractClientPlayerEntity player = (AbstractClientPlayerEntity) (Object) this;
-            if (VoxelPlusSkinMod.isTargetPlayer(player.getGameProfile().getName(), player.getGameProfile().getId())) {
-                cir.setReturnValue(VoxelPlusSkinMod.CUSTOM_MODEL);
-            }
-        }
-    }
-
-    @Inject(method = "getSkinTextures", at = @At("HEAD"), cancellable = true, require = 0)
-    private void voxelplus$getSkinTextures(CallbackInfoReturnable<Object> cir) {
-        if (VoxelPlusSkinMod.hasCustomSkin()) {
-            AbstractClientPlayerEntity player = (AbstractClientPlayerEntity) (Object) this;
-            if (VoxelPlusSkinMod.isTargetPlayer(player.getGameProfile().getName(), player.getGameProfile().getId())) {
-                Object customTextures = VoxelPlusSkinMod.getCustomSkinTexturesForPlayer(player);
-                if (customTextures != null) {
-                    cir.setReturnValue(customTextures);
+                SkinTextures original = cir.getReturnValue();
+                SkinTextures custom = VoxelPlusSkinMod.getCustomSkinTextures(original);
+                if (custom != null) {
+                    cir.setReturnValue(custom);
                 }
             }
         }

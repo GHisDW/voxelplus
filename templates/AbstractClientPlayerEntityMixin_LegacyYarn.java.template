@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(AbstractClientPlayerEntity.class)
 public abstract class AbstractClientPlayerEntityMixin {
 
-    @Inject(method = "getSkinTexture", at = @At("HEAD"), cancellable = true, require = 0)
+    @Inject(method = "getSkinTexture", at = @At("HEAD"), cancellable = true)
     private void voxelplus$getSkinTexture(CallbackInfoReturnable<Identifier> cir) {
         if (VoxelPlusSkinMod.hasCustomSkin()) {
             AbstractClientPlayerEntity player = (AbstractClientPlayerEntity) (Object) this;
@@ -21,7 +21,7 @@ public abstract class AbstractClientPlayerEntityMixin {
         }
     }
 
-    @Inject(method = "getModel", at = @At("HEAD"), cancellable = true, require = 0)
+    @Inject(method = "getModel", at = @At("HEAD"), cancellable = true)
     private void voxelplus$getModel(CallbackInfoReturnable<String> cir) {
         if (VoxelPlusSkinMod.hasCustomSkin()) {
             AbstractClientPlayerEntity player = (AbstractClientPlayerEntity) (Object) this;

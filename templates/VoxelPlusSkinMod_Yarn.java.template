@@ -38,7 +38,7 @@ public class VoxelPlusSkinMod implements ClientModInitializer {
                     NativeImage image = NativeImage.read(is);
                     NativeImageBackedTexture texture = new NativeImageBackedTexture(image);
 
-                    Identifier id = createIdentifier("voxelplus", "textures/skin/" + sanitize(TARGET_USERNAME) + ".png");
+                    Identifier id = Identifier.of("voxelplus", "textures/skin/" + sanitize(TARGET_USERNAME) + ".png");
 
                     MinecraftClient.getInstance().execute(() -> {
                         try {
@@ -91,19 +91,5 @@ public class VoxelPlusSkinMod implements ClientModInitializer {
 
     private static String sanitize(String input) {
         return input.toLowerCase().replaceAll("[^a-z0-9_]", "_");
-    }
-
-    private static Identifier createIdentifier(String namespace, String path) {
-        try {
-            java.lang.reflect.Method ofMethod = Identifier.class.getMethod("of", String.class, String.class);
-            return (Identifier) ofMethod.invoke(null, namespace, path);
-        } catch (Exception e) {
-            try {
-                java.lang.reflect.Constructor<Identifier> constructor = Identifier.class.getConstructor(String.class, String.class);
-                return constructor.newInstance(namespace, path);
-            } catch (Exception ex) {
-                throw new RuntimeException("Could not instantiate Identifier", ex);
-            }
-        }
     }
 }

@@ -147,10 +147,7 @@ zipStorePath=wrapper/dists
       compatibilityLevel: "JAVA_17",
       client: [
         "AbstractClientPlayerEntityMixin"
-      ],
-      injectors: {
-        defaultRequire: 0
-      }
+      ]
     };
 
     fs.writeFileSync(
