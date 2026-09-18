@@ -107,12 +107,12 @@ export class SettingsPage {
       };
 
       (div.querySelector('#btn-redo-onboarding') as HTMLElement).onclick = async () => {
-        await api.setAppSettings({ firstRunCompleted: false });
-        if (this.events?.onRedoOnboarding) {
-          this.events.onRedoOnboarding();
-        } else {
-          window.location.reload();
-        }
+        await api.setAppSettings({
+  tosAccepted: false,
+  firstRunCompleted: false
+});
+
+window.location.reload();
       };
     } else if (this.activeSection === 'minecraft') {
       div.innerHTML = `

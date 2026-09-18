@@ -5,10 +5,12 @@ import { ContentPage } from './pages/ContentPage';
 import { LogsPage } from './pages/LogsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { OnboardingPage } from './pages/OnboardingPage';
+import { TosGatePage } from './pages/TosGatePage';
 import { CreateInstanceModal } from './components/CreateInstanceModal';
 import { ThemeService } from './services/themeService';
 import { api } from './services/api';
 import { InstanceMetadata } from '../../electron/types';
+
 import { NotificationToast } from './components/NotificationToast';
 
 class VoxelApp {
@@ -21,7 +23,23 @@ class VoxelApp {
   private settingsPage!: SettingsPage;
 
   public async init(): Promise<void> {
+    const settings = await api.getAppSettings();
+
+    // TOS is part of the first-launch setup.
+    // It must appear before theme, Java detection, or normal onboarding.
+    if (!settings.tosAccepted) {
+      this.showTosGate();
+      return;
+    }
+
+    await this.continueStartup();
+  }
+
+  private async continueStartup(): Promise<void> {
+    // This is the normal Java + Theme setup.
+    // It only runs after the TOS has been accepted.
     await ThemeService.initialize();
+
     const settings = await api.getAppSettings();
 
     if (!settings.firstRunCompleted) {
@@ -29,17 +47,28 @@ class VoxelApp {
     } else {
       this.showMainApp();
     }
-
-    // Global listener for process notifications
-    api.onProcessStatus((e) => {
-      if (e.status === 'RUNNING') {
-        NotificationToast.show(`Minecraft development client is running.`, 'success');
-      } else if (e.status === 'ERROR') {
-        NotificationToast.show(`Process exited with an error. Check logs for details.`, 'error');
-      }
-    });
   }
 
+  private showTosGate(): void {
+    const appEl = document.getElementById('app')!;
+    appEl.innerHTML = '';
+
+    const tos = new TosGatePage({
+      onAccepted: async () => {
+        // Accept TOS once.
+        // After this, TOS will never block startup again.
+        await api.setAppSettings({
+          tosAccepted: true
+        });
+
+        // Immediately continue into the normal
+        // Java + Theme onboarding.
+        await this.continueStartup();
+      }
+    });
+
+    appEl.appendChild(tos.render());
+  }
   private showOnboarding(): void {
     const appEl = document.getElementById('app')!;
     appEl.innerHTML = '';

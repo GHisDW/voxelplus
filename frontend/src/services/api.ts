@@ -27,6 +27,7 @@ export const api = {
   // Settings
   getAppSettings: (): Promise<AppSettings> => electronApi.getAppSettings(),
   setAppSettings: (settings: Partial<AppSettings>): Promise<AppSettings> => electronApi.setAppSettings(settings),
+  quitApp: (): Promise<void> => electronApi.quitApp(),
 
   // System & Environment
   scanSystem: (): Promise<SystemScanResult> => electronApi.scanSystem(),

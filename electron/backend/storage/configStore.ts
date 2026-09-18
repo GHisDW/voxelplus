@@ -1,4 +1,4 @@
-﻿import fs from 'node:fs';
+import fs from 'node:fs';
 import { AppSettings, ThemeMode } from '../../types';
 import { PathManager } from './paths';
 import { VoxelError } from '../diagnostics';
@@ -13,7 +13,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   advancedJvmArgs: '-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC',
   gradleWrapperArgs: '--no-daemon',
   debugLogging: false,
-  firstRunCompleted: false
+  firstRunCompleted: false,
+  tosAccepted: false,
 };
 
 export class ConfigStore {
@@ -122,4 +123,3 @@ export class ConfigStore {
     this.saveSettings({ firstRunCompleted: completed });
   }
 }
-
