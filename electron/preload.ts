@@ -25,6 +25,7 @@ const api = {
   // Settings
   getAppSettings: (): Promise<AppSettings> => ipcRenderer.invoke('settings:get'),
   setAppSettings: (settings: Partial<AppSettings>): Promise<AppSettings> => ipcRenderer.invoke('settings:set', settings),
+  quitApp: (): Promise<void> => ipcRenderer.invoke('app:quit'),
 
   // System & Environment
   scanSystem: (): Promise<SystemScanResult> => ipcRenderer.invoke('system:scan'),

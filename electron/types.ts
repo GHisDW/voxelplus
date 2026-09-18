@@ -288,6 +288,7 @@ export interface AppSettings {
   gradleWrapperArgs: string;
   debugLogging: boolean;
   firstRunCompleted: boolean;
+  tosAccepted: boolean;
 }
 
 export interface CreateInstancePayload {

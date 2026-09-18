@@ -16,7 +16,7 @@
     "minecraft-client",
     "singleplayer"
   ],
-  "author": "GHisDW <mokshadshetty@gmail.com>",
+  "author": "GHisDW [](mailto:)",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/GHisDW/voxelplus/issues"
@@ -26,7 +26,8 @@
     "dev": "vite",
     "build": "tsc -p electron/tsconfig.json && vite build",
     "app:dev": "vite",
-    "start": "electron ."
+    "start": "electron .",
+    "dist": "npm run build && electron-builder"
   },
   "dependencies": {
     "adm-zip": "^0.5.16",
@@ -36,11 +37,52 @@
     "@types/adm-zip": "^0.5.5",
     "@types/node": "^22.10.2",
     "electron": "^33.2.1",
+    "electron-builder": "^26.0.12",
     "typescript": "^5.7.2",
     "vite": "^6.0.3"
   },
   "allowScripts": {
     "electron@33.4.11": true,
     "esbuild@0.25.12": true
+  },
+  "build": {
+    "appId": "com.ghisdw.voxelplus",
+    "productName": "VoxelPlus",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "kk.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "VoxelPlus",
+      "artifactName": "VoxelPlus-${version}-Setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "VoxelPlus-${version}-Portable.${ext}"
+    }
   }
 }

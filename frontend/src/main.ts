@@ -2,14 +2,15 @@ import { PageId, Sidebar } from './components/Sidebar';
 import { Header, HeaderFilters } from './components/Header';
 import { InstancesPage } from './pages/InstancesPage';
 import { ContentPage } from './pages/ContentPage';
-import { SkinsPage } from './pages/SkinsPage';
 import { LogsPage } from './pages/LogsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { OnboardingPage } from './pages/OnboardingPage';
+import { TosGatePage } from './pages/TosGatePage';
 import { CreateInstanceModal } from './components/CreateInstanceModal';
 import { ThemeService } from './services/themeService';
 import { api } from './services/api';
 import { InstanceMetadata } from '../../electron/types';
+
 import { NotificationToast } from './components/NotificationToast';
 
 class VoxelApp {
@@ -18,12 +19,27 @@ class VoxelApp {
   private header!: Header;
   private instancesPage!: InstancesPage;
   private contentPage!: ContentPage;
-  private skinsPage!: SkinsPage;
   private logsPage!: LogsPage;
   private settingsPage!: SettingsPage;
 
   public async init(): Promise<void> {
+    const settings = await api.getAppSettings();
+
+    // TOS is part of the first-launch setup.
+    // It must appear before theme, Java detection, or normal onboarding.
+    if (!settings.tosAccepted) {
+      this.showTosGate();
+      return;
+    }
+
+    await this.continueStartup();
+  }
+
+  private async continueStartup(): Promise<void> {
+    // This is the normal Java + Theme setup.
+    // It only runs after the TOS has been accepted.
     await ThemeService.initialize();
+
     const settings = await api.getAppSettings();
 
     if (!settings.firstRunCompleted) {
@@ -31,17 +47,28 @@ class VoxelApp {
     } else {
       this.showMainApp();
     }
-
-    // Global listener for process notifications
-    api.onProcessStatus((e) => {
-      if (e.status === 'RUNNING') {
-        NotificationToast.show(`Minecraft development client is running.`, 'success');
-      } else if (e.status === 'ERROR') {
-        NotificationToast.show(`Process exited with an error. Check logs for details.`, 'error');
-      }
-    });
   }
 
+  private showTosGate(): void {
+    const appEl = document.getElementById('app')!;
+    appEl.innerHTML = '';
+
+    const tos = new TosGatePage({
+      onAccepted: async () => {
+        // Accept TOS once.
+        // After this, TOS will never block startup again.
+        await api.setAppSettings({
+          tosAccepted: true
+        });
+
+        // Immediately continue into the normal
+        // Java + Theme onboarding.
+        await this.continueStartup();
+      }
+    });
+
+    appEl.appendChild(tos.render());
+  }
   private showOnboarding(): void {
     const appEl = document.getElementById('app')!;
     appEl.innerHTML = '';
@@ -69,7 +96,6 @@ class VoxelApp {
       }
     });
     this.contentPage = new ContentPage();
-    this.skinsPage = new SkinsPage();
     this.logsPage = new LogsPage();
     this.settingsPage = new SettingsPage({
       onRedoOnboarding: () => this.showOnboarding()
@@ -131,8 +157,6 @@ class VoxelApp {
       pageContainer.appendChild(await this.instancesPage.render());
     } else if (this.activePage === 'content') {
       pageContainer.appendChild(await this.contentPage.render());
-    } else if (this.activePage === 'skins') {
-      pageContainer.appendChild(await this.skinsPage.render());
     } else if (this.activePage === 'logs') {
       pageContainer.appendChild(await this.logsPage.render());
     } else if (this.activePage === 'settings') {

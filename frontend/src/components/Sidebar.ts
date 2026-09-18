@@ -1,4 +1,4 @@
-export type PageId = 'instances' | 'content' | 'skins' | 'logs' | 'settings';
+export type PageId = 'instances' | 'content' | 'logs' | 'settings';
 
 export interface SidebarEvents {
   onNavigate: (page: PageId) => void;
@@ -51,11 +51,6 @@ export class Sidebar {
         <button class="nav-item ${this.activePage === 'content' ? 'active' : ''}" data-page="content" style="${this.navItemStyle(this.activePage === 'content')}">
           <span style="font-size: 1.2rem;">◈</span>
           <span>Content</span>
-        </button>
-
-        <button class="nav-item ${this.activePage === 'skins' ? 'active' : ''}" data-page="skins" style="${this.navItemStyle(this.activePage === 'skins')}">
-          <span style="font-size: 1.2rem;">👕</span>
-          <span>Skins</span>
         </button>
 
         <button class="nav-item ${this.activePage === 'logs' ? 'active' : ''}" data-page="logs" style="${this.navItemStyle(this.activePage === 'logs')}">

@@ -47,6 +47,7 @@ function registerIpcHandlers() {
   // Settings
   handle('settings:get', 'CONFIGURATION', async () => CommandManager.getAppSettings());
   handle('settings:set', 'CONFIGURATION', async (_, settings) => CommandManager.setAppSettings(settings));
+  handle('app:quit', 'IPC', async () => { app.quit(); });
 
   // System & Environment
   handle('system:scan', 'MINECRAFT', async () => CommandManager.scanSystem());
@@ -186,4 +187,3 @@ app.on('window-all-closed', () => {
     app.quit();
   }
 });
-

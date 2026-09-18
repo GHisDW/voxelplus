@@ -11,14 +11,8 @@ const SUPPORTED_MC_VERSIONS = [
   { ver: '26.1.2', label: '26.1.2' },
   { ver: '26.1.1', label: '26.1.1' },
   { ver: '1.21.4', label: '1.21.4' },
-  { ver: '1.21.1', label: '1.21.1' },
-  { ver: '1.20.6', label: '1.20.6' },
-  { ver: '1.20.1', label: '1.20.1 (LTS Modded)' },
-  { ver: '1.19.4', label: '1.19.4' },
-  { ver: '1.18.2', label: '1.18.2' },
-  { ver: '1.17.1', label: '1.17.1' },
-  { ver: '1.16.5', label: '1.16.5 (Legacy Java 8)' },
-  { ver: '1.15.2', label: '1.15.2 (Legacy Java 8)' }
+  { ver: '1.21.3', label: '1.21.3' },
+  { ver: '1.21.1', label: '1.21.1' }
 ];
 
 export class CreateInstanceModal {
@@ -269,4 +263,3 @@ export class CreateInstanceModal {
     });
   }
 }
-
