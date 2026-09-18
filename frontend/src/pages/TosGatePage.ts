@@ -15,7 +15,7 @@ export class TosGatePage {
     },
     {
       title: 'Responsible use',
-      body: 'Voxel⁺ may be used for legitimate purposes, but it can be used for piracy or other unauthorized activity. Do not misuse Voxel⁺. Only continue if you agree to use it responsibly and legally.'
+      body: 'Voxel⁺ is intended to be used as a piracy tool. Only continue if you agree with this statement.'
     },
     {
       title: 'Open source & third-party files',
