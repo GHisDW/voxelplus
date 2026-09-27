@@ -365,8 +365,19 @@ export interface SkinSearchResult {
   username: string;
   uuid: string;
   skinUrl: string;
+  model: SkinModel;
   capeUrl?: string;
   nameHistory: Array<{ name: string; changed_at: string }>;
+}
+
+export interface SkinVersionCompatibility {
+  minecraftVersion: string;
+  isSupported: boolean;
+  supportsModern64x64: boolean;
+  supportsLegacy64x32: boolean;
+  supportsSlimModel: boolean;
+  skinStorageMode: 'texturepack' | 'client_assets' | 'offline_profile' | 'standard';
+  notes: string;
 }
 
 export interface SkinDownloadProgress {
@@ -377,4 +388,236 @@ export interface SkinDownloadProgress {
   percentage: number;
   status: 'downloading' | 'validating' | 'completed' | 'failed';
   error?: string;
+}
+
+// ===== Normalized Multi-Provider Content Types =====
+
+/** Identifies which content provider a project/version originated from. */
+export type ContentProvider = 'modrinth' | 'curseforge';
+
+/**
+ * Provider-normalized mod/resourcepack/shader project.
+ * Modrinth and CurseForge results are both mapped to this shape
+ * so the frontend can display them uniformly.
+ */
+export interface ContentProject {
+  provider: ContentProvider;
+  /** Provider-specific numeric or string project ID. */
+  providerProjectId: string;
+  /** URL-friendly slug (may equal providerProjectId for CurseForge). */
+  slug: string;
+  name: string;
+  description: string;
+  iconUrl: string | null;
+  author: string;
+  categories: string[];
+  projectType: 'mod' | 'resourcepack' | 'shader' | 'modpack';
+  downloads: number;
+  /** Broad list of supported MC versions (for display/filtering only). */
+  supportedGameVersions: string[];
+  /** Loaders this project supports (fabric, forge, etc.). */
+  supportedLoaders: string[];
+}
+
+/**
+ * Provider-normalized mod version.
+ * Each version corresponds to a specific file (or set of files) for download.
+ */
+export interface ContentVersion {
+  provider: ContentProvider;
+  projectId: string;
+  versionId: string;
+  versionName: string;
+  versionNumber: string;
+  gameVersions: string[];
+  loaders: string[];
+  releaseType: 'release' | 'beta' | 'alpha';
+  datePublished: string;
+  downloads: number;
+  files: ContentFile[];
+}
+
+/** Downloadable file within a version. */
+export interface ContentFile {
+  url: string;
+  filename: string;
+  isPrimary: boolean;
+  sizeBytes: number;
+  sha1?: string;
+  sha512?: string;
+}
+
+// ===== CurseForge-specific types =====
+
+export interface CurseForgeSearchResult {
+  data: CurseForgeProject[];
+  pagination: {
+    index: number;
+    pageSize: number;
+    resultCount: number;
+    totalCount: number;
+  };
+}
+
+export interface CurseForgeProject {
+  id: number;
+  gameId: number;
+  name: string;
+  slug: string;
+  summary: string;
+  downloadCount: number;
+  authors: Array<{ name: string }>;
+  categories: Array<{ name: string; id: number }>;
+  logo: { thumbnailUrl: string } | null;
+  classId: number;
+  latestFilesIndexes: Array<{
+    gameVersion: string;
+    fileId: number;
+    filename: string;
+    releaseType: number;
+    modLoader: number | null;
+  }>;
+  dateReleased: string;
+}
+
+export interface CurseForgeFile {
+  id: number;
+  modId: number;
+  displayName: string;
+  fileName: string;
+  releaseType: number; // 1=release, 2=beta, 3=alpha
+  downloadUrl: string | null;
+  fileLength: number;
+  downloadCount: number;
+  isAvailable: boolean;
+  gameVersions: string[];
+  sortableGameVersions: Array<{
+    gameVersionName: string;
+    gameVersionPadded: string;
+    gameVersion: string;
+  }>;
+}
+
+// ===== Voxel+ Cards =====
+
+/**
+ * Reference to an exact provider file within a Card definition.
+ * This is intentionally explicit — Cards are deterministic.
+ */
+export interface CardModRef {
+  provider: ContentProvider;
+  /** Provider-specific project ID. */
+  projectId: string;
+  projectName: string;
+  /** Provider-specific version ID (Modrinth version ID or CurseForge file ID). */
+  versionId: string;
+  versionName: string;
+  /** Direct download URL for the exact file. */
+  downloadUrl: string;
+  /** Filename to use on disk. */
+  filename: string;
+  /** File size in bytes, for validation. */
+  sizeBytes?: number;
+  /** SHA1 hash for integrity check (optional). */
+  sha1?: string;
+  /** Icon URL for display. */
+  iconUrl?: string;
+  contentType: 'mod' | 'resourcepack' | 'shader';
+  /** Whether this content could not be resolved to a provider identity (e.g., manually installed JAR). */
+  unresolved?: boolean;
+}
+
+/**
+ * A Voxel+ Card — a curated, deterministic instance definition.
+ *
+ * Card version is completely separate from:
+ * - Minecraft version
+ * - Loader version
+ * - Individual mod versions
+ */
+export interface VoxelCard {
+  /** Schema version for future migration support. */
+  schemaVersion: number;
+  /** Stable identifier, never changes between card versions. */
+  id: string;
+  name: string;
+  description: string;
+  /** Short tagline shown on card tiles. */
+  tagline: string;
+  /** Artwork: data URL or remote URL. */
+  artwork: string | null;
+  /** Card version — independent of MC/loader/mod versions. */
+  cardVersion: string;
+  /** Minecraft version this card targets. */
+  minecraftVersion: string;
+  /** Loader type. */
+  loaderType: LoaderType;
+  /** Exact loader version. */
+  loaderVersion: string;
+  /** Ordered list of exact mod/content references. */
+  mods: CardModRef[];
+  /** Optional tags for filtering (e.g. 'performance', 'magic', 'tech'). */
+  tags: string[];
+  /** Card author/publisher. */
+  author: string;
+  /** ISO date of this card version. */
+  publishedAt: string;
+  /**
+   * Reserved for future signing/verification.
+   * null means unsigned/community/local.
+   */
+  signature: string | null;
+}
+
+/**
+ * Tracks local installation state of a Card.
+ * Stored separately from the Card definition so the definition stays immutable.
+ */
+export interface CardInstallState {
+  cardId: string;
+  cardVersion: string;
+  /** Voxel+ instance ID created for this Card. */
+  instanceId: string;
+  installedAt: string;
+  /** Whether all mods were installed successfully. */
+  isComplete: boolean;
+  /** Mod filenames that failed to install, if any. */
+  failedMods: string[];
+}
+
+// ===== Voxel+ Packs (My Packs & VPack Format) =====
+
+/**
+ * Manifest format for a portable .vpack file.
+ */
+export interface VPackManifest {
+  schemaVersion: number;
+  id: string;
+  name: string;
+  description: string;
+  packVersion: string;
+  minecraftVersion: string;
+  loaderType: LoaderType;
+  loaderVersion: string;
+  mods: CardModRef[];
+  resourcePacks: CardModRef[];
+  shaderPacks: CardModRef[];
+  configs?: Record<string, any>;
+}
+
+export interface MyPack {
+  id: string;
+  name: string;
+  description: string;
+  artwork: string | null;
+  packVersion: string;
+  minecraftVersion: string;
+  loaderType: LoaderType;
+  loaderVersion: string;
+  mods: CardModRef[];
+  resourcePacks: CardModRef[];
+  shaderPacks: CardModRef[];
+  configs?: Record<string, any>;
+  createdAt: string;
+  updatedAt: string;
 }

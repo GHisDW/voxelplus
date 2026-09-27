@@ -1,4 +1,4 @@
-﻿import { SkinManagerModal } from '../components/SkinManagerModal';
+import { SkinManagerModal } from '../components/SkinManagerModal';
 import { api } from '../services/api';
 import { SkinMetadata } from '../../../electron/types';
 import * as skinview3d from 'skinview3d';
@@ -199,7 +199,8 @@ export class SkinsPage {
         canvas,
         width: 320,
         height: 360,
-        skin: this.activeSkin.thumbnail
+        skin: this.activeSkin.thumbnail,
+        model: this.activeSkin.model === 'alex' ? 'slim' : 'default'
       });
 
       this.viewer.fov = 55;

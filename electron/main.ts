@@ -93,6 +93,7 @@ function registerIpcHandlers() {
   handle('skins:rename', 'SKIN', async (_, id, newName) => CommandManager.renameSkin(id, newName));
   handle('skins:delete', 'SKIN', async (_, id) => CommandManager.deleteSkin(id));
   handle('skins:validate', 'SKIN', async (_, filePath) => CommandManager.validateSkin(filePath));
+  handle('skins:getCompatibility', 'SKIN', async (_, mcVersion) => CommandManager.getSkinCompatibility(mcVersion));
   handle('skins:clear', 'SKIN', async () => CommandManager.clearSkins());
 
   // Modrinth
@@ -114,7 +115,36 @@ function registerIpcHandlers() {
   handle('dialog:selectFolder', 'IPC', async () => CommandManager.selectFolderDialog(mainWindow || undefined));
   handle('dialog:selectFile', 'IPC', async (_, filters) => CommandManager.selectFileDialog(filters));
   handle('dialog:selectSaveFile', 'IPC', async (_, name, filters) => CommandManager.selectSaveFileDialog(name, filters));
+
+  // CurseForge
+  handle('curseforge:search', 'NETWORK', async (_, params) => CommandManager.searchCurseForge(params));
+  handle('curseforge:getProject', 'NETWORK', async (_, modId) => CommandManager.getCurseForgeProject(modId));
+  handle('curseforge:getFiles', 'NETWORK', async (_, params) => CommandManager.getCurseForgeFiles(params));
+  handle('curseforge:isConfigured', 'NETWORK', async () => CommandManager.isCurseForgeConfigured());
+
+  // Cards
+  handle('cards:list', 'INSTANCE', async () => CommandManager.listCards());
+  handle('cards:get', 'INSTANCE', async (_, cardId) => CommandManager.getCard(cardId));
+  handle('cards:save', 'INSTANCE', async (_, card) => { CommandManager.saveCard(card); return { success: true }; });
+  handle('cards:delete', 'INSTANCE', async (_, cardId) => { CommandManager.deleteCard(cardId); return { success: true }; });
+  handle('cards:export', 'INSTANCE', async (_, card) => CommandManager.exportCard(card));
+  handle('cards:listInstalled', 'INSTANCE', async () => CommandManager.listInstalledCards());
+  handle('cards:getInstallState', 'INSTANCE', async (_, cardId) => CommandManager.getCardInstallState(cardId));
+  handle('cards:install', 'INSTANCE', async (_, cardId) => CommandManager.installCard(cardId));
+  handle('cards:uninstall', 'INSTANCE', async (_, cardId) => CommandManager.uninstallCard(cardId));
+
+  // Packs
+  handle('packs:list', 'INSTANCE', async () => CommandManager.listPacks());
+  handle('packs:get', 'INSTANCE', async (_, packId) => CommandManager.getPack(packId));
+  handle('packs:save', 'INSTANCE', async (_, pack) => CommandManager.savePack(pack));
+  handle('packs:delete', 'INSTANCE', async (_, packId) => CommandManager.deletePack(packId));
+  handle('packs:export', 'INSTANCE', async (_, packId) => CommandManager.exportPack(packId));
+  handle('packs:import', 'INSTANCE', async () => CommandManager.importPack());
+  handle('packs:createFromInstance', 'INSTANCE', async (_, instanceId, packDetails) => CommandManager.createPackFromInstance(instanceId, packDetails));
+  handle('packs:install', 'INSTANCE', async (_, packId) => CommandManager.installPack(packId));
+  handle('packs:installToInstance', 'INSTANCE', async (_, packId, instanceId) => CommandManager.installPackToInstance(packId, instanceId));
 }
+
 
 function createWindow() {
   mainWindow = new BrowserWindow({

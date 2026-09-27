@@ -3,7 +3,17 @@ import { SkinStore } from './skinStore';
 import { SkinValidator } from './skinValidator';
 import { SkinBrowser } from './skinBrowser';
 
+import { SkinCompatibilityResolver } from './skinCompatibility';
+import { SkinVersionCompatibility } from '../../types';
+
 export class SkinManager {
+  /**
+   * Determine skin capabilities and version compatibility
+   */
+  public static getSkinCompatibility(minecraftVersion: string): SkinVersionCompatibility {
+    return SkinCompatibilityResolver.getCompatibility(minecraftVersion);
+  }
+
   /**
    * Import a skin from a local file
    */
@@ -40,8 +50,8 @@ export class SkinManager {
       };
     }
 
-    // Download and save skin
-    return SkinStore.downloadSkin(username, skinUrl, customName);
+    // Download and save skin with discovered model
+    return SkinStore.downloadSkin(username, skinUrl, customName, searchResult.result.model);
   }
 
   /**

@@ -54,6 +54,53 @@ See [`SKIN_MANAGER_TEST.md`](SKIN_MANAGER_TEST.md) for the comprehensive testing
 
 ---
 
+## 📦 Pack System — Shop & My Packs
+
+**Status:** ✅ Implemented
+
+Voxel⁺ includes a comprehensive Pack system with two content models:
+
+### Shop Cards
+
+* 🛒 Official Voxel⁺ curated content
+* 📋 Deterministic mod/resource pack/shader selections
+* 🎯 Exact version pinning for reproducibility
+* 📦 One-click installation to new or existing instances
+
+### My Packs
+
+* ✍️ Create custom packs from scratch
+* 🔄 Create packs from existing instances with content resolution
+* 📤 Export packs as `.vpack` archives
+* 📥 Import `.vpack` archives with validation
+* 🎨 Custom artwork support (`cc.png`)
+* 🧩 Mods, resource packs, and shader packs
+* ⚙️ Configuration file support
+* 🔍 Unresolved content tracking for manually installed files
+
+### VPack Format
+
+The `.vpack` format is a portable archive containing:
+
+* Versioned manifest (`manifest.json`)
+* Pack artwork (`cc.png`)
+* Configuration files
+* Exact content references (provider, project, version, file IDs)
+* Hash verification data
+
+### Key Components
+
+* **Backend:** `electron/backend/packs/`
+  * `packStore.ts` — Local pack persistence
+  * `vpackManager.ts` — Archive export/import with validation
+  * `packInstaller.ts` — Pack installation to instances
+* **Frontend:**
+  * `frontend/src/components/PackCreatorModal.ts` — Full pack editor
+  * `frontend/src/pages/MyPacksPage.ts` — Pack management
+  * `frontend/src/pages/ShopPage.ts` — Shop card browsing
+
+---
+
 ## 🧩 The Fabric & Loom Situation
 
 Voxel⁺ is built around Fabric Loom and Gradle, but recent changes in the official Fabric ecosystem have **not broken Voxel⁺**.
@@ -104,6 +151,11 @@ We'll continue monitoring Fabric and Loom development as Voxel⁺ grows, but use
 * 👤 Built-in Skin Manager
 * 💾 Persistent per-instance configuration
 * ⚙️ Automatic Minecraft development environment setup
+* 📦 Pack System — Shop Cards & My Packs
+* 🎯 Exact version pinning for reproducible modpacks
+* 📤 Export custom packs as `.vpack` archives
+* 📥 Import `.vpack` archives with validation
+* 🔄 Create packs from existing instances
 
 > **Minecraft is better with mods. We don't make the rules. 😎**
 
@@ -113,6 +165,7 @@ Voxel⁺ currently provides verified Fabric development profiles for:
 
 | Minecraft | Java |    Status   |
 | :-------: | :--: | :---------: |
+|    26.3   |  25  | ✅ Supported |
 |    26.2   |  25  | ✅ Supported |
 |   26.1.2  |  25  | ✅ Supported |
 |   26.1.1  |  25  | ✅ Supported |

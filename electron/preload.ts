@@ -1,6 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import {
   AppSettings,
+  CardInstallState,
+  ContentProject,
+  ContentVersion,
   CreateInstancePayload,
   DownloadProgressEvent,
   EnvironmentCheckResult,
@@ -18,7 +21,10 @@ import {
   SkinMetadata,
   SkinSearchResult,
   SkinValidationResult,
-  SystemScanResult
+  SkinVersionCompatibility,
+  SystemScanResult,
+  VoxelCard,
+  MyPack
 } from './types';
 
 const api = {
@@ -66,6 +72,34 @@ const api = {
   getModrinthVersions: (slugOrId: string, loaders?: string[], gameVersions?: string[]): Promise<ModrinthVersion[]> => ipcRenderer.invoke('modrinth:getVersions', slugOrId, loaders, gameVersions),
   installModrinthContent: (instanceId: string, fileUrl: string, filename: string, title: string, type: 'mod' | 'resourcepack' | 'shader'): Promise<{ success: boolean; filename: string; error?: string }> => ipcRenderer.invoke('modrinth:install', instanceId, fileUrl, filename, title, type),
 
+  // CurseForge
+  searchCurseForge: (params: { query?: string; minecraftVersion?: string; loader?: string; limit?: number; offset?: number }): Promise<{ success: boolean; unconfigured?: boolean; data?: { projects: ContentProject[]; total: number }; error?: string }> => ipcRenderer.invoke('curseforge:search', params),
+  getCurseForgeFiles: (params: { modId: string; minecraftVersion?: string; loader?: string }): Promise<{ success: boolean; unconfigured?: boolean; data?: ContentVersion[]; error?: string }> => ipcRenderer.invoke('curseforge:getFiles', params),
+  getCurseForgeProject: (modId: string): Promise<{ success: boolean; unconfigured?: boolean; data?: ContentProject; error?: string }> => ipcRenderer.invoke('curseforge:getProject', modId),
+  isCurseForgeConfigured: (): Promise<boolean> => ipcRenderer.invoke('curseforge:isConfigured'),
+
+  // Cards
+  listCards: (): Promise<VoxelCard[]> => ipcRenderer.invoke('cards:list'),
+  getCard: (cardId: string): Promise<VoxelCard | null> => ipcRenderer.invoke('cards:get', cardId),
+  saveCard: (card: VoxelCard): Promise<{ success: boolean }> => ipcRenderer.invoke('cards:save', card),
+  deleteCard: (cardId: string): Promise<{ success: boolean }> => ipcRenderer.invoke('cards:delete', cardId),
+  exportCard: (card: VoxelCard): Promise<boolean> => ipcRenderer.invoke('cards:export', card),
+  listInstalledCards: (): Promise<CardInstallState[]> => ipcRenderer.invoke('cards:listInstalled'),
+  getCardInstallState: (cardId: string): Promise<CardInstallState | null> => ipcRenderer.invoke('cards:getInstallState', cardId),
+  installCard: (cardId: string): Promise<{ success: boolean; state?: CardInstallState; error?: string }> => ipcRenderer.invoke('cards:install', cardId),
+  uninstallCard: (cardId: string): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('cards:uninstall', cardId),
+
+  // Packs
+  listPacks: (): Promise<MyPack[]> => ipcRenderer.invoke('packs:list'),
+  getPack: (packId: string): Promise<MyPack | null> => ipcRenderer.invoke('packs:get', packId),
+  savePack: (pack: MyPack): Promise<{ success: boolean }> => ipcRenderer.invoke('packs:save', pack),
+  deletePack: (packId: string): Promise<{ success: boolean }> => ipcRenderer.invoke('packs:delete', packId),
+  exportPack: (packId: string): Promise<boolean> => ipcRenderer.invoke('packs:export', packId),
+  importPack: (): Promise<MyPack | null> => ipcRenderer.invoke('packs:import'),
+  createPackFromInstance: (instanceId: string, packDetails: Partial<MyPack>): Promise<MyPack | null> => ipcRenderer.invoke('packs:createFromInstance', instanceId, packDetails),
+  installPack: (packId: string): Promise<{ success: boolean; instanceId?: string; error?: string }> => ipcRenderer.invoke('packs:install', packId),
+  installPackToInstance: (packId: string, instanceId: string): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('packs:installToInstance', packId, instanceId),
+
   // Logs
   getLogs: (instanceId?: string, levelFilter?: string, query?: string): Promise<LogEntry[]> => ipcRenderer.invoke('logs:get', instanceId, levelFilter, query),
   clearLogs: (instanceId?: string): Promise<void> => ipcRenderer.invoke('logs:clear', instanceId),
@@ -91,6 +125,7 @@ const api = {
   renameSkin: (skinId: string, newName: string): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('skins:rename', skinId, newName),
   deleteSkin: (skinId: string): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('skins:delete', skinId),
   validateSkin: (filePath: string): Promise<SkinValidationResult> => ipcRenderer.invoke('skins:validate', filePath),
+  getSkinCompatibility: (minecraftVersion: string): Promise<SkinVersionCompatibility> => ipcRenderer.invoke('skins:getCompatibility', minecraftVersion),
   clearSkins: (): Promise<void> => ipcRenderer.invoke('skins:clear'),
 
   // Real-time Event Subscriptions
@@ -112,3 +147,4 @@ const api = {
 };
 
 contextBridge.exposeInMainWorld('voxelApi', api);
+

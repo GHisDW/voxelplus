@@ -1,4 +1,4 @@
-export type PageId = 'instances' | 'content' | 'skins' | 'logs' | 'settings';
+export type PageId = 'instances' | 'shop' | 'mypacks' | 'content' | 'skins' | 'logs' | 'settings';
 
 export interface SidebarEvents {
   onNavigate: (page: PageId) => void;
@@ -30,11 +30,9 @@ export class Sidebar {
           align-items: center;
           justify-content: center;
           box-shadow: 0 4px 14px var(--accent-glow);
-          color: white;
-          font-size: 1.2rem;
-          font-weight: 900;
+          overflow: hidden;
         ">
-          V
+          <img src="kk.png" alt="V" style="width: 100%; height: 100%; object-fit: cover;" />
         </div>
         <div class="brand-title">
           VOXEL<span class="plus-badge">⁺</span>
@@ -56,6 +54,16 @@ export class Sidebar {
         <button class="nav-item ${this.activePage === 'skins' ? 'active' : ''}" data-page="skins" style="${this.navItemStyle(this.activePage === 'skins')}">
           <span style="font-size: 1.2rem;">👕</span>
           <span>Skins</span>
+        </button>
+
+        <button class="nav-item ${this.activePage === 'shop' ? 'active' : ''}" data-page="shop" style="${this.navItemStyle(this.activePage === 'shop')}">
+          <span style="font-size: 1.2rem;">🛒</span>
+          <span>Shop</span>
+        </button>
+
+        <button class="nav-item ${this.activePage === 'mypacks' ? 'active' : ''}" data-page="mypacks" style="${this.navItemStyle(this.activePage === 'mypacks')}">
+          <span style="font-size: 1.2rem;">📦</span>
+          <span>My Packs</span>
         </button>
 
         <button class="nav-item ${this.activePage === 'logs' ? 'active' : ''}" data-page="logs" style="${this.navItemStyle(this.activePage === 'logs')}">

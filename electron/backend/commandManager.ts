@@ -16,7 +16,8 @@ import {
   SystemScanResult,
   SkinMetadata,
   SkinSearchResult,
-  SkinValidationResult
+  SkinValidationResult,
+  SkinVersionCompatibility
 } from '../types';
 import { ConfigStore } from './storage/configStore';
 import { SystemScanner } from './system/systemScanner';
@@ -33,6 +34,12 @@ import { ModrinthClient } from './modrinth/modrinthClient';
 import { DownloadManager } from './modrinth/downloader';
 import { LogStreamer } from './processes/logStreamer';
 import { SkinManager } from './skins/skinManager';
+import { CurseForgeClient } from './curseforge/curseforgeClient';
+import { CardStore } from './cards/cardStore';
+import { CardInstaller } from './cards/cardInstaller';
+import { PackStore } from './packs/packStore';
+import { VPackManager } from './packs/vpackManager';
+import { PackInstaller } from './packs/packInstaller';
 
 export class CommandManager {
   // Settings
@@ -287,7 +294,133 @@ export class CommandManager {
     return SkinManager.validateSkin(filePath);
   }
 
+  public static async getSkinCompatibility(minecraftVersion: string): Promise<SkinVersionCompatibility> {
+    return SkinManager.getSkinCompatibility(minecraftVersion);
+  }
+
   public static async clearSkins(): Promise<void> {
     SkinManager.clearLibrary();
+  }
+
+  // CurseForge
+  public static async searchCurseForge(params: {
+    query?: string;
+    minecraftVersion?: string;
+    loader?: string;
+    limit?: number;
+    offset?: number;
+  }) {
+    return CurseForgeClient.searchMods(params);
+  }
+
+  public static async getCurseForgeFiles(params: {
+    modId: string;
+    minecraftVersion?: string;
+    loader?: string;
+  }) {
+    return CurseForgeClient.getModFiles(params);
+  }
+
+  public static async getCurseForgeProject(modId: string) {
+    return CurseForgeClient.getProject(modId);
+  }
+
+  public static isCurseForgeConfigured(): boolean {
+    return CurseForgeClient.isConfigured();
+  }
+
+  // Cards
+  public static listCards() {
+    return CardStore.listCards();
+  }
+
+  public static getCard(cardId: string) {
+    return CardStore.getCard(cardId);
+  }
+
+  public static saveCard(card: any) {
+    return CardStore.saveCard(card);
+  }
+
+  public static deleteCard(cardId: string) {
+    return CardStore.deleteCard(cardId);
+  }
+
+  public static async exportCard(card: any) {
+    const p = await this.selectSaveFileDialog(`${card.id}.json`, [{ name: 'JSON', extensions: ['json'] }]);
+    if (p) {
+      require('node:fs').writeFileSync(p, JSON.stringify(card, null, 2), 'utf-8');
+      return true;
+    }
+    return false;
+  }
+
+  public static listInstalledCards() {
+    return CardStore.listInstalled();
+  }
+
+  public static getCardInstallState(cardId: string) {
+    return CardStore.getInstallState(cardId);
+  }
+
+  public static async installCard(cardId: string) {
+    const card = CardStore.getCard(cardId);
+    if (!card) return { success: false, error: 'Card not found' };
+    return CardInstaller.install(card);
+  }
+
+  public static async uninstallCard(cardId: string) {
+    return CardInstaller.uninstall(cardId);
+  }
+
+  // Packs
+  public static listPacks() {
+    return PackStore.listPacks();
+  }
+
+  public static getPack(packId: string) {
+    return PackStore.getPack(packId);
+  }
+
+  public static savePack(pack: any) {
+    PackStore.savePack(pack);
+    return { success: true };
+  }
+
+  public static deletePack(packId: string) {
+    PackStore.deletePack(packId);
+    return { success: true };
+  }
+
+  public static async exportPack(packId: string) {
+    const p = await this.selectSaveFileDialog(`${packId}.vpack`, [{ name: 'VPack', extensions: ['vpack'] }]);
+    if (p) {
+      return VPackManager.exportPack(packId, p);
+    }
+    return false;
+  }
+
+  public static async importPack() {
+    const p = await this.selectFileDialog([{ name: 'VPack', extensions: ['vpack'] }]);
+    if (p) {
+      return VPackManager.importPack(p);
+    }
+    return null;
+  }
+
+  public static async createPackFromInstance(instanceId: string, packDetails: any) {
+    return VPackManager.createPackFromInstance(instanceId, packDetails);
+  }
+
+  public static async installPack(packId: string) {
+    const pack = PackStore.getPack(packId);
+    if (!pack) return { success: false, error: 'Pack not found' };
+    return PackInstaller.installPack(pack);
+  }
+
+  public static async installPackToInstance(packId: string, instanceId: string) {
+    const pack = PackStore.getPack(packId);
+    if (!pack) return { success: false, error: 'Pack not found' };
+    return PackInstaller.installPackToInstance(pack, instanceId);
   }
 }

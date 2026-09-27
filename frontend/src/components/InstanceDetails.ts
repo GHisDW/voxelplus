@@ -7,6 +7,7 @@ import { SkinManagerModal } from './SkinManagerModal';
 import { AddContentModal } from './AddContentModal';
 import { ConfirmDialog } from './ConfirmDialog';
 import { NotificationToast } from './NotificationToast';
+import { PackCreatorModal } from './PackCreatorModal';
 
 export interface InstanceDetailsEvents {
   onBack: () => void;
@@ -213,7 +214,7 @@ export class InstanceDetails {
           <div class="horizontal-card" style="padding: 16px; background: var(--bg-card); border-radius: var(--radius-md);">
             <div style="font-size: 0.78rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Minecraft Version</div>
             <div style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin-top: 4px;">${this.instance.minecraft.version}</div>
-            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">Fabric Loader ${this.instance.loader.version}</div>
+            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">${this.instance.loader.type.charAt(0).toUpperCase() + this.instance.loader.type.slice(1)} Loader ${this.instance.loader.version}</div>
           </div>
 
           <div class="horizontal-card" style="padding: 16px; background: var(--bg-card); border-radius: var(--radius-md);">
@@ -235,6 +236,19 @@ export class InstanceDetails {
             <div style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin-top: 4px;">Gradle & Fabric Loom</div>
             <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">Target: <code>gradlew.bat runClient</code></div>
           </div>
+        </div>
+
+        <!-- Create Pack from Instance -->
+        <div class="horizontal-card" style="padding: 16px; background: var(--bg-card); border-radius: var(--radius-lg); margin-top: 16px;">
+          <h4 style="font-size: 0.9rem; font-weight: 700; color: var(--text-primary); margin-bottom: 12px;">
+            Create Pack from Instance
+          </h4>
+          <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 12px;">
+            Create a shareable pack from this instance's configuration and installed content.
+          </p>
+          <button class="btn btn-primary" id="btn-create-pack" style="width: 100%;">
+            📦 Create Pack
+          </button>
         </div>
       </div>
     `;
@@ -300,6 +314,33 @@ export class InstanceDetails {
         this.instance.appearance.skinId = null;
         (div.querySelector('#edit-skin-text') as HTMLElement).textContent = 'Default Skin';
         NotificationToast.show('Skin removed from instance', 'success');
+      }
+    };
+
+    // Hook create pack button
+    const createPackBtn = div.querySelector('#btn-create-pack') as HTMLButtonElement;
+    createPackBtn.onclick = async () => {
+      createPackBtn.disabled = true;
+      createPackBtn.textContent = 'Creating Pack...';
+      
+      try {
+        const pack = await api.createPackFromInstance(this.instance.id, {
+          name: `${this.instance.name} Pack`,
+          description: `Pack created from instance "${this.instance.name}"`
+        });
+        
+        if (pack) {
+          NotificationToast.show('Pack created successfully! Check My Packs to edit and share it.', 'success');
+          // Optionally navigate to My Packs page
+          (window as any).navigateTo?.('mypacks');
+        } else {
+          NotificationToast.show('Failed to create pack from instance.', 'error');
+        }
+      } catch (e: any) {
+        NotificationToast.show(`Failed to create pack: ${e.message}`, 'error');
+      } finally {
+        createPackBtn.disabled = false;
+        createPackBtn.textContent = '📦 Create Pack';
       }
     };
 

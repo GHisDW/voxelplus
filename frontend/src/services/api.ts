@@ -1,5 +1,8 @@
 import {
   AppSettings,
+  CardInstallState,
+  ContentProject,
+  ContentVersion,
   CreateInstancePayload,
   DownloadProgressEvent,
   EnvironmentCheckResult,
@@ -17,7 +20,10 @@ import {
   SkinMetadata,
   SkinSearchResult,
   SkinValidationResult,
-  SystemScanResult
+  SkinVersionCompatibility,
+  SystemScanResult,
+  VoxelCard,
+  MyPack
 } from '../../../electron/types';
 
 // Access the contextBridge exposed API
@@ -62,11 +68,39 @@ export const api = {
   removeShader: (instanceId: string, filename: string): Promise<boolean> => electronApi.removeShader(instanceId, filename),
   importFile: (instanceId: string, filePath: string, type: 'mod' | 'resourcepack' | 'shader'): Promise<{ success: boolean; filename: string; error?: string }> => electronApi.importFile(instanceId, filePath, type),
 
-  // Modrinth
+  // Modrinth (existing, unchanged)
   searchModrinth: (params: any): Promise<{ hits: ModrinthProject[]; total_hits: number }> => electronApi.searchModrinth(params),
   getModrinthProject: (slugOrId: string): Promise<ModrinthProject | null> => electronApi.getModrinthProject(slugOrId),
   getModrinthVersions: (slugOrId: string, loaders?: string[], gameVersions?: string[]): Promise<ModrinthVersion[]> => electronApi.getModrinthVersions(slugOrId, loaders, gameVersions),
   installModrinthContent: (instanceId: string, fileUrl: string, filename: string, title: string, type: 'mod' | 'resourcepack' | 'shader'): Promise<{ success: boolean; filename: string; error?: string }> => electronApi.installModrinthContent(instanceId, fileUrl, filename, title, type),
+
+  // CurseForge
+  searchCurseForge: (params: { query?: string; minecraftVersion?: string; loader?: string; limit?: number; offset?: number }): Promise<{ success: boolean; unconfigured?: boolean; data?: { projects: ContentProject[]; total: number }; error?: string }> => electronApi.searchCurseForge(params),
+  getCurseForgeFiles: (params: { modId: string; minecraftVersion?: string; loader?: string }): Promise<{ success: boolean; unconfigured?: boolean; data?: ContentVersion[]; error?: string }> => electronApi.getCurseForgeFiles(params),
+  getCurseForgeProject: (modId: string): Promise<{ success: boolean; unconfigured?: boolean; data?: ContentProject; error?: string }> => electronApi.getCurseForgeProject(modId),
+  isCurseForgeConfigured: (): Promise<boolean> => electronApi.isCurseForgeConfigured(),
+
+  // Cards
+  listCards: (): Promise<VoxelCard[]> => electronApi.listCards(),
+  getCard: (cardId: string): Promise<VoxelCard | null> => electronApi.getCard(cardId),
+  saveCard: (card: VoxelCard): Promise<{ success: boolean }> => electronApi.saveCard(card),
+  deleteCard: (cardId: string): Promise<{ success: boolean }> => electronApi.deleteCard(cardId),
+  exportCard: (card: VoxelCard): Promise<boolean> => electronApi.exportCard(card),
+  listInstalledCards: (): Promise<CardInstallState[]> => electronApi.listInstalledCards(),
+  getCardInstallState: (cardId: string): Promise<CardInstallState | null> => electronApi.getCardInstallState(cardId),
+  installCard: (cardId: string): Promise<{ success: boolean; state?: CardInstallState; error?: string }> => electronApi.installCard(cardId),
+  uninstallCard: (cardId: string): Promise<{ success: boolean; error?: string }> => electronApi.uninstallCard(cardId),
+
+  // Packs
+  listPacks: (): Promise<MyPack[]> => electronApi.listPacks(),
+  getPack: (packId: string): Promise<MyPack | null> => electronApi.getPack(packId),
+  savePack: (pack: MyPack): Promise<{ success: boolean }> => electronApi.savePack(pack),
+  deletePack: (packId: string): Promise<{ success: boolean }> => electronApi.deletePack(packId),
+  exportPack: (packId: string): Promise<boolean> => electronApi.exportPack(packId),
+  importPack: (): Promise<MyPack | null> => electronApi.importPack(),
+  createPackFromInstance: (instanceId: string, packDetails: Partial<MyPack>): Promise<MyPack | null> => electronApi.createPackFromInstance(instanceId, packDetails),
+  installPack: (packId: string): Promise<{ success: boolean; instanceId?: string; error?: string }> => electronApi.installPack(packId),
+  installPackToInstance: (packId: string, instanceId: string): Promise<{ success: boolean; error?: string }> => electronApi.installPackToInstance(packId, instanceId),
 
   // Logs
   getLogs: (instanceId?: string, levelFilter?: string, query?: string): Promise<LogEntry[]> => electronApi.getLogs(instanceId, levelFilter, query),
@@ -93,6 +127,7 @@ export const api = {
   renameSkin: (skinId: string, newName: string): Promise<{ success: boolean; error?: string }> => electronApi.renameSkin(skinId, newName),
   deleteSkin: (skinId: string): Promise<{ success: boolean; error?: string }> => electronApi.deleteSkin(skinId),
   validateSkin: (filePath: string): Promise<SkinValidationResult> => electronApi.validateSkin(filePath),
+  getSkinCompatibility: (minecraftVersion: string): Promise<SkinVersionCompatibility> => electronApi.getSkinCompatibility(minecraftVersion),
   clearSkins: (): Promise<void> => electronApi.clearSkins(),
 
   // Real-time Event Subscriptions

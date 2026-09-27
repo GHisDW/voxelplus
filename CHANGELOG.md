@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Added
 
+* Pack System with Shop Cards and My Packs
+* Pack Creator Modal with full editor for mods, resource packs, and shader packs
+* VPack archive format (`.vpack`) with manifest, artwork, and content references
+* VPack export functionality with artwork support (`cc.png`)
+* VPack import functionality with validation and path traversal protection
+* Pack installation to new or existing instances
+* Create Pack from Instance workflow with content identity resolution
+* Unresolved content tracking for manually installed mods
+* Verified support for Minecraft 26.3 with updated Fabric/Loom profile
 * Minecraft Skin Manager with persistent local skin library
 * Minecraft skin PNG validation for supported formats and dimensions
 * Minecraft player skin search and skin downloading
@@ -19,7 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 * Dynamic compatibility resolution system for Minecraft versions
 * Centralized Java runtime selection with deterministic preferences
 * Automatic environment resolution for different Minecraft eras
-* Verified support for Minecraft 1.15.2 through 1.21.4 and 26.1.1 through 26.2
+* Verified support for Minecraft 1.15.2 through 1.21.4 and 26.1.1 through 26.3
 * Minecraft version chooser aligned with verified compatibility profiles
 * Integration with existing Fabric Loom and Gradle configurations
 * Improved error messages with specific Java version requirements

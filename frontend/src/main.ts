@@ -2,6 +2,8 @@ import { PageId, Sidebar } from './components/Sidebar';
 import { Header, HeaderFilters } from './components/Header';
 import { InstancesPage } from './pages/InstancesPage';
 import { ContentPage } from './pages/ContentPage';
+import { ShopPage } from './pages/ShopPage';
+import { MyPacksPage } from './pages/MyPacksPage';
 import { SkinsPage } from './pages/SkinsPage';
 import { LogsPage } from './pages/LogsPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -18,6 +20,8 @@ class VoxelApp {
   private header!: Header;
   private instancesPage!: InstancesPage;
   private contentPage!: ContentPage;
+  private shopPage!: ShopPage;
+  private myPacksPage!: MyPacksPage;
   private skinsPage!: SkinsPage;
   private logsPage!: LogsPage;
   private settingsPage!: SettingsPage;
@@ -69,6 +73,8 @@ class VoxelApp {
       }
     });
     this.contentPage = new ContentPage();
+    this.shopPage = new ShopPage();
+    this.myPacksPage = new MyPacksPage();
     this.skinsPage = new SkinsPage();
     this.logsPage = new LogsPage();
     this.settingsPage = new SettingsPage({
@@ -131,6 +137,10 @@ class VoxelApp {
       pageContainer.appendChild(await this.instancesPage.render());
     } else if (this.activePage === 'content') {
       pageContainer.appendChild(await this.contentPage.render());
+    } else if (this.activePage === 'shop') {
+      pageContainer.appendChild(await this.shopPage.render());
+    } else if (this.activePage === 'mypacks') {
+      pageContainer.appendChild(await this.myPacksPage.render());
     } else if (this.activePage === 'skins') {
       pageContainer.appendChild(await this.skinsPage.render());
     } else if (this.activePage === 'logs') {

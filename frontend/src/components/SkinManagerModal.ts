@@ -1,4 +1,4 @@
-﻿import { api } from '../services/api';
+import { api } from '../services/api';
 import { SkinMetadata, SkinSearchResult } from '../../../electron/types';
 import { NotificationToast } from './NotificationToast';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -276,7 +276,8 @@ export class SkinManagerModal {
           canvas,
           width: 220,
           height: 220,
-          skin: skin.thumbnail
+          skin: skin.thumbnail,
+          model: skin.model === 'alex' ? 'slim' : 'default'
         });
 
         viewer.fov = 55;
@@ -666,7 +667,8 @@ export class SkinManagerModal {
           canvas,
           width: 150,
           height: 190,
-          skin: result.skinUrl
+          skin: result.skinUrl,
+          model: result.model === 'alex' ? 'slim' : 'default'
         });
 
       viewer.fov = 55;

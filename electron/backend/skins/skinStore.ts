@@ -190,7 +190,8 @@ export class SkinStore {
   public static async downloadSkin(
     username: string,
     skinUrl: string,
-    customName?: string
+    customName?: string,
+    modelOverride?: SkinModel
   ): Promise<{ success: boolean; skin?: SkinMetadata; error?: string }> {
     try {
       // Download skin
@@ -227,11 +228,12 @@ export class SkinStore {
       const thumbnail = await this.generateThumbnail(destPath);
 
       // Create metadata
+      const detectedModel = modelOverride || validation.model || 'steve';
       const metadata: SkinMetadata = {
         id: skinId,
         name: customName || `${username}'s Skin`,
         filePath: destPath,
-        model: validation.model || 'steve',
+        model: detectedModel,
         dimensions: validation.dimensions!,
         sizeBytes: validation.sizeBytes!,
         source: 'download',

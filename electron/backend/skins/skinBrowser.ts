@@ -1,4 +1,4 @@
-﻿import { SkinSearchResult } from '../../types';
+import { SkinSearchResult } from '../../types';
 
 const MOJANG_PROFILE_API = 'https://api.mojang.com/users/profiles/minecraft';
 const MOJANG_SESSION_API = 'https://sessionserver.mojang.com/session/minecraft/profile';
@@ -122,6 +122,8 @@ export class SkinBrowser {
 
       const skinUrl = textureData.textures?.SKIN?.url || '';
       const capeUrl = textureData.textures?.CAPE?.url;
+      const rawModel = textureData.textures?.SKIN?.metadata?.model;
+      const model: 'steve' | 'alex' = rawModel === 'slim' ? 'alex' : 'steve';
 
       if (!skinUrl) {
         return {
@@ -134,6 +136,7 @@ export class SkinBrowser {
         username: profile.name,
         uuid: profile.id,
         skinUrl,
+        model,
         capeUrl,
         nameHistory: []
       };
