@@ -1,3 +1,205 @@
+```yaml
+name: Voxel+ AI PR Reviewer
+
+on:
+  issue_comment:
+    types:
+      - created
+
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Pull request number"
+        required: true
+        type: string
+
+      mode:
+        description: "Review mode"
+        required: true
+        default: review
+        type: choice
+        options:
+          - review
+          - changed
+          - security
+          - tests
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: voxel-ai-review-${{ github.event.issue.number || inputs.pr_number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Voxel+ AI Review
+    runs-on: ubuntu-latest
+
+    # Only allow trusted repository members to trigger
+    # the secret-bearing comment workflow.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request &&
+        contains(
+          fromJSON('["OWNER","MEMBER","COLLABORATOR"]'),
+          github.event.comment.author_association
+        ) &&
+        startsWith(
+          github.event.comment.body,
+          '/voxel-review'
+        )
+      )
+
+    steps:
+      - name: Resolve inputs
+        id: inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "pr_number=${{ inputs.pr_number }}" >> "$GITHUB_OUTPUT"
+            echo "mode=${{ inputs.mode }}" >> "$GITHUB_OUTPUT"
+          else
+            COMMAND="${{ github.event.comment.body }}"
+
+            MODE="review"
+
+            if [[ "$COMMAND" == *" changed"* ]]; then
+              MODE="changed"
+            elif [[ "$COMMAND" == *" security"* ]]; then
+              MODE="security"
+            elif [[ "$COMMAND" == *" tests"* ]]; then
+              MODE="tests"
+            fi
+
+            echo "pr_number=${{ github.event.issue.number }}" >> "$GITHUB_OUTPUT"
+            echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Fetch PR metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.inputs.outputs.pr_number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh api \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" \
+            > pr.json
+
+          gh api \
+            --paginate \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100" \
+            > files-pages.json
+
+          python3 - <<'PY'
+          import json
+
+          with open("files-pages.json", encoding="utf-8") as f:
+              data = json.load(f)
+
+          # gh --paginate may return an array of pages.
+          # Flatten it safely.
+          if data and isinstance(data[0], list):
+              files = []
+              for page in data:
+                  files.extend(page)
+          else:
+              files = data
+
+          with open("files.json", "w", encoding="utf-8") as f:
+              json.dump(files, f, ensure_ascii=False)
+
+          print("Changed files:", len(files))
+          PY
+
+          gh api \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}.diff" \
+            > pr.diff
+
+      - name: Find previous AI review
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.inputs.outputs.pr_number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          import re
+
+          pr_number = os.environ["PR_NUMBER"]
+
+          result = subprocess.run(
+              [
+                  "gh",
+                  "api",
+                  "--paginate",
+                  f"repos/{os.environ['GITHUB_REPOSITORY']}/issues/{pr_number}/comments?per_page=100"
+              ],
+              capture_output=True,
+              text=True,
+              check=True
+          )
+
+          try:
+              pages = json.loads(result.stdout)
+          except json.JSONDecodeError:
+              pages = []
+
+          comments = []
+
+          if pages and isinstance(pages[0], list):
+              for page in pages:
+                  comments.extend(page)
+          else:
+              comments = pages
+
+          marker = "<!-- voxel-ai-review -->"
+          sha_marker = "<!-- voxel-ai-review-sha:"
+
+          previous_sha = ""
+
+          for comment in reversed(comments):
+              body = comment.get("body", "")
+
+              if marker not in body:
+                  continue
+
+              match = re.search(
+                  r"<!--\s*voxel-ai-review-sha:\s*([0-9a-fA-F]+)\s*-->",
+                  body
+              )
+
+              if match:
+                  previous_sha = match.group(1)
+
+              break
+
+          with open("previous-review-sha.txt", "w", encoding="utf-8") as f:
+              f.write(previous_sha)
+
+          print(
+              "Previous reviewed SHA:",
+              previous_sha or "none"
+          )
+          PY
+
       - name: Build compact AI review chunks
         env:
           MODE: ${{ steps.inputs.outputs.mode }}
@@ -10,14 +212,11 @@
           import os
           from pathlib import Path
 
-          # Groq organization limit:
-          # 8,000 tokens per minute.
+          # Groq organization limit is currently 8,000 TPM.
           #
-          # Keep each request comfortably below that.
-          # ~18,000 characters is roughly a 4.5K-5.5K token
-          # input depending on the source code.
-
-          MAX_CHARS = 18000
+          # Keep individual requests small enough that we have
+          # room for multiple requests and the final synthesis.
+          MAX_CHARS = 14000
 
           def read_text(path):
               try:
@@ -32,27 +231,16 @@
               pr = json.load(f)
 
           with open("files.json", encoding="utf-8") as f:
-              pages = json.load(f)
+              files = json.load(f)
 
-          files = []
-
-          for page in pages:
-              if isinstance(page, list):
-                  files.extend(page)
-
-          mode = os.environ.get(
-              "MODE",
-              "review"
-          )
+          mode = os.environ.get("MODE", "review")
 
           previous_sha = read_text(
               "previous-review-sha.txt"
           ).strip()
 
-          # ------------------------------------------------------------
-          # Small, high-value repository context.
-          # ------------------------------------------------------------
-
+          # Keep repository context intentionally small.
+          # The AI receives the changed code separately.
           repository_context = {}
 
           context_candidates = [
@@ -66,7 +254,6 @@
           ]
 
           for name in context_candidates:
-
               path = Path(name)
 
               if not path.exists():
@@ -77,63 +264,42 @@
                   errors="replace"
               )
 
-              if len(content) > 3000:
+              if len(content) > 2500:
                   content = (
-                      content[:3000]
+                      content[:2500]
                       + "\n[repository context truncated]"
                   )
 
               repository_context[name] = content
 
-          # ------------------------------------------------------------
-          # Basic PR information included in EVERY chunk.
-          # ------------------------------------------------------------
-
           all_changed_files = []
 
           for item in files:
-
               all_changed_files.append({
-                  "filename":
-                      item.get("filename", ""),
-
-                  "status":
-                      item.get("status", ""),
-
-                  "additions":
-                      item.get("additions", 0),
-
-                  "deletions":
-                      item.get("deletions", 0),
-
-                  "changes":
-                      item.get("changes", 0)
+                  "filename": item.get("filename", ""),
+                  "status": item.get("status", ""),
+                  "additions": item.get("additions", 0),
+                  "deletions": item.get("deletions", 0),
+                  "changes": item.get("changes", 0)
               })
 
           base = {
               "review_mode": mode,
 
               "pr": {
-                  "number":
-                      pr.get("number"),
+                  "number": pr.get("number"),
+                  "title": pr.get("title", ""),
+                  "description": (pr.get("body") or "")[:5000],
 
-                  "title":
-                      pr.get("title", ""),
+                  "base_sha": (
+                      pr.get("base", {})
+                      .get("sha")
+                  ),
 
-                  "description":
-                      (pr.get("body") or "")[:6000],
-
-                  "base_sha":
-                      pr.get(
-                          "base",
-                          {}
-                      ).get("sha"),
-
-                  "head_sha":
-                      pr.get(
-                          "head",
-                          {}
-                      ).get("sha")
+                  "head_sha": (
+                      pr.get("head", {})
+                      .get("sha")
+                  )
               },
 
               "previous_review_sha":
@@ -146,17 +312,9 @@
                   repository_context
           }
 
-          # ------------------------------------------------------------
-          # Calculate serialized size.
-          # ------------------------------------------------------------
-
-          def serialized_size(items):
-
+          def payload_size(items):
               payload = dict(base)
-
-              payload[
-                  "files_in_this_chunk"
-              ] = items
+              payload["files_in_this_chunk"] = items
 
               return len(
                   json.dumps(
@@ -165,18 +323,12 @@
                   )
               )
 
-          # ------------------------------------------------------------
-          # Split one gigantic patch into safe pieces.
-          # ------------------------------------------------------------
-
           def split_large_file(item):
-
-              patch = item.get(
-                  "patch",
-                  ""
-              )
+              patch = item.get("patch", "") or ""
 
               if not patch:
+                  # Binary files or files where GitHub did not
+                  # provide a patch.
                   return [item]
 
               lines = patch.splitlines(
@@ -184,167 +336,83 @@
               )
 
               parts = []
-              current_lines = []
+              current = []
 
               for line in lines:
+                  candidate = current + [line]
 
-                  candidate_lines = (
-                      current_lines
-                      + [line]
-                  )
+                  test_item = dict(item)
+                  test_item["patch"] = "".join(candidate)
 
-                  candidate = dict(item)
-
-                  candidate[
-                      "patch"
-                  ] = "".join(
-                      candidate_lines
-                  )
-
-                  # Leave some room for metadata.
                   if (
-                      current_lines
-                      and serialized_size(
-                          [candidate]
-                      ) > MAX_CHARS
+                      current
+                      and payload_size([test_item]) > MAX_CHARS
                   ):
-
-                      parts.append(
-                          "".join(
-                              current_lines
-                          )
-                      )
-
-                      current_lines = [
-                          line
-                      ]
-
+                      parts.append("".join(current))
+                      current = [line]
                   else:
+                      current = candidate
 
-                      current_lines = (
-                          candidate_lines
-                      )
-
-              if current_lines:
-                  parts.append(
-                      "".join(
-                          current_lines
-                      )
-                  )
+              if current:
+                  parts.append("".join(current))
 
               result = []
-
               total = len(parts)
 
               for index, patch_part in enumerate(
                   parts,
-                  1
+                  start=1
               ):
-
-                  split_item = {
-                      "filename":
-                          item.get(
-                              "filename",
-                              ""
-                          )
-                          + (
-                              f" [patch part "
-                              f"{index}/{total}]"
-                          ),
+                  result.append({
+                      "filename": (
+                          item.get("filename", "")
+                          + f" [patch part {index}/{total}]"
+                      ),
 
                       "status":
-                          item.get(
-                              "status",
-                              ""
-                          ),
+                          item.get("status", ""),
 
                       "additions":
-                          item.get(
-                              "additions",
-                              0
-                          ),
+                          item.get("additions", 0),
 
                       "deletions":
-                          item.get(
-                              "deletions",
-                              0
-                          ),
+                          item.get("deletions", 0),
 
                       "changes":
-                          item.get(
-                              "changes",
-                              0
-                          ),
+                          item.get("changes", 0),
 
                       "patch":
                           patch_part
-                  }
-
-                  result.append(
-                      split_item
-                  )
+                  })
 
               return result
-
-          # ------------------------------------------------------------
-          # Build chunks.
-          #
-          # First convert every huge file into safe file pieces.
-          # Then pack those pieces together without exceeding MAX_CHARS.
-          # ------------------------------------------------------------
 
           normalized_files = []
 
           for original in files:
-
               item = {
                   "filename":
-                      original.get(
-                          "filename",
-                          ""
-                      ),
+                      original.get("filename", ""),
 
                   "status":
-                      original.get(
-                          "status",
-                          ""
-                      ),
+                      original.get("status", ""),
 
                   "additions":
-                      original.get(
-                          "additions",
-                          0
-                      ),
+                      original.get("additions", 0),
 
                   "deletions":
-                      original.get(
-                          "deletions",
-                          0
-                      ),
+                      original.get("deletions", 0),
 
                   "changes":
-                      original.get(
-                          "changes",
-                          0
-                      ),
+                      original.get("changes", 0),
 
                   "patch":
-                      original.get(
-                          "patch",
-                          ""
-                      ) or ""
+                      original.get("patch", "") or ""
               }
 
-              # If it fits, keep it intact.
-              if serialized_size([item]) <= MAX_CHARS:
-
-                  normalized_files.append(
-                      item
-                  )
-
+              if payload_size([item]) <= MAX_CHARS:
+                  normalized_files.append(item)
               else:
-
-                  # Otherwise split it safely.
                   normalized_files.extend(
                       split_large_file(item)
                   )
@@ -353,87 +421,40 @@
           current = []
 
           for item in normalized_files:
+              candidate = current + [item]
 
-              candidate = (
-                  current
-                  + [item]
-              )
-
-              # If adding this item would exceed the limit,
-              # finalize the current chunk.
               if (
                   current
-                  and serialized_size(
-                      candidate
-                  ) > MAX_CHARS
+                  and payload_size(candidate) > MAX_CHARS
               ):
-
-                  chunks.append(
-                      current
-                  )
-
-                  current = [
-                      item
-                  ]
-
+                  chunks.append(current)
+                  current = [item]
               else:
-
                   current = candidate
 
-          # Add final chunk.
           if current:
-              chunks.append(
-                  current
-              )
+              chunks.append(current)
 
-          # A PR with zero changed files should still produce one
-          # review request.
           if not chunks:
               chunks = [[]]
 
-          # ------------------------------------------------------------
-          # Write chunks.
-          # ------------------------------------------------------------
+          output = Path("review-chunks")
+          output.mkdir(exist_ok=True)
 
-          output = Path(
-              "review-chunks"
-          )
-
-          output.mkdir(
-              exist_ok=True
-          )
-
-          # Clean old chunks.
-          for old in output.glob(
-              "chunk-*.json"
-          ):
-
+          for old in output.glob("chunk-*.json"):
               old.unlink()
 
-          total_chunks = len(
-              chunks
-          )
+          total_chunks = len(chunks)
 
           for index, items in enumerate(
               chunks,
-              1
+              start=1
           ):
+              payload = dict(base)
 
-              payload = dict(
-                  base
-              )
-
-              payload[
-                  "chunk_number"
-              ] = index
-
-              payload[
-                  "total_chunks"
-              ] = total_chunks
-
-              payload[
-                  "files_in_this_chunk"
-              ] = items
+              payload["chunk_number"] = index
+              payload["total_chunks"] = total_chunks
+              payload["files_in_this_chunk"] = items
 
               output_file = (
                   output
@@ -449,34 +470,24 @@
                   encoding="utf-8"
               )
 
-          Path(
-              "chunk-count.txt"
-          ).write_text(
+          Path("chunk-count.txt").write_text(
               str(total_chunks),
               encoding="utf-8"
           )
 
-          print(
-              "Changed files:",
-              len(files)
-          )
-
+          print("Changed files:", len(files))
           print(
               "Normalized file pieces:",
               len(normalized_files)
           )
-
           print(
               "Review chunks:",
               total_chunks
           )
 
           for path in sorted(
-              output.glob(
-                  "chunk-*.json"
-              )
+              output.glob("chunk-*.json")
           ):
-
               size = len(
                   path.read_text(
                       encoding="utf-8"
@@ -489,3 +500,884 @@
                   "characters"
               )
           PY
+
+      - name: Review chunks with Groq
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          MODE: ${{ steps.inputs.outputs.mode }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p ai-results
+
+          python3 - <<'PY'
+          import json
+          import os
+          import time
+          import urllib.error
+          import urllib.request
+          from pathlib import Path
+
+          API_KEY = os.environ["GROQ_API_KEY"]
+          MODEL = "openai/gpt-oss-120b"
+
+          schema = {
+              "type": "object",
+              "additionalProperties": False,
+              "properties": {
+                  "summary": {
+                      "type": "string"
+                  },
+
+                  "description_matches": {
+                      "type": "boolean"
+                  },
+
+                  "confidence": {
+                      "type": "string",
+                      "enum": [
+                          "high",
+                          "medium",
+                          "low"
+                      ]
+                  },
+
+                  "issues": {
+                      "type": "array",
+                      "items": {
+                          "type": "object",
+                          "additionalProperties": False,
+                          "properties": {
+                              "severity": {
+                                  "type": "string",
+                                  "enum": [
+                                      "critical",
+                                      "high",
+                                      "medium",
+                                      "low"
+                                  ]
+                              },
+
+                              "title": {
+                                  "type": "string"
+                              },
+
+                              "file": {
+                                  "type": "string"
+                              },
+
+                              "line": {
+                                  "type": "integer"
+                              },
+
+                              "description": {
+                                  "type": "string"
+                              },
+
+                              "suggested_fix": {
+                                  "type": "string"
+                              }
+                          },
+
+                          "required": [
+                              "severity",
+                              "title",
+                              "file",
+                              "line",
+                              "description",
+                              "suggested_fix"
+                          ]
+                      }
+                  },
+
+                  "verification": {
+                      "type": "array",
+                      "items": {
+                          "type": "string"
+                      }
+                  }
+              },
+
+              "required": [
+                  "summary",
+                  "description_matches",
+                  "confidence",
+                  "issues",
+                  "verification"
+              ]
+          }
+
+          system_prompt = """
+          You are the senior code reviewer for the Voxel+ Minecraft launcher.
+
+          Review the supplied pull request code carefully.
+
+          Your job is NOT to nitpick style.
+
+          Focus on real engineering problems:
+
+          - bugs
+          - broken behavior
+          - incorrect assumptions
+          - security vulnerabilities
+          - data loss
+          - crashes
+          - race conditions
+          - broken state management
+          - incorrect API usage
+          - Electron main/renderer security problems
+          - authentication problems
+          - filesystem problems
+          - Minecraft launcher/runtime issues
+          - regressions
+          - missing error handling when it can cause real failures
+          - implementation that does not actually satisfy the PR description
+
+          Do NOT invent issues.
+
+          Only report an issue when the supplied evidence supports it.
+
+          If something is merely a style preference, ignore it.
+
+          If there are no meaningful problems, return an empty issues array.
+
+          Check whether the implementation actually matches the PR
+          description.
+
+          For every issue:
+          - give the exact affected file
+          - give the best approximate changed line
+          - explain why it is a real problem
+          - suggest a concrete fix
+
+          The review must be concise but technically useful.
+
+          Review mode:
+          """
+
+          mode = os.environ.get(
+              "MODE",
+              "review"
+          )
+
+          if mode == "security":
+              system_prompt += """
+              SECURITY MODE:
+              Prioritize vulnerabilities, trust boundaries,
+              authentication, secrets, IPC, filesystem access,
+              injection, unsafe Electron APIs, and dependency risks.
+              """
+
+          elif mode == "tests":
+              system_prompt += """
+              TEST MODE:
+              Prioritize broken behavior that tests should catch,
+              missing meaningful validation, and regressions.
+              Do not demand tests for trivial code.
+              """
+
+          elif mode == "changed":
+              system_prompt += """
+              CHANGED MODE:
+              Focus especially on what changed and whether those
+              changes introduce regressions or fail to accomplish
+              their stated purpose.
+              """
+
+          else:
+              system_prompt += """
+              GENERAL REVIEW MODE:
+              Perform a balanced engineering review.
+              """
+
+          def call_groq(payload):
+              body = json.dumps(
+                  payload,
+                  ensure_ascii=False
+              ).encode("utf-8")
+
+              request = urllib.request.Request(
+                  "https://api.groq.com/openai/v1/chat/completions",
+                  data=body,
+                  headers={
+                      "Authorization":
+                          f"Bearer {API_KEY}",
+
+                      "Content-Type":
+                          "application/json",
+
+                      "User-Agent":
+                          "VoxelPlus-AI-Reviewer/2.0"
+                  },
+                  method="POST"
+              )
+
+              with urllib.request.urlopen(
+                  request,
+                  timeout=180
+              ) as response:
+                  return json.loads(
+                      response.read()
+                  )
+
+          def run_with_retry(payload):
+              delay = 20
+
+              for attempt in range(1, 7):
+                  try:
+                      return call_groq(payload)
+
+                  except urllib.error.HTTPError as exc:
+                      body = exc.read().decode(
+                          "utf-8",
+                          errors="replace"
+                      )
+
+                      print(
+                          f"Groq HTTP {exc.code}: {body}"
+                      )
+
+                      if exc.code not in (
+                          413,
+                          429,
+                          500,
+                          502,
+                          503,
+                          504
+                      ):
+                          raise
+
+                      if attempt == 6:
+                          raise
+
+                      print(
+                          f"Retrying in {delay}s..."
+                      )
+
+                      time.sleep(delay)
+                      delay *= 2
+
+          chunk_paths = sorted(
+              Path("review-chunks").glob(
+                  "chunk-*.json"
+              )
+          )
+
+          for index, path in enumerate(
+              chunk_paths,
+              start=1
+          ):
+              print(
+                  f"Reviewing {path.name} "
+                  f"({index}/{len(chunk_paths)})"
+              )
+
+              with path.open(
+                  encoding="utf-8"
+              ) as f:
+                  chunk = json.load(f)
+
+              payload = {
+                  "model": MODEL,
+
+                  "temperature": 0.1,
+
+                  "max_completion_tokens": 1600,
+
+                  "response_format": {
+                      "type": "json_schema",
+
+                      "json_schema": {
+                          "name":
+                              "voxel_review",
+
+                          "strict":
+                              True,
+
+                          "schema":
+                              schema
+                      }
+                  },
+
+                  "messages": [
+                      {
+                          "role": "system",
+                          "content":
+                              system_prompt
+                      },
+
+                      {
+                          "role": "user",
+                          "content": json.dumps(
+                              chunk,
+                              ensure_ascii=False
+                          )
+                      }
+                  ]
+              }
+
+              result = run_with_retry(
+                  payload
+              )
+
+              content = (
+                  result["choices"][0]
+                  ["message"]
+                  ["content"]
+              )
+
+              parsed = json.loads(content)
+
+              output = (
+                  Path("ai-results")
+                  / f"chunk-{index:03d}.json"
+              )
+
+              output.write_text(
+                  json.dumps(
+                      parsed,
+                      ensure_ascii=False,
+                      indent=2
+                  ),
+                  encoding="utf-8"
+              )
+
+              # Keep requests safely spaced for the
+              # organization's 8K TPM limit.
+              if index < len(chunk_paths):
+                  print(
+                      "Waiting 30 seconds "
+                      "before next Groq request..."
+                  )
+
+                  time.sleep(30)
+          PY
+
+      - name: Synthesize final review
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          import json
+          import os
+          import time
+          import urllib.error
+          import urllib.request
+          from pathlib import Path
+
+          API_KEY = os.environ["GROQ_API_KEY"]
+          MODEL = "openai/gpt-oss-120b"
+
+          results = []
+
+          for path in sorted(
+              Path("ai-results").glob(
+                  "chunk-*.json"
+              )
+          ):
+              with path.open(
+                  encoding="utf-8"
+              ) as f:
+                  results.append(
+                      json.load(f)
+                  )
+
+          compact = {
+              "chunk_reviews": results
+          }
+
+          schema = {
+              "type": "object",
+              "additionalProperties": False,
+              "properties": {
+                  "verdict": {
+                      "type": "string",
+                      "enum": [
+                          "approve",
+                          "changes_requested",
+                          "comment"
+                      ]
+                  },
+
+                  "summary": {
+                      "type": "string"
+                  },
+
+                  "description_matches": {
+                      "type": "boolean"
+                  },
+
+                  "confidence": {
+                      "type": "string",
+                      "enum": [
+                          "high",
+                          "medium",
+                          "low"
+                      ]
+                  },
+
+                  "issues": {
+                      "type": "array",
+                      "items": {
+                          "type": "object",
+                          "additionalProperties": False,
+                          "properties": {
+                              "severity": {
+                                  "type": "string",
+                                  "enum": [
+                                      "critical",
+                                      "high",
+                                      "medium",
+                                      "low"
+                                  ]
+                              },
+
+                              "title": {
+                                  "type": "string"
+                              },
+
+                              "file": {
+                                  "type": "string"
+                              },
+
+                              "line": {
+                                  "type": "integer"
+                              },
+
+                              "description": {
+                                  "type": "string"
+                              },
+
+                              "suggested_fix": {
+                                  "type": "string"
+                              }
+                          },
+
+                          "required": [
+                              "severity",
+                              "title",
+                              "file",
+                              "line",
+                              "description",
+                              "suggested_fix"
+                          ]
+                      }
+                  },
+
+                  "verification": {
+                      "type": "array",
+                      "items": {
+                          "type": "string"
+                      }
+                  }
+              },
+
+              "required": [
+                  "verdict",
+                  "summary",
+                  "description_matches",
+                  "confidence",
+                  "issues",
+                  "verification"
+              ]
+          }
+
+          system_prompt = """
+          You are the final senior reviewer for the Voxel+ project.
+
+          Multiple AI reviewers analyzed different portions of the
+          same pull request.
+
+          Consolidate their findings.
+
+          IMPORTANT:
+
+          - Do not invent new issues.
+          - Remove duplicate issues.
+          - Keep only issues supported by the chunk findings.
+          - Do not report style preferences as bugs.
+          - Prefer concrete engineering problems.
+          - Check whether findings are actually actionable.
+          - Preserve useful file and line information.
+          - The final review should be concise.
+
+          Verdict rules:
+
+          approve:
+            No meaningful correctness, security, regression,
+            or implementation problems were found.
+
+          changes_requested:
+            At least one meaningful issue should be fixed before
+            considering the implementation complete.
+
+          comment:
+            There are useful observations but no issue that clearly
+            requires blocking the pull request.
+          """
+
+          def call():
+              body = json.dumps({
+                  "model": MODEL,
+
+                  "temperature": 0.1,
+
+                  "max_completion_tokens": 1600,
+
+                  "response_format": {
+                      "type": "json_schema",
+
+                      "json_schema": {
+                          "name":
+                              "voxel_final_review",
+
+                          "strict":
+                              True,
+
+                          "schema":
+                              schema
+                      }
+                  },
+
+                  "messages": [
+                      {
+                          "role": "system",
+                          "content":
+                              system_prompt
+                      },
+
+                      {
+                          "role": "user",
+                          "content": json.dumps(
+                              compact,
+                              ensure_ascii=False
+                          )
+                      }
+                  ]
+              }, ensure_ascii=False).encode(
+                  "utf-8"
+              )
+
+              request = urllib.request.Request(
+                  "https://api.groq.com/openai/v1/chat/completions",
+                  data=body,
+                  headers={
+                      "Authorization":
+                          f"Bearer {API_KEY}",
+
+                      "Content-Type":
+                          "application/json",
+
+                      "User-Agent":
+                          "VoxelPlus-AI-Reviewer/2.0"
+                  },
+                  method="POST"
+              )
+
+              with urllib.request.urlopen(
+                  request,
+                  timeout=180
+              ) as response:
+                  return json.loads(
+                      response.read()
+                  )
+
+          delay = 30
+          result = None
+
+          for attempt in range(1, 7):
+              try:
+                  result = call()
+                  break
+
+              except urllib.error.HTTPError as exc:
+                  body = exc.read().decode(
+                      "utf-8",
+                      errors="replace"
+                  )
+
+                  print(
+                      f"Groq HTTP {exc.code}: {body}"
+                  )
+
+                  if exc.code not in (
+                      413,
+                      429,
+                      500,
+                      502,
+                      503,
+                      504
+                  ):
+                      raise
+
+                  if attempt == 6:
+                      raise
+
+                  print(
+                      f"Retrying final synthesis "
+                      f"in {delay}s..."
+                  )
+
+                  time.sleep(delay)
+                  delay *= 2
+
+          content = (
+              result["choices"][0]
+              ["message"]
+              ["content"]
+          )
+
+          final_review = json.loads(
+              content
+          )
+
+          Path(
+              "final-review.json"
+          ).write_text(
+              json.dumps(
+                  final_review,
+                  ensure_ascii=False,
+                  indent=2
+              ),
+              encoding="utf-8"
+          )
+
+          print(
+              json.dumps(
+                  final_review,
+                  ensure_ascii=False,
+                  indent=2
+              )
+          )
+          PY
+
+      - name: Publish or update PR review comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.inputs.outputs.pr_number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          import re
+
+          pr_number = os.environ["PR_NUMBER"]
+
+          with open(
+              "final-review.json",
+              encoding="utf-8"
+          ) as f:
+              review = json.load(f)
+
+          with open(
+              "pr.json",
+              encoding="utf-8"
+          ) as f:
+              pr = json.load(f)
+
+          sha = (
+              pr.get("head", {})
+              .get("sha", "")
+          )
+
+          marker = "<!-- voxel-ai-review -->"
+
+          body = [
+              marker,
+              f"<!-- voxel-ai-review-sha: {sha} -->",
+              "",
+              "## 🤖 Voxel+ AI Review",
+              "",
+              f"**Verdict:** `{review['verdict']}`",
+              "",
+              f"**Confidence:** `{review['confidence']}`",
+              "",
+              "### Summary",
+              review["summary"],
+              "",
+              f"**PR description matches implementation:** "
+              f"`{review['description_matches']}`"
+          ]
+
+          issues = review.get(
+              "issues",
+              []
+          )
+
+          if issues:
+              body.extend([
+                  "",
+                  "### Issues"
+              ])
+
+              for issue in issues:
+                  severity = issue.get(
+                      "severity",
+                      "medium"
+                  )
+
+                  title = issue.get(
+                      "title",
+                      "Issue"
+                  )
+
+                  file = issue.get(
+                      "file",
+                      "unknown"
+                  )
+
+                  line = issue.get(
+                      "line",
+                      0
+                  )
+
+                  description = issue.get(
+                      "description",
+                      ""
+                  )
+
+                  suggested_fix = issue.get(
+                      "suggested_fix",
+                      ""
+                  )
+
+                  body.extend([
+                      "",
+                      f"**{severity.upper()} — {title}**",
+                      "",
+                      f"`{file}:{line}`",
+                      "",
+                      description
+                  ])
+
+                  if suggested_fix:
+                      body.extend([
+                          "",
+                          f"**Suggested fix:** {suggested_fix}"
+                      ])
+
+          else:
+              body.extend([
+                  "",
+                  "### Issues",
+                  "",
+                  "No meaningful correctness, security, or regression issues were found."
+              ])
+
+          verification = review.get(
+              "verification",
+              []
+          )
+
+          if verification:
+              body.extend([
+                  "",
+                  "### Verification",
+                  ""
+              ])
+
+              for item in verification:
+                  body.append(
+                      f"- {item}"
+                  )
+
+          body.extend([
+              "",
+              "---",
+              f"_Reviewed commit `{sha[:12]}`_"
+          ])
+
+          comment_body = "\n".join(body)
+
+          result = subprocess.run(
+              [
+                  "gh",
+                  "api",
+                  "--paginate",
+                  f"repos/{os.environ['GITHUB_REPOSITORY']}/issues/{pr_number}/comments?per_page=100"
+              ],
+              capture_output=True,
+              text=True,
+              check=True
+          )
+
+          try:
+              pages = json.loads(
+                  result.stdout
+              )
+          except json.JSONDecodeError:
+              pages = []
+
+          comments = []
+
+          if pages and isinstance(pages[0], list):
+              for page in pages:
+                  comments.extend(page)
+          else:
+              comments = pages
+
+          existing_id = None
+
+          for comment in comments:
+              if marker in comment.get(
+                  "body",
+                  ""
+              ):
+                  existing_id = comment.get(
+                      "id"
+                  )
+                  break
+
+          if existing_id:
+              print(
+                  f"Updating existing AI review comment {existing_id}"
+              )
+
+              subprocess.run(
+                  [
+                      "gh",
+                      "api",
+                      "--method",
+                      "PATCH",
+
+                      "-f",
+                      f"body={comment_body}",
+
+                      f"repos/{os.environ['GITHUB_REPOSITORY']}"
+                      f"/issues/comments/{existing_id}"
+                  ],
+                  check=True
+              )
+
+          else:
+              print(
+                  "Creating new AI review comment"
+              )
+
+              subprocess.run(
+                  [
+                      "gh",
+                      "api",
+                      "--method",
+                      "POST",
+
+                      "-f",
+                      f"body={comment_body}",
+
+                      f"repos/{os.environ['GITHUB_REPOSITORY']}"
+                      f"/issues/{pr_number}/comments"
+                  ],
+                  check=True
+              )
+
+          print("AI review published successfully.")
+          PY
+```
