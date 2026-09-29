@@ -1,4 +1,4 @@
-```yaml
+
 name: Voxel+ AI PR Reviewer
 
 on:
@@ -1379,5 +1379,5 @@ jobs:
               )
 
           print("AI review published successfully.")
-          PY
-```
+         
+
