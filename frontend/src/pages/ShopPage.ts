@@ -91,7 +91,15 @@ export class ShopPage {
     this.renderGrid();
   }
 
-  private renderGrid() {
+  private async checkCardRetirement(cardId: string): Promise<boolean> {
+    try {
+      return await api.isCardRetired(cardId);
+    } catch {
+      return false;
+    }
+  }
+
+  private async renderGrid() {
     const grid = this.container.querySelector('#cards-grid') as HTMLElement;
     if (!grid) return;
 
@@ -128,13 +136,15 @@ export class ShopPage {
 
     grid.innerHTML = '';
     for (const card of displayCards) {
-      grid.appendChild(this.buildCardElement(card));
+      const cardElement = await this.buildCardElement(card);
+      grid.appendChild(cardElement);
     }
   }
 
-  private buildCardElement(card: VoxelCard): HTMLElement {
+  private async buildCardElement(card: VoxelCard): Promise<HTMLElement> {
     const installState = this.installedStates.find(s => s.cardId === card.id);
     const isInstalled = !!installState;
+    const isRetired = await this.checkCardRetirement(card.id);
 
     const el = document.createElement('div');
     el.className = 'card animate-fade-in-up hover-scale';
@@ -143,6 +153,7 @@ export class ShopPage {
       border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
       overflow: hidden; cursor: pointer; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
       position: relative;
+      ${isRetired ? 'opacity: 0.7;' : ''}
     `;
 
     // Make it look a bit more "Minecraft slate"
@@ -157,7 +168,11 @@ export class ShopPage {
           <span style="font-size: 0.75rem; font-weight: 800; padding: 2px 8px; border-radius: 4px; background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border-subtle);">
             v${card.cardVersion}
           </span>
-          ${isInstalled ? `
+          ${isRetired ? `
+            <span style="font-size: 0.75rem; font-weight: 800; padding: 2px 8px; border-radius: 4px; background: #f59e0b20; color: #f59e0b; border: 1px solid #f59e0b40;">
+              RETIRED
+            </span>
+          ` : isInstalled ? `
             <span style="font-size: 0.75rem; font-weight: 800; padding: 2px 8px; border-radius: 4px; background: #10b98120; color: #10b981; border: 1px solid #10b98140;">
               INSTALLED
             </span>
@@ -182,7 +197,7 @@ export class ShopPage {
       </div>
     `;
 
-    el.onclick = () => this.showCardDetails(card, installState);
+    el.onclick = () => this.showCardDetails(card, installState, isRetired);
 
     // Hover effect adjustments
     el.addEventListener('mouseenter', () => {
@@ -201,7 +216,7 @@ export class ShopPage {
 
   // ── Card Details Modal ──────────────────────────────────────────────────
 
-  private showCardDetails(card: VoxelCard, installState?: CardInstallState) {
+  private async showCardDetails(card: VoxelCard, installState?: CardInstallState, isRetired: boolean = false) {
     const overlay = document.createElement('div');
     overlay.className = 'animate-fade-in';
     overlay.style.cssText = `
@@ -218,6 +233,7 @@ export class ShopPage {
     `;
 
     const isInstalled = !!installState;
+    const isBuiltIn = await api.isBuiltInCard(card.id);
 
     let modsHtml = card.mods.map(m => `
       <div style="display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);">
@@ -280,7 +296,16 @@ export class ShopPage {
           </div>
           
           <div style="display: flex; gap: 12px; align-items: center;">
-            ${isInstalled 
+            ${isRetired 
+              ? `
+                <span style="font-size: 0.85rem; font-weight: 700; color: #f59e0b; display: flex; align-items: center; gap: 6px;">
+                  <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #f59e0b;"></span> Retired
+                </span>
+                <span style="font-size: 0.75rem; color: var(--text-muted); max-width: 300px;">
+                  This card is no longer shipped with Voxel⁺. Your existing instance remains intact.
+                </span>
+              `
+              : isInstalled 
               ? `
                 <span style="font-size: 0.85rem; font-weight: 700; color: #10b981; display: flex; align-items: center; gap: 6px;">
                   <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #10b981;"></span> Installed
@@ -371,25 +396,16 @@ export class ShopPage {
         const progPct = modal.querySelector('#cd-progress-pct') as HTMLElement;
         
         progContainer.style.display = 'flex';
-
-        // Listen for progress events
-        const unsub = api.onDownloadProgress((evt) => {
-          // If we wanted to track exact bytes, we could here. 
-          // But CardInstaller emits discrete steps which aren't piped through `onDownloadProgress` yet.
-          // Wait, CardInstaller doesn't emit over IPC right now in our setup... it just returns a Promise.
-          // Let's rely on the Promise returning for now, and maybe add a fake progress or spinner.
-        });
-
-        progText.textContent = 'Creating instance and downloading mods...';
-        progBar.style.width = '50%';
-        progPct.textContent = 'In Progress';
+        progText.textContent = 'Creating instance...';
+        progBar.style.width = '10%';
+        progPct.textContent = '10%';
 
         try {
           const res = await api.installCard(card.id);
           if (res.success) {
+            progText.textContent = 'Installation complete!';
             progBar.style.width = '100%';
             progPct.textContent = '100%';
-            progText.textContent = 'Installation complete!';
             NotificationToast.show(`Card "${card.name}" installed successfully!`, 'success');
             setTimeout(() => {
               overlay.remove();
@@ -405,8 +421,6 @@ export class ShopPage {
           NotificationToast.show(describeIpcError(e), 'error');
           installBtn.disabled = false;
           installBtn.textContent = 'Retry Install';
-        } finally {
-          unsub();
         }
       };
     }

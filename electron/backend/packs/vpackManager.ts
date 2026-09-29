@@ -75,12 +75,16 @@ export class VPackManager {
   /**
    * Import a .vpack archive with validation
    */
-  public static async importPack(zipPath: string): Promise<MyPack | null> {
+  public static async importPack(zipPath: string): Promise<{ success: boolean; pack?: MyPack; error?: string }> {
     try {
       // Validate file exists
       if (!fs.existsSync(zipPath)) {
-        console.error('VPack file does not exist:', zipPath);
-        return null;
+        return { success: false, error: 'VPack file does not exist' };
+      }
+
+      // Validate file extension
+      if (!zipPath.toLowerCase().endsWith('.vpack')) {
+        return { success: false, error: 'File must have .vpack extension' };
       }
 
       const zip = new AdmZip(zipPath);
@@ -89,24 +93,39 @@ export class VPackManager {
       // Security: validate no path traversal attempts
       for (const entry of entries) {
         if (entry.entryName.includes('..') || entry.entryName.startsWith('/') || entry.entryName.startsWith('\\')) {
-          console.error('VPack contains invalid path:', entry.entryName);
-          return null;
+          return { success: false, error: 'VPack contains invalid path traversal attempt' };
+        }
+        
+        // Check for suspicious absolute paths
+        if (entry.entryName.match(/^[A-Za-z]:/)) {
+          return { success: false, error: 'VPack contains absolute path references' };
         }
       }
 
       const manifestEntry = zip.getEntry(this.MANIFEST_FILE);
       if (!manifestEntry) {
-        console.error('VPack missing manifest.json');
-        return null;
+        return { success: false, error: 'VPack missing manifest.json' };
       }
 
       const raw = manifestEntry.getData().toString('utf-8');
-      const manifest = JSON.parse(raw) as VPackManifest;
+      let manifest: VPackManifest;
+      
+      try {
+        manifest = JSON.parse(raw) as VPackManifest;
+      } catch (e) {
+        return { success: false, error: 'Invalid JSON in manifest.json' };
+      }
 
       // Validate manifest structure
-      if (!this.validateManifest(manifest)) {
-        console.error('VPack manifest validation failed');
-        return null;
+      const validationResult = this.validateManifest(manifest);
+      if (!validationResult.isValid) {
+        return { success: false, error: `Manifest validation failed: ${validationResult.error}` };
+      }
+
+      // Check for duplicate pack IDs
+      const existingPack = PackStore.getPack(manifest.id);
+      if (existingPack) {
+        return { success: false, error: `A pack with ID "${manifest.id}" already exists` };
       }
 
       // Extract artwork if present
@@ -116,8 +135,14 @@ export class VPackManager {
         try {
           const data = artworkEntry.getData();
           const ext = artworkEntry.entryName.split('.').pop();
-          const base64 = data.toString('base64');
-          artwork = `data:image/${ext};base64,${base64}`;
+          
+          // Validate it's an image extension
+          if (!['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext?.toLowerCase() || '')) {
+            console.warn('Invalid artwork extension in vpack:', ext);
+          } else {
+            const base64 = data.toString('base64');
+            artwork = `data:image/${ext};base64,${base64}`;
+          }
         } catch (e) {
           console.warn('Failed to extract artwork from vpack:', e);
         }
@@ -141,46 +166,102 @@ export class VPackManager {
       };
 
       PackStore.savePack(newPack);
-      return newPack;
-    } catch (e) {
+      return { success: true, pack: newPack };
+    } catch (e: any) {
       console.error('Failed to import vpack:', e);
-      return null;
+      return { success: false, error: e.message || 'Unknown error during import' };
     }
   }
 
   /**
    * Validate manifest structure
    */
-  private static validateManifest(manifest: any): manifest is VPackManifest {
-    if (!manifest || typeof manifest !== 'object') return false;
+  private static validateManifest(manifest: any): { isValid: boolean; error?: string } {
+    if (!manifest || typeof manifest !== 'object') {
+      return { isValid: false, error: 'Manifest is not an object' };
+    }
     
     // Check schema version
     if (manifest.schemaVersion !== this.CURRENT_SCHEMA_VERSION) {
       console.warn('VPack schema version mismatch:', manifest.schemaVersion);
       // We could support migration here in the future
+      return { isValid: false, error: `Schema version mismatch. Expected ${this.CURRENT_SCHEMA_VERSION}, got ${manifest.schemaVersion}` };
     }
     
     // Required fields
-    if (!manifest.id || typeof manifest.id !== 'string') return false;
-    if (!manifest.name || typeof manifest.name !== 'string') return false;
-    if (!manifest.packVersion || typeof manifest.packVersion !== 'string') return false;
-    if (!manifest.minecraftVersion || typeof manifest.minecraftVersion !== 'string') return false;
-    if (!manifest.loaderType || !['fabric', 'forge', 'neoforge', 'quilt'].includes(manifest.loaderType)) return false;
-    if (!manifest.loaderVersion || typeof manifest.loaderVersion !== 'string') return false;
+    if (!manifest.id || typeof manifest.id !== 'string') {
+      return { isValid: false, error: 'Missing or invalid pack ID' };
+    }
+    if (!manifest.name || typeof manifest.name !== 'string') {
+      return { isValid: false, error: 'Missing or invalid pack name' };
+    }
+    if (!manifest.packVersion || typeof manifest.packVersion !== 'string') {
+      return { isValid: false, error: 'Missing or invalid pack version' };
+    }
+    if (!manifest.minecraftVersion || typeof manifest.minecraftVersion !== 'string') {
+      return { isValid: false, error: 'Missing or invalid Minecraft version' };
+    }
+    if (!manifest.loaderType || !['fabric', 'forge', 'neoforge', 'quilt'].includes(manifest.loaderType)) {
+      return { isValid: false, error: 'Missing or invalid loader type' };
+    }
+    if (!manifest.loaderVersion || typeof manifest.loaderVersion !== 'string') {
+      return { isValid: false, error: 'Missing or invalid loader version' };
+    }
     
     // Validate arrays
-    if (!Array.isArray(manifest.mods)) return false;
-    if (!Array.isArray(manifest.resourcePacks)) return false;
-    if (!Array.isArray(manifest.shaderPacks)) return false;
+    if (!Array.isArray(manifest.mods)) {
+      return { isValid: false, error: 'Mods must be an array' };
+    }
+    if (!Array.isArray(manifest.resourcePacks)) {
+      return { isValid: false, error: 'Resource packs must be an array' };
+    }
+    if (!Array.isArray(manifest.shaderPacks)) {
+      return { isValid: false, error: 'Shader packs must be an array' };
+    }
     
     // Validate mod references
-    for (const mod of manifest.mods) {
-      if (!mod.provider || !mod.projectId || !mod.versionId || !mod.downloadUrl || !mod.filename) {
-        return false;
+    for (let i = 0; i < manifest.mods.length; i++) {
+      const mod = manifest.mods[i];
+      if (!mod.provider || !['modrinth', 'curseforge'].includes(mod.provider)) {
+        return { isValid: false, error: `Mod at index ${i} has invalid provider` };
+      }
+      if (!mod.projectId || typeof mod.projectId !== 'string') {
+        return { isValid: false, error: `Mod at index ${i} has invalid project ID` };
+      }
+      if (!mod.versionId || typeof mod.versionId !== 'string') {
+        return { isValid: false, error: `Mod at index ${i} has invalid version ID` };
+      }
+      if (!mod.downloadUrl || typeof mod.downloadUrl !== 'string') {
+        return { isValid: false, error: `Mod at index ${i} has invalid download URL` };
+      }
+      if (!mod.filename || typeof mod.filename !== 'string') {
+        return { isValid: false, error: `Mod at index ${i} has invalid filename` };
       }
     }
     
-    return true;
+    // Validate resource pack references
+    for (let i = 0; i < manifest.resourcePacks.length; i++) {
+      const rp = manifest.resourcePacks[i];
+      if (!rp.provider || !['modrinth', 'curseforge'].includes(rp.provider)) {
+        return { isValid: false, error: `Resource pack at index ${i} has invalid provider` };
+      }
+      if (!rp.projectId || !rp.versionId || !rp.downloadUrl || !rp.filename) {
+        return { isValid: false, error: `Resource pack at index ${i} is missing required fields` };
+      }
+    }
+    
+    // Validate shader pack references
+    for (let i = 0; i < manifest.shaderPacks.length; i++) {
+      const sp = manifest.shaderPacks[i];
+      if (!sp.provider || !['modrinth', 'curseforge'].includes(sp.provider)) {
+        return { isValid: false, error: `Shader pack at index ${i} has invalid provider` };
+      }
+      if (!sp.projectId || !sp.versionId || !sp.downloadUrl || !sp.filename) {
+        return { isValid: false, error: `Shader pack at index ${i} is missing required fields` };
+      }
+    }
+    
+    return { isValid: true };
   }
 
   /**

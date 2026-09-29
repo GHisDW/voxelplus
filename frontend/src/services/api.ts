@@ -83,6 +83,8 @@ export const api = {
   // Cards
   listCards: (): Promise<VoxelCard[]> => electronApi.listCards(),
   getCard: (cardId: string): Promise<VoxelCard | null> => electronApi.getCard(cardId),
+  isCardRetired: (cardId: string): Promise<boolean> => electronApi.isCardRetired(cardId),
+  isBuiltInCard: (cardId: string): Promise<boolean> => electronApi.isBuiltInCard(cardId),
   saveCard: (card: VoxelCard): Promise<{ success: boolean }> => electronApi.saveCard(card),
   deleteCard: (cardId: string): Promise<{ success: boolean }> => electronApi.deleteCard(cardId),
   exportCard: (card: VoxelCard): Promise<boolean> => electronApi.exportCard(card),

@@ -338,6 +338,14 @@ export class CommandManager {
     return CardStore.getCard(cardId);
   }
 
+  public static isCardRetired(cardId: string) {
+    return CardStore.isCardRetired(cardId);
+  }
+
+  public static isBuiltInCard(cardId: string) {
+    return CardStore.isBuiltInCard(cardId);
+  }
+
   public static saveCard(card: any) {
     return CardStore.saveCard(card);
   }
@@ -366,6 +374,10 @@ export class CommandManager {
   public static async installCard(cardId: string) {
     const card = CardStore.getCard(cardId);
     if (!card) return { success: false, error: 'Card not found' };
+    // Prevent installation of retired cards
+    if (CardStore.isCardRetired(cardId)) {
+      return { success: false, error: 'This card is retired and cannot be reinstalled. Your existing instance remains intact.' };
+    }
     return CardInstaller.install(card);
   }
 
@@ -403,7 +415,13 @@ export class CommandManager {
   public static async importPack() {
     const p = await this.selectFileDialog([{ name: 'VPack', extensions: ['vpack'] }]);
     if (p) {
-      return VPackManager.importPack(p);
+      const result = await VPackManager.importPack(p);
+      if (result.success) {
+        return result.pack;
+      }
+      // For now, return null on error. The UI shows a generic error toast.
+      // In the future, we could return the error message for better UX.
+      return null;
     }
     return null;
   }

@@ -125,6 +125,8 @@ function registerIpcHandlers() {
   // Cards
   handle('cards:list', 'INSTANCE', async () => CommandManager.listCards());
   handle('cards:get', 'INSTANCE', async (_, cardId) => CommandManager.getCard(cardId));
+  handle('cards:isRetired', 'INSTANCE', async (_, cardId) => CommandManager.isCardRetired(cardId));
+  handle('cards:isBuiltIn', 'INSTANCE', async (_, cardId) => CommandManager.isBuiltInCard(cardId));
   handle('cards:save', 'INSTANCE', async (_, card) => { CommandManager.saveCard(card); return { success: true }; });
   handle('cards:delete', 'INSTANCE', async (_, cardId) => { CommandManager.deleteCard(cardId); return { success: true }; });
   handle('cards:export', 'INSTANCE', async (_, card) => CommandManager.exportCard(card));

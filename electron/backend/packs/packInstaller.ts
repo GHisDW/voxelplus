@@ -6,13 +6,34 @@ import path from 'node:path';
 
 export class PackInstaller {
   /**
+   * Validate pack before installation.
+   * Returns error message if invalid, null if valid.
+   */
+  private static validatePack(pack: MyPack): string | null {
+    if (!pack.id || !pack.name) {
+      return 'Pack must have a valid ID and name';
+    }
+    if (!pack.minecraftVersion) {
+      return 'Pack must specify a Minecraft version';
+    }
+    if (!pack.loaderType || !pack.loaderVersion) {
+      return 'Pack must specify a loader type and version';
+    }
+    
+    return null;
+  }
+
+  /**
    * Install a pack by creating a new instance and downloading all content
    */
   public static async installPack(pack: MyPack): Promise<{ success: boolean; instanceId?: string; error?: string }> {
+    let instance: any = null;
+    
     try {
       // Validate pack
-      if (!pack.id || !pack.name || !pack.minecraftVersion || !pack.loaderType) {
-        return { success: false, error: 'Invalid pack data' };
+      const validationError = this.validatePack(pack);
+      if (validationError) {
+        return { success: false, error: validationError };
       }
 
       // Create instance from pack
@@ -25,7 +46,10 @@ export class PackInstaller {
         item: undefined
       };
 
-      const instance = await InstanceManager.createInstance(instancePayload);
+      instance = await InstanceManager.createInstance(instancePayload);
+      
+      let successCount = 0;
+      let failCount = 0;
       
       // Download and install mods
       for (const mod of pack.mods) {
@@ -36,6 +60,7 @@ export class PackInstaller {
         
         if (!mod.downloadUrl) {
           console.warn(`Skipping mod without download URL: ${mod.projectName}`);
+          failCount++;
           continue;
         }
 
@@ -47,8 +72,10 @@ export class PackInstaller {
             mod.projectName,
             'mod'
           );
+          successCount++;
         } catch (e) {
           console.error(`Failed to download mod ${mod.projectName}:`, e);
+          failCount++;
           // Continue with other mods even if one fails
         }
       }
@@ -68,8 +95,10 @@ export class PackInstaller {
             rp.projectName,
             'resourcepack'
           );
+          successCount++;
         } catch (e) {
           console.error(`Failed to download resource pack ${rp.projectName}:`, e);
+          failCount++;
         }
       }
 
@@ -88,8 +117,10 @@ export class PackInstaller {
             sp.projectName,
             'shader'
           );
+          successCount++;
         } catch (e) {
           console.error(`Failed to download shader pack ${sp.projectName}:`, e);
+          failCount++;
         }
       }
 
@@ -100,9 +131,18 @@ export class PackInstaller {
         console.log('Pack has configs but config application not yet implemented');
       }
 
-      return { success: true, instanceId: instance.id };
+      // Return success even if some downloads failed - instance is still usable
+      const errorMessage = failCount > 0 
+        ? `Pack installed with ${failCount} failed downloads out of ${successCount + failCount} items. The instance is still usable.` 
+        : undefined;
+
+      return { success: true, instanceId: instance.id, error: errorMessage };
     } catch (e: any) {
       console.error('Failed to install pack:', e);
+      
+      // Note: We do NOT delete the instance here to preserve user data
+      // The instance remains usable even if installation fails
+      
       return { success: false, error: e.message || 'Unknown error' };
     }
   }
@@ -112,6 +152,12 @@ export class PackInstaller {
    */
   public static async installPackToInstance(pack: MyPack, instanceId: string): Promise<{ success: boolean; error?: string }> {
     try {
+      // Validate pack
+      const validationError = this.validatePack(pack);
+      if (validationError) {
+        return { success: false, error: validationError };
+      }
+
       // Verify instance exists
       const instance = await InstanceManager.getInstance(instanceId);
       if (!instance) {
@@ -126,6 +172,9 @@ export class PackInstaller {
       if (instance.loader.type !== pack.loaderType) {
         return { success: false, error: `Loader type mismatch: instance uses ${instance.loader.type}, pack requires ${pack.loaderType}` };
       }
+
+      let successCount = 0;
+      let failCount = 0;
 
       // Download and install mods
       for (const mod of pack.mods) {
@@ -142,8 +191,10 @@ export class PackInstaller {
             mod.projectName,
             'mod'
           );
+          successCount++;
         } catch (e) {
           console.error(`Failed to download mod ${mod.projectName}:`, e);
+          failCount++;
         }
       }
 
@@ -162,8 +213,10 @@ export class PackInstaller {
             rp.projectName,
             'resourcepack'
           );
+          successCount++;
         } catch (e) {
           console.error(`Failed to download resource pack ${rp.projectName}:`, e);
+          failCount++;
         }
       }
 
@@ -182,12 +235,18 @@ export class PackInstaller {
             sp.projectName,
             'shader'
           );
+          successCount++;
         } catch (e) {
           console.error(`Failed to download shader pack ${sp.projectName}:`, e);
+          failCount++;
         }
       }
 
-      return { success: true };
+      const errorMessage = failCount > 0 
+        ? `Pack applied with ${failCount} failed downloads out of ${successCount + failCount} items.` 
+        : undefined;
+
+      return { success: true, error: errorMessage };
     } catch (e: any) {
       console.error('Failed to install pack to instance:', e);
       return { success: false, error: e.message || 'Unknown error' };

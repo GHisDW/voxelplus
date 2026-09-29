@@ -68,9 +68,11 @@ export class MyPacksPage {
           if (res) {
             NotificationToast.show('Pack imported successfully.', 'success');
             this.loadData();
+          } else {
+            NotificationToast.show('Failed to import pack. Please check the file format and try again.', 'error');
           }
         } catch (e: any) {
-          NotificationToast.show('Failed to import pack.', 'error');
+          NotificationToast.show(describeIpcError(e), 'error');
         }
       });
     }
