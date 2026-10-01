@@ -83,6 +83,7 @@ const api = {
   getCard: (cardId: string): Promise<VoxelCard | null> => ipcRenderer.invoke('cards:get', cardId),
   isCardRetired: (cardId: string): Promise<boolean> => ipcRenderer.invoke('cards:isRetired', cardId),
   isBuiltInCard: (cardId: string): Promise<boolean> => ipcRenderer.invoke('cards:isBuiltIn', cardId),
+  isDeveloperMode: (): Promise<boolean> => ipcRenderer.invoke('cards:isDeveloperMode'),
   saveCard: (card: VoxelCard): Promise<{ success: boolean }> => ipcRenderer.invoke('cards:save', card),
   deleteCard: (cardId: string): Promise<{ success: boolean }> => ipcRenderer.invoke('cards:delete', cardId),
   exportCard: (card: VoxelCard): Promise<boolean> => ipcRenderer.invoke('cards:export', card),
@@ -90,6 +91,7 @@ const api = {
   getCardInstallState: (cardId: string): Promise<CardInstallState | null> => ipcRenderer.invoke('cards:getInstallState', cardId),
   installCard: (cardId: string): Promise<{ success: boolean; state?: CardInstallState; error?: string }> => ipcRenderer.invoke('cards:install', cardId),
   uninstallCard: (cardId: string): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('cards:uninstall', cardId),
+  retireCard: (cardId: string): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('cards:retire', cardId),
 
   // Packs
   listPacks: (): Promise<MyPack[]> => ipcRenderer.invoke('packs:list'),

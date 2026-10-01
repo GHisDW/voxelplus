@@ -346,6 +346,11 @@ export class CommandManager {
     return CardStore.isBuiltInCard(cardId);
   }
 
+  public static isDeveloperMode() {
+    // This is set in main.ts based on defaultCards.ts existence
+    return (global as any).isDeveloperMode || false;
+  }
+
   public static saveCard(card: any) {
     return CardStore.saveCard(card);
   }
@@ -383,6 +388,15 @@ export class CommandManager {
 
   public static async uninstallCard(cardId: string) {
     return CardInstaller.uninstall(cardId);
+  }
+
+  public static async retireCard(cardId: string) {
+    try {
+      CardStore.markAsRetired(cardId);
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: String(e?.message ?? e) };
+    }
   }
 
   // Packs

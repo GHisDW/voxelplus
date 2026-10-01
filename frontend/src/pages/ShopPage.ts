@@ -14,6 +14,7 @@ export class ShopPage {
   private allCards: VoxelCard[] = [];
   private installedStates: CardInstallState[] = [];
   private isLoading = false;
+  private isDeveloperMode = false;
 
   constructor() {
     this.container = document.createElement('div');
@@ -24,6 +25,9 @@ export class ShopPage {
   }
 
   public async render(): Promise<HTMLElement> {
+    // Check developer mode
+    this.isDeveloperMode = await api.isDeveloperMode();
+
     this.container.innerHTML = `
       <div style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
         <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 24px; flex-shrink: 0;">
@@ -33,6 +37,9 @@ export class ShopPage {
           </div>
           
           <div style="display: flex; gap: 12px; align-items: center;">
+            ${this.isDeveloperMode ? `
+              <button id="btn-new-card" class="btn btn-primary" style="padding: 8px 16px;">+ New Card</button>
+            ` : ''}
             <div style="display: flex; background: var(--bg-surface); padding: 4px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
               <button class="btn ${this.activeTab === 'browse' ? 'btn-primary' : 'btn-secondary'}" data-tab="browse" style="border: none; padding: 6px 16px;">Browse</button>
               <button class="btn ${this.activeTab === 'installed' ? 'btn-primary' : 'btn-secondary'}" data-tab="installed" style="border: none; padding: 6px 16px;">Downloaded</button>
@@ -65,6 +72,14 @@ export class ShopPage {
       this.renderGrid();
     });
 
+    // New Card button (developer only)
+    const newCardBtn = this.container.querySelector('#btn-new-card');
+    if (newCardBtn) {
+      newCardBtn.addEventListener('click', () => {
+        const modal = new CardCreatorModal(null, () => this.loadData());
+        modal.show();
+      });
+    }
 
     await this.loadData();
 
@@ -168,15 +183,20 @@ export class ShopPage {
           <span style="font-size: 0.75rem; font-weight: 800; padding: 2px 8px; border-radius: 4px; background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border-subtle);">
             v${card.cardVersion}
           </span>
-          ${isRetired ? `
-            <span style="font-size: 0.75rem; font-weight: 800; padding: 2px 8px; border-radius: 4px; background: #f59e0b20; color: #f59e0b; border: 1px solid #f59e0b40;">
-              RETIRED
-            </span>
-          ` : isInstalled ? `
-            <span style="font-size: 0.75rem; font-weight: 800; padding: 2px 8px; border-radius: 4px; background: #10b98120; color: #10b981; border: 1px solid #10b98140;">
-              INSTALLED
-            </span>
-          ` : ''}
+          <div style="display: flex; gap: 6px; align-items: center;">
+            ${this.isDeveloperMode && !isRetired ? `
+              <button class="btn btn-secondary card-edit-btn" data-card-id="${card.id}" style="padding: 4px 8px; font-size: 0.7rem; border: 1px solid var(--border-subtle);">Edit</button>
+            ` : ''}
+            ${isRetired ? `
+              <span style="font-size: 0.75rem; font-weight: 800; padding: 2px 8px; border-radius: 4px; background: #f59e0b20; color: #f59e0b; border: 1px solid #f59e0b40;">
+                RETIRED
+              </span>
+            ` : isInstalled ? `
+              <span style="font-size: 0.75rem; font-weight: 800; padding: 2px 8px; border-radius: 4px; background: #10b98120; color: #10b981; border: 1px solid #10b98140;">
+                INSTALLED
+              </span>
+            ` : ''}
+          </div>
         </div>
       </div>
       
@@ -198,6 +218,16 @@ export class ShopPage {
     `;
 
     el.onclick = () => this.showCardDetails(card, installState, isRetired);
+
+    // Edit button handler (developer only)
+    const editBtn = el.querySelector('.card-edit-btn');
+    if (editBtn) {
+      editBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const modal = new CardCreatorModal(card, () => this.loadData());
+        modal.show();
+      });
+    }
 
     // Hover effect adjustments
     el.addEventListener('mouseenter', () => {
@@ -296,7 +326,11 @@ export class ShopPage {
           </div>
           
           <div style="display: flex; gap: 12px; align-items: center;">
-            ${isRetired 
+            ${this.isDeveloperMode && isBuiltIn && !isRetired ? `
+              <button id="cd-edit" class="btn btn-secondary" style="padding: 6px 12px;">Edit</button>
+              <button id="cd-retire" class="btn btn-secondary" style="color: #f59e0b; border-color: #f59e0b40; padding: 6px 12px;">Retire</button>
+            ` : ''}
+            ${isRetired
               ? `
                 <span style="font-size: 0.85rem; font-weight: 700; color: #f59e0b; display: flex; align-items: center; gap: 6px;">
                   <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #f59e0b;"></span> Retired
@@ -305,7 +339,7 @@ export class ShopPage {
                   This card is no longer shipped with Voxel⁺. Your existing instance remains intact.
                 </span>
               `
-              : isInstalled 
+              : isInstalled
               ? `
                 <span style="font-size: 0.85rem; font-weight: 700; color: #10b981; display: flex; align-items: center; gap: 6px;">
                   <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #10b981;"></span> Installed
@@ -421,6 +455,38 @@ export class ShopPage {
           NotificationToast.show(describeIpcError(e), 'error');
           installBtn.disabled = false;
           installBtn.textContent = 'Retry Install';
+        }
+      };
+    }
+
+    // Edit logic (developer only)
+    const editBtn = modal.querySelector('#cd-edit') as HTMLButtonElement | null;
+    if (editBtn) {
+      editBtn.onclick = () => {
+        overlay.remove();
+        const modal = new CardCreatorModal(card, () => this.loadData());
+        modal.show();
+      };
+    }
+
+    // Retire logic (developer only)
+    const retireBtn = modal.querySelector('#cd-retire') as HTMLButtonElement | null;
+    if (retireBtn) {
+      retireBtn.onclick = async () => {
+        if (!confirm('Retiring this card will remove it from the Shop. Existing installations will remain intact. Continue?')) return;
+        retireBtn.disabled = true;
+        try {
+          const res = await api.retireCard(card.id);
+          if (res.success) {
+            NotificationToast.show(`Card "${card.name}" has been retired.`, 'success');
+            overlay.remove();
+            this.loadData();
+          } else {
+            throw new Error(res.error || 'Failed to retire card');
+          }
+        } catch (e: any) {
+          NotificationToast.show(`Failed to retire card: ${e.message}`, 'error');
+          retireBtn.disabled = false;
         }
       };
     }

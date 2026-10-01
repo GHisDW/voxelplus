@@ -110,7 +110,7 @@ export class CardCreatorModal {
         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px;">
           <div>
             <label style="display: block; font-size: 0.8rem; font-weight: 700; color: var(--text-muted); margin-bottom: 6px;">Minecraft Version</label>
-            <input type="text" id="cc-mc" class="input-field" value="${this.esc(this.card.minecraftVersion)}" placeholder="e.g. 1.20.1" style="width: 100%;" />
+            <input type="text" id="cc-mc" class="input-field" value="${this.esc(this.card.minecraftVersion)}" placeholder="e.g. 26.3" style="width: 100%;" />
           </div>
           <div>
             <label style="display: block; font-size: 0.8rem; font-weight: 700; color: var(--text-muted); margin-bottom: 6px;">Loader</label>
@@ -197,8 +197,29 @@ export class CardCreatorModal {
     // Save
     this.container.querySelector('#cc-save')!.addEventListener('click', async () => {
       this.saveStateFromDOM();
-      if (!this.card.name || !this.card.id || !this.card.minecraftVersion || !this.card.loaderType) {
-        NotificationToast.show('Please fill in Name, ID, Minecraft Version, and Loader Type.', 'error');
+      
+      // Validation
+      if (!this.card.name || !this.card.name.trim()) {
+        NotificationToast.show('Card name is required.', 'error');
+        return;
+      }
+      if (!this.card.id || !this.card.id.trim()) {
+        NotificationToast.show('Card ID is required.', 'error');
+        return;
+      }
+      if (!this.card.minecraftVersion || !this.card.minecraftVersion.trim()) {
+        NotificationToast.show('Minecraft version is required.', 'error');
+        return;
+      }
+      if (!this.card.loaderType) {
+        NotificationToast.show('Loader type is required.', 'error');
+        return;
+      }
+      
+      // Validate ID format (alphanumeric, hyphens, underscores only)
+      const idRegex = /^[a-z0-9-_]+$/;
+      if (!idRegex.test(this.card.id)) {
+        NotificationToast.show('Card ID must contain only lowercase letters, numbers, hyphens, and underscores.', 'error');
         return;
       }
 

@@ -85,6 +85,7 @@ export const api = {
   getCard: (cardId: string): Promise<VoxelCard | null> => electronApi.getCard(cardId),
   isCardRetired: (cardId: string): Promise<boolean> => electronApi.isCardRetired(cardId),
   isBuiltInCard: (cardId: string): Promise<boolean> => electronApi.isBuiltInCard(cardId),
+  isDeveloperMode: (): Promise<boolean> => electronApi.isDeveloperMode(),
   saveCard: (card: VoxelCard): Promise<{ success: boolean }> => electronApi.saveCard(card),
   deleteCard: (cardId: string): Promise<{ success: boolean }> => electronApi.deleteCard(cardId),
   exportCard: (card: VoxelCard): Promise<boolean> => electronApi.exportCard(card),
@@ -92,6 +93,7 @@ export const api = {
   getCardInstallState: (cardId: string): Promise<CardInstallState | null> => electronApi.getCardInstallState(cardId),
   installCard: (cardId: string): Promise<{ success: boolean; state?: CardInstallState; error?: string }> => electronApi.installCard(cardId),
   uninstallCard: (cardId: string): Promise<{ success: boolean; error?: string }> => electronApi.uninstallCard(cardId),
+  retireCard: (cardId: string): Promise<{ success: boolean; error?: string }> => electronApi.retireCard(cardId),
 
   // Packs
   listPacks: (): Promise<MyPack[]> => electronApi.listPacks(),

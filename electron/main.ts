@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'node:path';
+import fs from 'node:fs';
 import { CommandManager } from './backend/commandManager';
 import { PathManager } from './backend/storage/paths';
 import { LogStreamer } from './backend/processes/logStreamer';
@@ -9,6 +10,7 @@ import { encodeVoxelIpcError } from './backend/diagnostics';
 import { VoxelErrorCategory } from './types';
 
 let mainWindow: BrowserWindow | null = null;
+let isDeveloperMode = false;
 
 /**
  * Wraps an IPC handler so that any thrown error is serialized into an
@@ -127,6 +129,7 @@ function registerIpcHandlers() {
   handle('cards:get', 'INSTANCE', async (_, cardId) => CommandManager.getCard(cardId));
   handle('cards:isRetired', 'INSTANCE', async (_, cardId) => CommandManager.isCardRetired(cardId));
   handle('cards:isBuiltIn', 'INSTANCE', async (_, cardId) => CommandManager.isBuiltInCard(cardId));
+  handle('cards:isDeveloperMode', 'INSTANCE', async () => CommandManager.isDeveloperMode());
   handle('cards:save', 'INSTANCE', async (_, card) => { CommandManager.saveCard(card); return { success: true }; });
   handle('cards:delete', 'INSTANCE', async (_, cardId) => { CommandManager.deleteCard(cardId); return { success: true }; });
   handle('cards:export', 'INSTANCE', async (_, card) => CommandManager.exportCard(card));
@@ -134,6 +137,7 @@ function registerIpcHandlers() {
   handle('cards:getInstallState', 'INSTANCE', async (_, cardId) => CommandManager.getCardInstallState(cardId));
   handle('cards:install', 'INSTANCE', async (_, cardId) => CommandManager.installCard(cardId));
   handle('cards:uninstall', 'INSTANCE', async (_, cardId) => CommandManager.uninstallCard(cardId));
+  handle('cards:retire', 'INSTANCE', async (_, cardId) => CommandManager.retireCard(cardId));
 
   // Packs
   handle('packs:list', 'INSTANCE', async () => CommandManager.listPacks());
@@ -203,6 +207,19 @@ function createWindow() {
 
 app.whenReady().then(() => {
   PathManager.initialize();
+  
+  // Check if developer mode is enabled by checking for defaultCards.ts
+  const defaultCardsPath = path.join(__dirname, 'backend/cards/defaultCards.ts');
+  try {
+    if (fs.existsSync(defaultCardsPath)) {
+      isDeveloperMode = true;
+      (global as any).isDeveloperMode = true;
+      console.log('Developer mode enabled: defaultCards.ts found');
+    }
+  } catch (e) {
+    console.log('Developer mode check failed, running in production mode');
+  }
+  
   registerIpcHandlers();
   createWindow();
 

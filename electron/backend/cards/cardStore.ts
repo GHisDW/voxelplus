@@ -90,7 +90,7 @@ export class CardStore {
    * Mark a built-in card as retired.
    * This happens when a card is removed from the default cards set.
    */
-  private static markAsRetired(cardId: string): void {
+  public static markAsRetired(cardId: string): void {
     const registry = this.loadRetired();
     if (!registry.retiredCardIds.includes(cardId)) {
       registry.retiredCardIds.push(cardId);
@@ -192,7 +192,21 @@ export class CardStore {
   }
 
   public static saveCard(card: VoxelCard): void {
+    // Validate required fields
+    if (!card.id || !card.name || !card.minecraftVersion || !card.loaderType) {
+      throw new Error('Card must have id, name, minecraftVersion, and loaderType');
+    }
+
+    // Check for duplicate ID when saving to definitions directory
+    // Built-in cards with the same ID are allowed (they're edited in place)
     const filePath = path.join(this.getDefinitionsDir(), `${card.id}.json`);
+    const isBuiltIn = this.isBuiltInCard(card.id);
+    
+    // If it's not built-in and a definition file already exists, it's a duplicate
+    if (!isBuiltIn && fs.existsSync(filePath)) {
+      // This is an update to an existing user-created card, which is fine
+    }
+
     fs.writeFileSync(filePath, JSON.stringify(card, null, 2), 'utf-8');
   }
 
