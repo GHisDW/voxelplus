@@ -43,8 +43,6 @@ export class MyPacksPage {
       </div>
     `;
 
-
-
     const searchInput = this.container.querySelector('#packs-search') as HTMLInputElement;
     searchInput?.addEventListener('input', (e: any) => {
       this.searchQuery = e.target.value.toLowerCase();
@@ -143,7 +141,6 @@ export class MyPacksPage {
       position: relative;
     `;
 
-    // Make it look a bit more "Minecraft slate"
     el.innerHTML = `
       <!-- Artwork / Header -->
       <div style="height: 120px; background: #1a1e23; position: relative; border-bottom: 2px solid var(--border-subtle);">
@@ -306,14 +303,11 @@ export class MyPacksPage {
           </div>
         </div>
         
-        <!-- Progress Bar (hidden by default) -->
-        <div id="cd-progress-container" style="display: none; flex-direction: column; gap: 8px; margin-top: 16px; padding: 16px; background: var(--bg-surface); border-radius: var(--radius-md); border: 1px solid var(--border-accent);">
-          <div style="display: flex; justify-content: space-between; font-size: 0.85rem; font-weight: 600;">
-            <span id="cd-progress-text" style="color: var(--text-primary);">Preparing to install...</span>
-            <span id="cd-progress-pct" style="color: var(--accent-primary);">0%</span>
-          </div>
-          <div style="height: 6px; background: var(--bg-card); border-radius: 3px; overflow: hidden;">
-            <div id="cd-progress-bar" style="height: 100%; width: 0%; background: var(--accent-gradient); transition: width 0.2s;"></div>
+        <!-- Status / Progress Container -->
+        <div id="cd-progress-container" style="display: none; align-items: center; justify-content: space-between; padding: 16px; background: var(--bg-surface); border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <span id="cd-spinner" class="animate-spin" style="font-size: 1.2rem;">⏳</span>
+            <span id="cd-progress-text" style="font-size: 0.9rem; font-weight: 600; color: var(--text-primary);">Installing pack...</span>
           </div>
         </div>
 
@@ -340,47 +334,39 @@ export class MyPacksPage {
         
         const progContainer = modal.querySelector('#cd-progress-container') as HTMLElement;
         const progText = modal.querySelector('#cd-progress-text') as HTMLElement;
-        const progBar = modal.querySelector('#cd-progress-bar') as HTMLElement;
-        const progPct = modal.querySelector('#cd-progress-pct') as HTMLElement;
+        const spinner = modal.querySelector('#cd-spinner') as HTMLElement;
         
         progContainer.style.display = 'flex';
-        progText.textContent = 'Creating instance...';
-        progBar.style.width = '10%';
-        progPct.textContent = '10%';
+        progText.textContent = 'Creating instance and downloading content...';
 
         try {
           const res = await api.installPack(pack.id);
           
           if (res.success) {
-            progText.textContent = 'Downloading content...';
-            progBar.style.width = '50%';
-            progPct.textContent = '50%';
-            
-            // Wait a moment for UI to update
-            await new Promise(resolve => setTimeout(resolve, 500));
-            
-            progText.textContent = 'Installation complete!';
-            progBar.style.width = '100%';
-            progPct.textContent = '100%';
-            
+            spinner.textContent = '✅';
+            spinner.className = '';
+            progText.textContent = `Pack installed successfully (${res.successCount || pack.mods.length} items)!`;
             NotificationToast.show(`Pack "${pack.name}" installed successfully!`, 'success');
             
             setTimeout(() => {
               overlay.remove();
-              // Navigate to instances page
               (window as any).navigateTo?.('instances');
-            }, 1500);
+            }, 1200);
           } else {
-            progText.textContent = 'Installation failed';
-            progBar.style.backgroundColor = '#ef4444';
+            spinner.textContent = '❌';
+            spinner.className = '';
+            progText.style.color = '#ef4444';
+            progText.textContent = res.error || 'Pack installation failed';
             NotificationToast.show(`Failed to install pack: ${res.error}`, 'error');
             installBtn.disabled = false;
             installBtn.textContent = 'Install Pack';
           }
         } catch (e: any) {
-          progText.textContent = 'Installation failed';
-          progBar.style.backgroundColor = '#ef4444';
-          NotificationToast.show(`Failed to install pack: ${e.message}`, 'error');
+          spinner.textContent = '❌';
+          spinner.className = '';
+          progText.style.color = '#ef4444';
+          progText.textContent = describeIpcError(e);
+          NotificationToast.show(`Failed to install pack: ${describeIpcError(e)}`, 'error');
           installBtn.disabled = false;
           installBtn.textContent = 'Install Pack';
         }

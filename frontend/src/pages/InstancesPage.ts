@@ -101,15 +101,52 @@ export class InstancesPage {
 
     this.container.innerHTML = '';
 
+    // CurseForge Coming Soon Announcement Banner
+    const banner = document.createElement('div');
+    banner.style.cssText = `
+      margin-bottom: 20px;
+      padding: 16px 20px;
+      background: linear-gradient(135deg, rgba(249, 115, 22, 0.12) 0%, rgba(234, 88, 12, 0.05) 100%);
+      border: 1px solid rgba(249, 115, 22, 0.3);
+      border-radius: var(--radius-lg);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    `;
+    banner.innerHTML = `
+      <div style="display: flex; align-items: center; gap: 14px;">
+        <div style="
+          width: 40px; height: 40px; border-radius: var(--radius-md);
+          background: rgba(249, 115, 22, 0.2); border: 1px solid rgba(249, 115, 22, 0.4);
+          display: flex; align-items: center; justify-content: center; font-size: 1.3rem; flex-shrink: 0;
+        ">🔥</div>
+        <div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-weight: 800; font-size: 0.95rem; color: var(--text-primary);">CurseForge Integration</span>
+            <span style="
+              font-size: 0.7rem; font-weight: 800; padding: 2px 8px; border-radius: 4px;
+              background: rgba(249, 115, 22, 0.2); color: #f97316; border: 1px solid rgba(249, 115, 22, 0.4);
+            ">COMING SOON</span>
+          </div>
+          <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 2px;">
+            Full CurseForge mod, resource pack, and shader pack support is currently awaiting official API approval. Modrinth is fully active!
+          </p>
+        </div>
+      </div>
+    `;
+    this.container.appendChild(banner);
+
     // Empty state
     if (displayed.length === 0) {
-      this.container.innerHTML = `
+      const emptyContainer = document.createElement('div');
+      emptyContainer.innerHTML = `
         <div style="
           display: flex;
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          height: calc(100vh - 200px);
+          height: calc(100vh - 280px);
           text-align: center;
           background: var(--bg-card);
           border: 1px dashed var(--border-subtle);
@@ -132,13 +169,14 @@ export class InstancesPage {
         </div>
       `;
 
-      (this.container.querySelector('#btn-empty-create') as HTMLElement).onclick = async () => {
+      (emptyContainer.querySelector('#btn-empty-create') as HTMLElement).onclick = async () => {
         const created = await CreateInstanceModal.show();
         if (created) {
           this.render();
         }
       };
 
+      this.container.appendChild(emptyContainer);
       return this.container;
     }
 

@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import zlib from 'node:zlib';
 import { SkinValidationResult, SkinModel } from '../../types';
 
 export class SkinValidator {
@@ -12,7 +13,6 @@ export class SkinValidator {
    */
   public static async validateSkin(filePath: string): Promise<SkinValidationResult> {
     try {
-      // Check if file exists
       if (!fs.existsSync(filePath)) {
         return {
           isValid: false,
@@ -20,7 +20,6 @@ export class SkinValidator {
         };
       }
 
-      // Check file extension
       if (!filePath.toLowerCase().endsWith('.png')) {
         return {
           isValid: false,
@@ -28,7 +27,6 @@ export class SkinValidator {
         };
       }
 
-      // Read file to get dimensions
       const buffer = fs.readFileSync(filePath);
       const dimensions = this.getPngDimensions(buffer);
 
@@ -39,7 +37,6 @@ export class SkinValidator {
         };
       }
 
-      // Validate dimensions
       const isValidDimensions = this.VALID_DIMENSIONS.some(
         valid => valid.width === dimensions.width && valid.height === dimensions.height
       );
@@ -53,7 +50,6 @@ export class SkinValidator {
         };
       }
 
-      // Detect skin model (Steve vs Alex)
       const model = this.detectSkinModel(buffer, dimensions);
 
       return {
@@ -75,7 +71,6 @@ export class SkinValidator {
    */
   private static getPngDimensions(buffer: Buffer): { width: number; height: number } | null {
     try {
-      // PNG signature: 89 50 4E 47 0D 0A 1A 0A
       if (buffer.length < 24 || 
           buffer[0] !== 0x89 || 
           buffer[1] !== 0x50 || 
@@ -84,8 +79,6 @@ export class SkinValidator {
         return null;
       }
 
-      // IHDR chunk starts at byte 8
-      // Width and height are 4 bytes each at positions 16-19 and 20-23
       const width = buffer.readUInt32BE(16);
       const height = buffer.readUInt32BE(20);
 
@@ -108,15 +101,11 @@ export class SkinValidator {
     }
 
     try {
-      // Basic check for uncompressed IDAT or scan for transparent pixels in the arm region
-      // If decompressed pixels aren't readily available without zlib, check transparency
-      // by inspecting PNG chunks or checking if Alex arm area contains transparent markers.
       const hasAlpha = this.checkPngHasAlpha(buffer);
       if (!hasAlpha) {
         return 'steve';
       }
 
-      // Check if IDAT has transparent pixels in the slim arm column
       const isSlim = this.checkSlimArmTransparency(buffer, dimensions);
       return isSlim ? 'alex' : 'steve';
     } catch {
@@ -129,17 +118,24 @@ export class SkinValidator {
    */
   private static checkPngHasAlpha(buffer: Buffer): boolean {
     if (buffer.length < 26) return false;
-    // Color type is at byte 25
     const colorType = buffer[25];
     return colorType === 6 || colorType === 4;
+  }
+
+  private static paethPredictor(a: number, b: number, c: number): number {
+    const p = a + b - c;
+    const pa = Math.abs(p - a);
+    const pb = Math.abs(p - b);
+    const pc = Math.abs(p - c);
+    if (pa <= pb && pa <= pc) return a;
+    if (pb <= pc) return b;
+    return c;
   }
 
   /**
    * Decompress PNG IDAT and check the right arm 4th pixel column (X: 54-55, Y: 20-31)
    */
   private static checkSlimArmTransparency(buffer: Buffer, dimensions: { width: number; height: number }): boolean {
-    const zlib = require('node:zlib');
-    // Collect IDAT chunks
     let offset = 8;
     const idatBuffers: Buffer[] = [];
 
@@ -157,28 +153,62 @@ export class SkinValidator {
     const compressed = Buffer.concat(idatBuffers);
     const decompressed = zlib.inflateSync(compressed);
 
-    // For RGBA 64x64, each scanline has 1 filter byte + 64 * 4 bytes = 257 bytes
-    const bytesPerScanline = 1 + dimensions.width * 4;
+    const width = dimensions.width;
+    const height = dimensions.height;
+    const bpp = 4; // RGBA
+    const bytesPerScanline = 1 + width * bpp;
+
+    if (decompressed.length < bytesPerScanline * height) return false;
+
+    // Unfilter PNG scanlines to get raw RGBA pixel buffer
+    const unfiltered = Buffer.alloc(width * height * bpp);
+
+    for (let y = 0; y < height; y++) {
+      const lineStart = y * bytesPerScanline;
+      const filterType = decompressed[lineStart];
+      const unfilteredLineStart = y * width * bpp;
+
+      for (let x = 0; x < width; x++) {
+        for (let c = 0; c < bpp; c++) {
+          const rawByte = decompressed[lineStart + 1 + x * bpp + c];
+          const byteIdx = unfilteredLineStart + x * bpp + c;
+
+          const a = x > 0 ? unfiltered[byteIdx - bpp] : 0; // Left
+          const b = y > 0 ? unfiltered[byteIdx - width * bpp] : 0; // Above
+          const cVal = (x > 0 && y > 0) ? unfiltered[byteIdx - width * bpp - bpp] : 0; // Upper Left
+
+          let val = rawByte;
+          if (filterType === 1) { // Sub
+            val = (rawByte + a) & 0xff;
+          } else if (filterType === 2) { // Up
+            val = (rawByte + b) & 0xff;
+          } else if (filterType === 3) { // Average
+            val = (rawByte + Math.floor((a + b) / 2)) & 0xff;
+          } else if (filterType === 4) { // Paeth
+            val = (rawByte + this.paethPredictor(a, b, cVal)) & 0xff;
+          }
+
+          unfiltered[byteIdx] = val;
+        }
+      }
+    }
+
     let transparentCount = 0;
     let testedCount = 0;
 
-    // Check pixels at X=54, Y=20..31 and X=55, Y=20..31 (Right arm outer layer)
+    // Check pixels at X=54, Y=20..31 and X=55, Y=20..31 (Slim model right arm outer column)
     for (let y = 20; y <= 31; y++) {
-      const scanlineStart = y * bytesPerScanline;
       for (let x = 54; x <= 55; x++) {
-        // Pixel starts after filter byte + x * 4
-        const pixelOffset = scanlineStart + 1 + x * 4;
-        if (pixelOffset + 3 < decompressed.length) {
-          const alpha = decompressed[pixelOffset + 3];
+        const alphaIdx = (y * width + x) * bpp + 3;
+        if (alphaIdx < unfiltered.length) {
           testedCount++;
-          if (alpha === 0) {
+          if (unfiltered[alphaIdx] === 0) {
             transparentCount++;
           }
         }
       }
     }
 
-    // If more than 80% of these pixels are transparent, it's an Alex (slim) model
     return testedCount > 0 && transparentCount / testedCount > 0.8;
   }
 

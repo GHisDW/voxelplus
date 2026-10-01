@@ -1,8 +1,16 @@
-import { MyPack, CardModRef, CreateInstancePayload } from '../../types';
+import { MyPack, CardModRef, CreateInstancePayload, InstanceMetadata } from '../../types';
 import { InstanceManager } from '../instances/instanceManager';
 import { DownloadManager } from '../modrinth/downloader';
-import { PathManager } from '../storage/paths';
-import path from 'node:path';
+
+export interface PackInstallResult {
+  success: boolean;
+  partialSuccess?: boolean;
+  instanceId?: string;
+  successCount: number;
+  failCount: number;
+  totalItems: number;
+  error?: string;
+}
 
 export class PackInstaller {
   /**
@@ -26,14 +34,20 @@ export class PackInstaller {
   /**
    * Install a pack by creating a new instance and downloading all content
    */
-  public static async installPack(pack: MyPack): Promise<{ success: boolean; instanceId?: string; error?: string }> {
-    let instance: any = null;
+  public static async installPack(pack: MyPack): Promise<PackInstallResult> {
+    let instance: InstanceMetadata | null = null;
     
     try {
       // Validate pack
       const validationError = this.validatePack(pack);
       if (validationError) {
-        return { success: false, error: validationError };
+        return {
+          success: false,
+          successCount: 0,
+          failCount: 0,
+          totalItems: 0,
+          error: validationError,
+        };
       }
 
       // Create instance from pack
@@ -50,206 +64,248 @@ export class PackInstaller {
       
       let successCount = 0;
       let failCount = 0;
-      
+      const totalItems = (pack.mods?.length || 0) + (pack.resourcePacks?.length || 0) + (pack.shaderPacks?.length || 0);
+
       // Download and install mods
-      for (const mod of pack.mods) {
-        if (mod.unresolved) {
-          console.warn(`Skipping unresolved mod: ${mod.projectName}`);
-          continue;
-        }
-        
-        if (!mod.downloadUrl) {
-          console.warn(`Skipping mod without download URL: ${mod.projectName}`);
+      for (const mod of pack.mods || []) {
+        if (mod.unresolved || !mod.downloadUrl) {
+          console.warn(`Skipping unresolved mod or mod without download URL: ${mod.projectName}`);
           failCount++;
           continue;
         }
 
         try {
-          await DownloadManager.downloadToInstance(
+          const res = await DownloadManager.downloadToInstance(
             instance.id,
             mod.downloadUrl,
             mod.filename,
             mod.projectName,
             'mod'
           );
-          successCount++;
-        } catch (e) {
+          if (res.success) {
+            successCount++;
+          } else {
+            failCount++;
+          }
+        } catch (e: unknown) {
           console.error(`Failed to download mod ${mod.projectName}:`, e);
           failCount++;
-          // Continue with other mods even if one fails
         }
       }
 
       // Download and install resource packs
-      for (const rp of pack.resourcePacks) {
+      for (const rp of pack.resourcePacks || []) {
         if (rp.unresolved || !rp.downloadUrl) {
           console.warn(`Skipping resource pack: ${rp.projectName}`);
+          failCount++;
           continue;
         }
 
         try {
-          await DownloadManager.downloadToInstance(
+          const res = await DownloadManager.downloadToInstance(
             instance.id,
             rp.downloadUrl,
             rp.filename,
             rp.projectName,
             'resourcepack'
           );
-          successCount++;
-        } catch (e) {
+          if (res.success) {
+            successCount++;
+          } else {
+            failCount++;
+          }
+        } catch (e: unknown) {
           console.error(`Failed to download resource pack ${rp.projectName}:`, e);
           failCount++;
         }
       }
 
       // Download and install shader packs
-      for (const sp of pack.shaderPacks) {
+      for (const sp of pack.shaderPacks || []) {
         if (sp.unresolved || !sp.downloadUrl) {
           console.warn(`Skipping shader pack: ${sp.projectName}`);
+          failCount++;
           continue;
         }
 
         try {
-          await DownloadManager.downloadToInstance(
+          const res = await DownloadManager.downloadToInstance(
             instance.id,
             sp.downloadUrl,
             sp.filename,
             sp.projectName,
             'shader'
           );
-          successCount++;
-        } catch (e) {
+          if (res.success) {
+            successCount++;
+          } else {
+            failCount++;
+          }
+        } catch (e: unknown) {
           console.error(`Failed to download shader pack ${sp.projectName}:`, e);
           failCount++;
         }
       }
 
-      // Apply configs if present (this would need more sophisticated handling)
-      if (pack.configs && Object.keys(pack.configs).length > 0) {
-        // For now, configs are stored as metadata
-        // In the future, we could write actual config files to the instance
-        console.log('Pack has configs but config application not yet implemented');
-      }
+      const isCompleteSuccess = failCount === 0;
+      const isPartialSuccess = successCount > 0 && failCount > 0;
 
-      // Return success even if some downloads failed - instance is still usable
       const errorMessage = failCount > 0 
-        ? `Pack installed with ${failCount} failed downloads out of ${successCount + failCount} items. The instance is still usable.` 
+        ? `Pack installation encountered ${failCount} failed download(s) out of ${totalItems} item(s).`
         : undefined;
 
-      return { success: true, instanceId: instance.id, error: errorMessage };
-    } catch (e: any) {
+      return {
+        success: isCompleteSuccess,
+        partialSuccess: isPartialSuccess,
+        instanceId: instance.id,
+        successCount,
+        failCount,
+        totalItems,
+        error: errorMessage
+      };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Unknown error during pack installation';
       console.error('Failed to install pack:', e);
-      
-      // Note: We do NOT delete the instance here to preserve user data
-      // The instance remains usable even if installation fails
-      
-      return { success: false, error: e.message || 'Unknown error' };
+      return {
+        success: false,
+        successCount: 0,
+        failCount: 1,
+        totalItems: 1,
+        error: msg
+      };
     }
   }
 
   /**
    * Install a pack into an existing instance (add content to instance)
    */
-  public static async installPackToInstance(pack: MyPack, instanceId: string): Promise<{ success: boolean; error?: string }> {
+  public static async installPackToInstance(pack: MyPack, instanceId: string): Promise<PackInstallResult> {
     try {
       // Validate pack
       const validationError = this.validatePack(pack);
       if (validationError) {
-        return { success: false, error: validationError };
+        return { success: false, successCount: 0, failCount: 0, totalItems: 0, error: validationError };
       }
 
       // Verify instance exists
       const instance = await InstanceManager.getInstance(instanceId);
       if (!instance) {
-        return { success: false, error: 'Instance not found' };
+        return { success: false, successCount: 0, failCount: 0, totalItems: 0, error: 'Instance not found' };
       }
 
       // Check compatibility
       if (instance.minecraft.version !== pack.minecraftVersion) {
-        return { success: false, error: `Minecraft version mismatch: instance is ${instance.minecraft.version}, pack requires ${pack.minecraftVersion}` };
+        return { success: false, successCount: 0, failCount: 0, totalItems: 0, error: `Minecraft version mismatch: instance is ${instance.minecraft.version}, pack requires ${pack.minecraftVersion}` };
       }
 
       if (instance.loader.type !== pack.loaderType) {
-        return { success: false, error: `Loader type mismatch: instance uses ${instance.loader.type}, pack requires ${pack.loaderType}` };
+        return { success: false, successCount: 0, failCount: 0, totalItems: 0, error: `Loader type mismatch: instance uses ${instance.loader.type}, pack requires ${pack.loaderType}` };
       }
 
       let successCount = 0;
       let failCount = 0;
+      const totalItems = (pack.mods?.length || 0) + (pack.resourcePacks?.length || 0) + (pack.shaderPacks?.length || 0);
 
       // Download and install mods
-      for (const mod of pack.mods) {
+      for (const mod of pack.mods || []) {
         if (mod.unresolved || !mod.downloadUrl) {
           console.warn(`Skipping mod: ${mod.projectName}`);
+          failCount++;
           continue;
         }
 
         try {
-          await DownloadManager.downloadToInstance(
+          const res = await DownloadManager.downloadToInstance(
             instanceId,
             mod.downloadUrl,
             mod.filename,
             mod.projectName,
             'mod'
           );
-          successCount++;
-        } catch (e) {
+          if (res.success) {
+            successCount++;
+          } else {
+            failCount++;
+          }
+        } catch (e: unknown) {
           console.error(`Failed to download mod ${mod.projectName}:`, e);
           failCount++;
         }
       }
 
       // Download and install resource packs
-      for (const rp of pack.resourcePacks) {
+      for (const rp of pack.resourcePacks || []) {
         if (rp.unresolved || !rp.downloadUrl) {
           console.warn(`Skipping resource pack: ${rp.projectName}`);
+          failCount++;
           continue;
         }
 
         try {
-          await DownloadManager.downloadToInstance(
+          const res = await DownloadManager.downloadToInstance(
             instanceId,
             rp.downloadUrl,
             rp.filename,
             rp.projectName,
             'resourcepack'
           );
-          successCount++;
-        } catch (e) {
+          if (res.success) {
+            successCount++;
+          } else {
+            failCount++;
+          }
+        } catch (e: unknown) {
           console.error(`Failed to download resource pack ${rp.projectName}:`, e);
           failCount++;
         }
       }
 
       // Download and install shader packs
-      for (const sp of pack.shaderPacks) {
+      for (const sp of pack.shaderPacks || []) {
         if (sp.unresolved || !sp.downloadUrl) {
           console.warn(`Skipping shader pack: ${sp.projectName}`);
+          failCount++;
           continue;
         }
 
         try {
-          await DownloadManager.downloadToInstance(
+          const res = await DownloadManager.downloadToInstance(
             instanceId,
             sp.downloadUrl,
             sp.filename,
             sp.projectName,
             'shader'
           );
-          successCount++;
-        } catch (e) {
+          if (res.success) {
+            successCount++;
+          } else {
+            failCount++;
+          }
+        } catch (e: unknown) {
           console.error(`Failed to download shader pack ${sp.projectName}:`, e);
           failCount++;
         }
       }
 
+      const isCompleteSuccess = failCount === 0;
+      const isPartialSuccess = successCount > 0 && failCount > 0;
+
       const errorMessage = failCount > 0 
-        ? `Pack applied with ${failCount} failed downloads out of ${successCount + failCount} items.` 
+        ? `Pack applied with ${failCount} failed download(s) out of ${totalItems} item(s).`
         : undefined;
 
-      return { success: true, error: errorMessage };
-    } catch (e: any) {
+      return {
+        success: isCompleteSuccess,
+        partialSuccess: isPartialSuccess,
+        successCount,
+        failCount,
+        totalItems,
+        error: errorMessage
+      };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Unknown error';
       console.error('Failed to install pack to instance:', e);
-      return { success: false, error: e.message || 'Unknown error' };
+      return { success: false, successCount: 0, failCount: 1, totalItems: 1, error: msg };
     }
   }
 }

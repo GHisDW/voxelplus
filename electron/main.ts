@@ -10,20 +10,11 @@ import { encodeVoxelIpcError } from './backend/diagnostics';
 import { VoxelErrorCategory } from './types';
 
 let mainWindow: BrowserWindow | null = null;
-let isDeveloperMode = false;
 
 /**
  * Wraps an IPC handler so that any thrown error is serialized into an
  * IPC-safe, structured payload instead of Electron's default raw
  * "Error invoking remote method 'channel': ..." exception text.
- *
- * The renderer receives a rejected promise carrying an Error whose message
- * embeds the structured payload as `...VOXEL_ERROR::{json}` — Electron only
- * forwards the error `message` across IPC (custom properties are stripped
- * and the channel name is prefixed), so the payload travels inside the
- * message; frontend/src/services/errors.ts parses it back into a
- * VoxelIpcError. Result values pass through untouched, so successful calls
- * behave exactly as before.
  */
 function wrapIpcHandler<TResult>(
   channel: string,
@@ -151,7 +142,6 @@ function registerIpcHandlers() {
   handle('packs:installToInstance', 'INSTANCE', async (_, packId, instanceId) => CommandManager.installPackToInstance(packId, instanceId));
 }
 
-
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1240,
@@ -204,21 +194,13 @@ function createWindow() {
   });
 }
 
-
 app.whenReady().then(() => {
   PathManager.initialize();
   
-  // Check if developer mode is enabled by checking for defaultCards.ts
-  const defaultCardsPath = path.join(__dirname, 'backend/cards/defaultCards.ts');
-  try {
-    if (fs.existsSync(defaultCardsPath)) {
-      isDeveloperMode = true;
-      (global as any).isDeveloperMode = true;
-      console.log('Developer mode enabled: defaultCards.ts found');
-    }
-  } catch (e) {
-    console.log('Developer mode check failed, running in production mode');
-  }
+  // Reliable developer mode detection using Electron app packaging status and environment flags
+  const isDevMode = !app.isPackaged || process.env.NODE_ENV === 'development' || Boolean(process.env.VITE_DEV_SERVER_URL);
+  (global as { isDeveloperMode?: boolean }).isDeveloperMode = isDevMode;
+  console.log(`Voxel⁺ Developer Mode: ${isDevMode ? 'ENABLED' : 'DISABLED'}`);
   
   registerIpcHandlers();
   createWindow();
@@ -235,4 +217,3 @@ app.on('window-all-closed', () => {
     app.quit();
   }
 });
-

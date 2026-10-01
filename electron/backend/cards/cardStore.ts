@@ -4,15 +4,15 @@
  * Card definitions are stored in: <config>/cards/definitions/<id>.json
  * Install states are stored in:   <config>/cards/installed.json
  * Retired card IDs are stored in: <config>/cards/retired.json
+ * Retired card snapshots in:     <config>/cards/retired_definitions/<id>.json
  *
- * Card definitions are immutable once written.
- * Installation state is mutable.
+ * Card definitions are immutable once written unless edited by user in dev mode.
  * Built-in cards that are removed from the default set become "retired".
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { VoxelCard, CardInstallState } from '../../types';
+import { VoxelCard, CardInstallState, CardSource } from '../../types';
 import { PathManager } from '../storage/paths';
 import { getDefaultCards, getBuiltInCardIds } from './defaultCards';
 
@@ -39,8 +39,18 @@ export class CardStore {
     );
   }
 
+  private static getRetiredDefinitionsDir(): string {
+    return PathManager.ensureDirectory(
+      path.join(this.getCardsDir(), 'retired_definitions')
+    );
+  }
+
   private static getInstalledFile(): string {
     return path.join(this.getCardsDir(), 'installed.json');
+  }
+
+  private static getRetiredFile(): string {
+    return path.join(this.getCardsDir(), 'retired.json');
   }
 
   // ── Built-in card definitions ───────────────────────────────────────────────
@@ -50,7 +60,10 @@ export class CardStore {
    * These are loaded from the centralized defaultCards.ts file.
    */
   private static getBuiltInCards(): VoxelCard[] {
-    return getDefaultCards();
+    return getDefaultCards().map(card => ({
+      ...card,
+      source: 'builtin' as CardSource,
+    }));
   }
 
   /**
@@ -62,10 +75,6 @@ export class CardStore {
   }
 
   // ── Retirement tracking ─────────────────────────────────────────────────────
-
-  private static getRetiredFile(): string {
-    return path.join(this.getCardsDir(), 'retired.json');
-  }
 
   private static loadRetired(): RetiredRegistry {
     const file = this.getRetiredFile();
@@ -87,8 +96,19 @@ export class CardStore {
   }
 
   /**
-   * Mark a built-in card as retired.
-   * This happens when a card is removed from the default cards set.
+   * Save a snapshot of a card definition for retired card reconstruction.
+   */
+  public static saveCardSnapshot(card: VoxelCard): void {
+    try {
+      const snapshotPath = path.join(this.getRetiredDefinitionsDir(), `${card.id}.json`);
+      fs.writeFileSync(snapshotPath, JSON.stringify(card, null, 2), 'utf-8');
+    } catch (e) {
+      console.warn(`Failed to save card snapshot for ${card.id}:`, e);
+    }
+  }
+
+  /**
+   * Mark a card as retired.
    */
   public static markAsRetired(cardId: string): void {
     const registry = this.loadRetired();
@@ -108,25 +128,36 @@ export class CardStore {
 
   /**
    * Update retirement status based on current built-in cards.
-   * Cards that are no longer in the built-in set become retired.
+   * User-created cards (`source: 'user'`) are NEVER marked as retired.
    */
   private static updateRetirementStatus(): void {
     const builtInIds = this.getBuiltInCardIdSet();
     const registry = this.loadRetired();
     const installed = this.listInstalled();
 
-    // Check each installed card
     for (const install of installed) {
-      // If it was built-in but is no longer in the built-in set, mark as retired
+      // If card definition exists in definitions dir (user-created or edited), it's not retired
+      const userDefPath = path.join(this.getDefinitionsDir(), `${install.cardId}.json`);
+      if (fs.existsSync(userDefPath)) {
+        try {
+          const raw = fs.readFileSync(userDefPath, 'utf-8');
+          const parsed = JSON.parse(raw) as VoxelCard;
+          if (parsed.source === 'user') {
+            // Remove from retired if present
+            registry.retiredCardIds = registry.retiredCardIds.filter(id => id !== install.cardId);
+            continue;
+          }
+        } catch {
+          /* ignore error reading file */
+        }
+      }
+
       if (builtInIds.has(install.cardId)) {
-        // Still in built-in set, remove from retired if present
+        // Still active in built-in set
         registry.retiredCardIds = registry.retiredCardIds.filter(id => id !== install.cardId);
       } else {
-        // Not in built-in set anymore, check if it was ever built-in
-        // We can't know for sure without historical data, but if it's installed
-        // and not user-created, we assume it was built-in
-        const userCreated = fs.existsSync(path.join(this.getDefinitionsDir(), `${install.cardId}.json`));
-        if (!userCreated && !registry.retiredCardIds.includes(install.cardId)) {
+        // Missing from built-in set and not a user card -> mark as retired
+        if (!registry.retiredCardIds.includes(install.cardId)) {
           this.markAsRetired(install.cardId);
         }
       }
@@ -138,31 +169,41 @@ export class CardStore {
   // ── Card definitions ───────────────────────────────────────────────────────
 
   public static listCards(): VoxelCard[] {
-    // Update retirement status based on current built-in cards
+    // Save snapshots for all current built-in cards so they can be reconstructed if retired later
+    for (const card of this.getBuiltInCards()) {
+      this.saveCardSnapshot(card);
+    }
+
     this.updateRetirementStatus();
 
-    const cards: VoxelCard[] = [...this.getBuiltInCards()];
-    const dir = this.getDefinitionsDir();
+    const builtInCards = this.getBuiltInCards();
+    const cardsMap = new Map<string, VoxelCard>();
 
+    for (const c of builtInCards) {
+      cardsMap.set(c.id, c);
+    }
+
+    const dir = this.getDefinitionsDir();
     try {
       const files = fs.readdirSync(dir).filter(f => f.endsWith('.json'));
       for (const file of files) {
         try {
           const raw = fs.readFileSync(path.join(dir, file), 'utf-8');
           const card = JSON.parse(raw) as VoxelCard;
-          // Avoid duplicating built-in IDs if someone imported a built-in card
-          if (!cards.find(c => c.id === card.id)) {
-            cards.push(card);
+          if (!card.source) {
+            card.source = 'user';
           }
+          // User definitions or edited definitions override or add to catalog
+          cardsMap.set(card.id, card);
         } catch {
           // Skip corrupted definition files silently.
         }
       }
     } catch {
-      // definitions dir not readable — return only built-in cards.
+      // definitions dir not readable — return built-in cards.
     }
 
-    return cards;
+    return Array.from(cardsMap.values());
   }
 
   public static getCard(cardId: string): VoxelCard | null {
@@ -171,16 +212,34 @@ export class CardStore {
 
   /**
    * Get a card even if it's retired.
-   * Returns the card definition if it exists, or null if not found.
-   * For retired cards, we return the definition from the install state if available.
+   * Returns active card if available, or reconstructs definition from retired snapshots/definitions.
    */
   public static getCardIncludingRetired(cardId: string): VoxelCard | null {
-    // First try to get from current cards
     const card = this.getCard(cardId);
     if (card) return card;
 
-    // If not found and it's retired, we might need to reconstruct from install state
-    // For now, we return null - the frontend should handle retired cards specially
+    // Search in user definitions
+    const userDefPath = path.join(this.getDefinitionsDir(), `${cardId}.json`);
+    if (fs.existsSync(userDefPath)) {
+      try {
+        const raw = fs.readFileSync(userDefPath, 'utf-8');
+        return JSON.parse(raw) as VoxelCard;
+      } catch {
+        /* ignore */
+      }
+    }
+
+    // Search in retired snapshots
+    const snapshotPath = path.join(this.getRetiredDefinitionsDir(), `${cardId}.json`);
+    if (fs.existsSync(snapshotPath)) {
+      try {
+        const raw = fs.readFileSync(snapshotPath, 'utf-8');
+        return JSON.parse(raw) as VoxelCard;
+      } catch {
+        /* ignore */
+      }
+    }
+
     return null;
   }
 
@@ -192,22 +251,19 @@ export class CardStore {
   }
 
   public static saveCard(card: VoxelCard): void {
-    // Validate required fields
     if (!card.id || !card.name || !card.minecraftVersion || !card.loaderType) {
       throw new Error('Card must have id, name, minecraftVersion, and loaderType');
     }
 
-    // Check for duplicate ID when saving to definitions directory
-    // Built-in cards with the same ID are allowed (they're edited in place)
-    const filePath = path.join(this.getDefinitionsDir(), `${card.id}.json`);
-    const isBuiltIn = this.isBuiltInCard(card.id);
-    
-    // If it's not built-in and a definition file already exists, it's a duplicate
-    if (!isBuiltIn && fs.existsSync(filePath)) {
-      // This is an update to an existing user-created card, which is fine
+    if (!card.source) {
+      card.source = this.isBuiltInCard(card.id) ? 'builtin' : 'user';
     }
 
+    const filePath = path.join(this.getDefinitionsDir(), `${card.id}.json`);
     fs.writeFileSync(filePath, JSON.stringify(card, null, 2), 'utf-8');
+
+    // Save snapshot as well
+    this.saveCardSnapshot(card);
   }
 
   public static deleteCard(cardId: string): void {
