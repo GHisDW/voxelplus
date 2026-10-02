@@ -198,4 +198,34 @@ export class ModrinthClient {
       return [];
     }
   }
+
+  public static async getVersion(versionId: string): Promise<ModrinthVersion | null> {
+    try {
+      const response = await fetch(`${this.BASE_URL}/version/${versionId}`, {
+        headers: { 'User-Agent': this.USER_AGENT }
+      });
+      if (!response.ok) return null;
+      const v = await response.json() as any;
+      return {
+        id: v.id,
+        project_id: v.project_id,
+        name: v.name,
+        version_number: v.version_number,
+        game_versions: v.game_versions || [],
+        loaders: v.loaders || [],
+        featured: v.featured || false,
+        date_published: v.date_published,
+        downloads: v.downloads || 0,
+        files: (v.files || []).map((f: any) => ({
+          url: f.url,
+          filename: f.filename,
+          primary: f.primary || false,
+          size: f.size || 0,
+          hashes: f.hashes || {}
+        }))
+      };
+    } catch {
+      return null;
+    }
+  }
 }

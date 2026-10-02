@@ -75,7 +75,7 @@ export class ShopPage {
     const newCardBtn = this.container.querySelector('#btn-new-card');
     if (newCardBtn) {
       newCardBtn.addEventListener('click', () => {
-        const modal = new CardCreatorModal(null, () => this.loadData());
+        const modal = new CardCreatorModal({ source: 'developer' }, () => this.loadData());
         modal.show();
       });
     }

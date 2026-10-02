@@ -354,11 +354,25 @@ export class CommandManager {
   }
 
   public static saveCard(card: VoxelCard) {
+    if (this.isDeveloperMode() || card.source === 'developer') {
+      return CardStore.saveDeveloperCard(card);
+    }
     return CardStore.saveCard(card);
   }
 
   public static deleteCard(cardId: string) {
+    if (this.isDeveloperMode()) {
+      CardStore.deleteDeveloperCard(cardId);
+    }
     return CardStore.deleteCard(cardId);
+  }
+
+  public static saveDeveloperCard(card: VoxelCard) {
+    return CardStore.saveDeveloperCard(card);
+  }
+
+  public static deleteDeveloperCard(cardId: string) {
+    return CardStore.deleteDeveloperCard(cardId);
   }
 
   public static async exportCard(card: VoxelCard) {

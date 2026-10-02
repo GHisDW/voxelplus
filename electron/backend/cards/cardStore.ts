@@ -68,6 +68,7 @@ export class CardStore {
   /**
    * Loads structured developer catalog cards if developer/catalog.json exists.
    * Developer cards loaded from catalog.json strictly have source = 'developer'.
+   * Gracefully handles missing or malformed catalog files without throwing.
    */
   public static loadDeveloperCatalog(): VoxelCard[] {
     const file = this.getDeveloperCatalogFile();
@@ -76,13 +77,20 @@ export class CardStore {
     }
     try {
       const raw = fs.readFileSync(file, 'utf-8');
+      if (!raw || !raw.trim()) {
+        return [];
+      }
       const catalog = JSON.parse(raw);
-      const cards: VoxelCard[] = Array.isArray(catalog) ? catalog : (catalog.cards || []);
+      if (!catalog) return [];
+      const cards: VoxelCard[] = Array.isArray(catalog)
+        ? catalog
+        : (Array.isArray(catalog.cards) ? catalog.cards : []);
       return cards.map(card => ({
         ...card,
         source: 'developer' as CardSource,
       }));
-    } catch {
+    } catch (e) {
+      console.warn('Failed or malformed developer catalog file, returning empty list:', e);
       return [];
     }
   }
@@ -94,6 +102,40 @@ export class CardStore {
     const file = this.getDeveloperCatalogFile();
     const developerCards = cards.map(c => ({ ...c, source: 'developer' as CardSource }));
     fs.writeFileSync(file, JSON.stringify({ cards: developerCards }, null, 2), 'utf-8');
+  }
+
+  /**
+   * Creates or updates a card in the developer catalog (<config>/developer/catalog.json).
+   */
+  public static saveDeveloperCard(card: VoxelCard): void {
+    if (!card.id || !card.name || !card.minecraftVersion || !card.loaderType) {
+      throw new Error('Card must have id, name, minecraftVersion, and loaderType');
+    }
+    if (this.isBuiltInCard(card.id)) {
+      throw new Error(`Cannot modify canonical built-in card "${card.id}" in developer catalog.`);
+    }
+    const devCard: VoxelCard = { ...card, source: 'developer' as CardSource };
+    const catalog = this.loadDeveloperCatalog();
+    const idx = catalog.findIndex(c => c.id === card.id);
+    if (idx >= 0) {
+      catalog[idx] = devCard;
+    } else {
+      catalog.push(devCard);
+    }
+    this.saveDeveloperCatalog(catalog);
+    this.saveCardSnapshot(devCard);
+  }
+
+  /**
+   * Deletes a card from the developer catalog (<config>/developer/catalog.json).
+   */
+  public static deleteDeveloperCard(cardId: string): void {
+    if (this.isBuiltInCard(cardId)) {
+      throw new Error(`Cannot delete canonical built-in card "${cardId}".`);
+    }
+    const catalog = this.loadDeveloperCatalog();
+    const filtered = catalog.filter(c => c.id !== cardId);
+    this.saveDeveloperCatalog(filtered);
   }
 
   // ── Built-in card definitions ───────────────────────────────────────────────
@@ -253,17 +295,17 @@ export class CardStore {
 
     const cardsMap = new Map<string, VoxelCard>();
 
-    // 1. Always include built-in cards
+    // 1. Always include built-in cards (strictly source = 'builtin')
     for (const c of this.getBuiltInCards()) {
-      cardsMap.set(c.id, c);
+      cardsMap.set(c.id, { ...c, source: 'builtin' });
     }
 
-    // 2. Include active developer catalog cards
+    // 2. Include active developer catalog cards (strictly source = 'developer')
     for (const c of devCards) {
-      cardsMap.set(c.id, c);
+      cardsMap.set(c.id, { ...c, source: 'developer' });
     }
 
-    // 3. Include user definitions from definitions directory
+    // 3. Include user definitions from definitions directory (strictly source = 'user')
     const dir = this.getDefinitionsDir();
     try {
       const files = fs.readdirSync(dir).filter(f => f.endsWith('.json'));
@@ -271,10 +313,8 @@ export class CardStore {
         try {
           const raw = fs.readFileSync(path.join(dir, file), 'utf-8');
           const card = JSON.parse(raw) as VoxelCard;
-          // Explicit provenance: if source is missing or explicitly 'user', default/ensure 'user'
-          if (!card.source) {
-            card.source = 'user';
-          }
+          // User definitions in config/cards/definitions/ are strictly source = 'user'
+          card.source = 'user';
           cardsMap.set(card.id, card);
         } catch {
           // Skip corrupted definition files.
@@ -334,10 +374,18 @@ export class CardStore {
       throw new Error('Card must have id, name, minecraftVersion, and loaderType');
     }
 
-    if (!card.source) {
-      card.source = this.isBuiltInCard(card.id) ? 'builtin' : 'user';
+    if (this.isBuiltInCard(card.id)) {
+      throw new Error(`Cannot modify canonical built-in card "${card.id}".`);
     }
 
+    // If card source is 'developer', persist directly to developer catalog
+    if (card.source === 'developer') {
+      this.saveDeveloperCard(card);
+      return;
+    }
+
+    // Otherwise, ensure source is 'user' and save to user definitions directory
+    card.source = 'user';
     const filePath = path.join(this.getDefinitionsDir(), `${card.id}.json`);
     fs.writeFileSync(filePath, JSON.stringify(card, null, 2), 'utf-8');
 
@@ -346,6 +394,17 @@ export class CardStore {
   }
 
   public static deleteCard(cardId: string): void {
+    if (this.isBuiltInCard(cardId)) {
+      throw new Error(`Cannot delete canonical built-in card "${cardId}".`);
+    }
+
+    // Remove from developer catalog if present
+    const devCatalog = this.loadDeveloperCatalog();
+    if (devCatalog.some(c => c.id === cardId)) {
+      this.deleteDeveloperCard(cardId);
+    }
+
+    // Remove from user definitions directory if present
     const filePath = path.join(this.getDefinitionsDir(), `${cardId}.json`);
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);

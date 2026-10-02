@@ -167,7 +167,7 @@ export class VPackManager {
         }
       }
 
-      const newPack: MyPack = {
+      const rawPack: MyPack = {
         id: manifest.id,
         name: manifest.name,
         description: manifest.description,
@@ -184,11 +184,14 @@ export class VPackManager {
         updatedAt: new Date().toISOString()
       };
 
-      PackStore.savePack(newPack);
+      // Perform real Modrinth API verification to verify project, version, file, and compatibility
+      const { verifiedPack, validationResult: modrinthVal } = await this.resolveAndVerifyModrinthDependencies(rawPack);
+
+      PackStore.savePack(verifiedPack);
       return {
         success: true,
-        pack: newPack,
-        validationState: validationResult.state
+        pack: verifiedPack,
+        validationState: modrinthVal.state
       };
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Unknown error during import';
@@ -207,7 +210,7 @@ export class VPackManager {
     
     const m = manifest as Record<string, unknown>;
 
-    if (m.schemaVersion !== this.CURRENT_SCHEMA_VERSION) {
+    if ('schemaVersion' in m && m.schemaVersion !== undefined && m.schemaVersion !== this.CURRENT_SCHEMA_VERSION) {
       return { state: 'INVALID_MALFORMED', isValid: false, hasUnresolved: false, unresolvedCount: 0, error: `Schema version mismatch. Expected ${this.CURRENT_SCHEMA_VERSION}, got ${m.schemaVersion}` };
     }
     
@@ -277,6 +280,98 @@ export class VPackManager {
       isValid: true,
       hasUnresolved,
       unresolvedCount
+    };
+  }
+
+  /**
+   * Resolve dependencies against Modrinth API to verify authenticity and obtain official download URLs.
+   * If a dependency cannot be resolved against Modrinth, it is marked as unresolved.
+   */
+  public static async resolveAndVerifyModrinthDependencies(pack: MyPack): Promise<{ verifiedPack: MyPack; validationResult: VPackValidationResult }> {
+    const structVal = this.validateManifest(pack);
+    if (!structVal.isValid) {
+      return { verifiedPack: pack, validationResult: structVal };
+    }
+
+    let unresolvedCount = 0;
+
+    const verifyList = async (refs: CardModRef[]): Promise<CardModRef[]> => {
+      const list: CardModRef[] = [];
+      for (const ref of refs) {
+        if (ref.unresolved || !ref.projectId || !ref.versionId || ref.projectId === 'unresolved' || ref.versionId === 'unresolved') {
+          unresolvedCount++;
+          list.push({ ...ref, unresolved: true });
+          continue;
+        }
+
+        try {
+          const modrinthVer = await ModrinthClient.getVersion(ref.versionId);
+          if (!modrinthVer || modrinthVer.project_id !== ref.projectId) {
+            unresolvedCount++;
+            list.push({ ...ref, unresolved: true });
+            continue;
+          }
+
+          // Verify game version compatibility if specified
+          if (pack.minecraftVersion && modrinthVer.game_versions.length > 0 && !modrinthVer.game_versions.includes(pack.minecraftVersion)) {
+            unresolvedCount++;
+            list.push({ ...ref, unresolved: true });
+            continue;
+          }
+
+          // Verify loader compatibility for mods if specified
+          if (ref.contentType === 'mod' && pack.loaderType && modrinthVer.loaders.length > 0 && !modrinthVer.loaders.includes(pack.loaderType)) {
+            unresolvedCount++;
+            list.push({ ...ref, unresolved: true });
+            continue;
+          }
+
+          const officialFile = modrinthVer.files.find(f => f.filename === ref.filename) || modrinthVer.files.find(f => f.primary) || modrinthVer.files[0];
+          if (!officialFile || !officialFile.url || !officialFile.url.startsWith('https://cdn.modrinth.com/')) {
+            unresolvedCount++;
+            list.push({ ...ref, unresolved: true });
+            continue;
+          }
+
+          // Use verified official download URL from Modrinth API
+          list.push({
+            ...ref,
+            downloadUrl: officialFile.url,
+            filename: officialFile.filename,
+            sizeBytes: officialFile.size || ref.sizeBytes,
+            sha1: officialFile.hashes?.sha1 || ref.sha1,
+            unresolved: false
+          });
+        } catch {
+          unresolvedCount++;
+          list.push({ ...ref, unresolved: true });
+        }
+      }
+      return list;
+    };
+
+    const verifiedMods = await verifyList(pack.mods || []);
+    const verifiedResourcePacks = await verifyList(pack.resourcePacks || []);
+    const verifiedShaderPacks = await verifyList(pack.shaderPacks || []);
+
+    const verifiedPack: MyPack = {
+      ...pack,
+      mods: verifiedMods,
+      resourcePacks: verifiedResourcePacks,
+      shaderPacks: verifiedShaderPacks
+    };
+
+    const hasUnresolved = unresolvedCount > 0;
+    const state: VPackValidationState = hasUnresolved ? 'VALID_UNRESOLVED' : 'VALID_RESOLVED';
+
+    return {
+      verifiedPack,
+      validationResult: {
+        state,
+        isValid: true,
+        hasUnresolved,
+        unresolvedCount
+      }
     };
   }
 
