@@ -25,7 +25,6 @@ export class ShopPage {
   }
 
   public async render(): Promise<HTMLElement> {
-    // Check developer mode
     this.isDeveloperMode = await api.isDeveloperMode();
 
     this.container.innerHTML = `
@@ -76,7 +75,7 @@ export class ShopPage {
     const newCardBtn = this.container.querySelector('#btn-new-card');
     if (newCardBtn) {
       newCardBtn.addEventListener('click', () => {
-        const modal = new CardCreatorModal(null, () => this.loadData());
+        const modal = new CardCreatorModal({ source: 'developer' }, () => this.loadData());
         modal.show();
       });
     }
@@ -88,7 +87,7 @@ export class ShopPage {
 
   private async loadData() {
     this.isLoading = true;
-    this.renderGrid(); // show loading
+    this.renderGrid();
 
     try {
       const [cards, installs] = await Promise.all([
@@ -160,6 +159,7 @@ export class ShopPage {
     const installState = this.installedStates.find(s => s.cardId === card.id);
     const isInstalled = !!installState;
     const isRetired = await this.checkCardRetirement(card.id);
+    const source = card.source || 'user';
 
     const el = document.createElement('div');
     el.className = 'card animate-fade-in-up hover-scale';
@@ -171,7 +171,6 @@ export class ShopPage {
       ${isRetired ? 'opacity: 0.7;' : ''}
     `;
 
-    // Make it look a bit more "Minecraft slate"
     el.innerHTML = `
       <!-- Artwork / Header -->
       <div style="height: 120px; background: #1a1e23; position: relative; border-bottom: 2px solid var(--border-subtle);">
@@ -180,9 +179,21 @@ export class ShopPage {
           : `<div style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; opacity: 0.3; font-size: 3rem;">📦</div>`
         }
         <div style="position: absolute; bottom: 0; left: 0; right: 0; padding: 12px; background: linear-gradient(transparent, rgba(0,0,0,0.8)); display: flex; justify-content: space-between; align-items: flex-end;">
-          <span style="font-size: 0.75rem; font-weight: 800; padding: 2px 8px; border-radius: 4px; background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border-subtle);">
-            v${card.cardVersion}
-          </span>
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <span style="font-size: 0.75rem; font-weight: 800; padding: 2px 8px; border-radius: 4px; background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border-subtle);">
+              v${card.cardVersion}
+            </span>
+            ${source === 'builtin' ? `
+              <span style="font-size: 0.7rem; font-weight: 800; padding: 2px 6px; border-radius: 4px; background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4);">
+                OFFICIAL
+              </span>
+            ` : source === 'developer' ? `
+              <span style="font-size: 0.7rem; font-weight: 800; padding: 2px 6px; border-radius: 4px; background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4);">
+                DEVELOPER
+              </span>
+            ` : ''}
+          </div>
+
           <div style="display: flex; gap: 6px; align-items: center;">
             ${this.isDeveloperMode && !isRetired ? `
               <button class="btn btn-secondary card-edit-btn" data-card-id="${card.id}" style="padding: 4px 8px; font-size: 0.7rem; border: 1px solid var(--border-subtle);">Edit</button>
@@ -219,7 +230,6 @@ export class ShopPage {
 
     el.onclick = () => this.showCardDetails(card, installState, isRetired);
 
-    // Edit button handler (developer only)
     const editBtn = el.querySelector('.card-edit-btn');
     if (editBtn) {
       editBtn.addEventListener('click', (e) => {
@@ -229,7 +239,6 @@ export class ShopPage {
       });
     }
 
-    // Hover effect adjustments
     el.addEventListener('mouseenter', () => {
       el.style.borderColor = 'var(--accent-primary)';
       el.style.transform = 'translateY(-4px)';
@@ -392,14 +401,11 @@ export class ShopPage {
           </div>
         </div>
         
-        <!-- Progress Bar (hidden by default) -->
-        <div id="cd-progress-container" style="display: none; flex-direction: column; gap: 8px; margin-top: 16px; padding: 16px; background: var(--bg-surface); border-radius: var(--radius-md); border: 1px solid var(--border-accent);">
-          <div style="display: flex; justify-content: space-between; font-size: 0.85rem; font-weight: 600;">
-            <span id="cd-progress-text" style="color: var(--text-primary);">Preparing to install...</span>
-            <span id="cd-progress-pct" style="color: var(--accent-primary);">0%</span>
-          </div>
-          <div style="height: 6px; background: var(--bg-card); border-radius: 3px; overflow: hidden;">
-            <div id="cd-progress-bar" style="height: 100%; width: 0%; background: var(--accent-gradient); transition: width 0.2s;"></div>
+        <!-- Indeterminate Progress Indicator -->
+        <div id="cd-progress-container" style="display: none; align-items: center; justify-content: space-between; padding: 16px; background: var(--bg-surface); border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <span id="cd-spinner" class="animate-spin" style="font-size: 1.2rem;">⏳</span>
+            <span id="cd-progress-text" style="font-size: 0.9rem; font-weight: 600; color: var(--text-primary);">Installing card...</span>
           </div>
         </div>
 
@@ -409,7 +415,6 @@ export class ShopPage {
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
 
-    // Close logic
     const closeOverlay = (e?: MouseEvent) => {
       if (e && e.target !== overlay) return;
       overlay.remove();
@@ -417,7 +422,6 @@ export class ShopPage {
     overlay.onclick = closeOverlay;
     modal.querySelector('#cd-close')!.addEventListener('click', () => overlay.remove());
 
-    // Install logic
     const installBtn = modal.querySelector('#cd-install') as HTMLButtonElement | null;
     if (installBtn) {
       installBtn.onclick = async () => {
@@ -426,32 +430,36 @@ export class ShopPage {
         
         const progContainer = modal.querySelector('#cd-progress-container') as HTMLElement;
         const progText = modal.querySelector('#cd-progress-text') as HTMLElement;
-        const progBar = modal.querySelector('#cd-progress-bar') as HTMLElement;
-        const progPct = modal.querySelector('#cd-progress-pct') as HTMLElement;
+        const spinner = modal.querySelector('#cd-spinner') as HTMLElement;
         
         progContainer.style.display = 'flex';
-        progText.textContent = 'Creating instance...';
-        progBar.style.width = '10%';
-        progPct.textContent = '10%';
+        progText.textContent = 'Creating instance and downloading mods...';
 
         try {
           const res = await api.installCard(card.id);
           if (res.success) {
+            spinner.textContent = '✅';
+            spinner.className = '';
             progText.textContent = 'Installation complete!';
-            progBar.style.width = '100%';
-            progPct.textContent = '100%';
             NotificationToast.show(`Card "${card.name}" installed successfully!`, 'success');
             setTimeout(() => {
               overlay.remove();
               this.loadData();
             }, 1000);
           } else {
-            throw new Error(res.error || 'Unknown install error');
+            spinner.textContent = '❌';
+            spinner.className = '';
+            progText.style.color = '#ef4444';
+            progText.textContent = res.error || 'Card installation failed';
+            NotificationToast.show(describeIpcError(new Error(res.error || 'Installation failed')), 'error');
+            installBtn.disabled = false;
+            installBtn.textContent = 'Retry Install';
           }
         } catch (e: any) {
-          progText.textContent = 'Installation failed.';
+          spinner.textContent = '❌';
+          spinner.className = '';
           progText.style.color = '#ef4444';
-          progBar.style.background = '#ef4444';
+          progText.textContent = describeIpcError(e);
           NotificationToast.show(describeIpcError(e), 'error');
           installBtn.disabled = false;
           installBtn.textContent = 'Retry Install';
@@ -459,7 +467,6 @@ export class ShopPage {
       };
     }
 
-    // Edit logic (developer only)
     const editBtn = modal.querySelector('#cd-edit') as HTMLButtonElement | null;
     if (editBtn) {
       editBtn.onclick = () => {
@@ -469,7 +476,6 @@ export class ShopPage {
       };
     }
 
-    // Retire logic (developer only)
     const retireBtn = modal.querySelector('#cd-retire') as HTMLButtonElement | null;
     if (retireBtn) {
       retireBtn.onclick = async () => {
@@ -491,7 +497,6 @@ export class ShopPage {
       };
     }
 
-    // Uninstall logic
     const uninstallBtn = modal.querySelector('#cd-uninstall') as HTMLButtonElement | null;
     if (uninstallBtn) {
       uninstallBtn.onclick = async () => {
@@ -514,7 +519,6 @@ export class ShopPage {
       };
     }
 
-    // Actions
     modal.querySelector('#cd-export')?.addEventListener('click', async () => {
       try {
         const ok = await api.exportCard(card);

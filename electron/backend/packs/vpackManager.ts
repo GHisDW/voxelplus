@@ -1,8 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import crypto from 'node:crypto';
 import AdmZip from 'adm-zip';
-import { MyPack, VPackManifest } from '../../types';
+import { MyPack, VPackManifest, CardModRef, ModInfo, ResourcePackInfo, ShaderPackInfo } from '../../types';
 import { PackStore } from './packStore';
 import { PathManager } from '../storage/paths';
 import { InstanceManager } from '../instances/instanceManager';
@@ -10,10 +9,18 @@ import { ModManager } from '../content/modManager';
 import { PackManager } from '../content/packManager';
 import { ModrinthClient } from '../modrinth/modrinthClient';
 
+export type VPackValidationState = 'VALID_RESOLVED' | 'VALID_UNRESOLVED' | 'INVALID_MALFORMED';
+
+export interface VPackValidationResult {
+  state: VPackValidationState;
+  isValid: boolean;
+  hasUnresolved: boolean;
+  unresolvedCount: number;
+  error?: string;
+}
+
 export class VPackManager {
   private static readonly MANIFEST_FILE = 'manifest.json';
-  private static readonly ARTWORK_FILE = 'cc.png';
-  private static readonly CONFIG_DIR = 'config';
   private static readonly CURRENT_SCHEMA_VERSION = 1;
 
   /**
@@ -44,7 +51,7 @@ export class VPackManager {
       // Add manifest
       zip.addFile(this.MANIFEST_FILE, Buffer.from(JSON.stringify(manifest, null, 2), 'utf-8'));
       
-      // Add artwork if it's a data URI (convert to file)
+      // Add artwork if present as data URI
       if (pack.artwork && pack.artwork.startsWith('data:')) {
         try {
           const matches = pack.artwork.match(/^data:image\/(\w+);base64,(.+)$/);
@@ -58,12 +65,6 @@ export class VPackManager {
         }
       }
       
-      // Add configuration files if they exist
-      if (pack.configs && Object.keys(pack.configs).length > 0) {
-        // For now, configs are stored as JSON in the manifest
-        // In the future, we could include actual config files
-      }
-      
       zip.writeZip(targetPath);
       return true;
     } catch (e) {
@@ -73,38 +74,54 @@ export class VPackManager {
   }
 
   /**
-   * Import a .vpack archive with validation
+   * Validate a target extraction entry path to prevent directory traversal attacks
    */
-  public static async importPack(zipPath: string): Promise<{ success: boolean; pack?: MyPack; error?: string }> {
+  public static isPathSafe(destinationDir: string, entryName: string): boolean {
+    if (!entryName) return false;
+
+    // Reject entries containing traversal, leading slashes or drive letters
+    if (entryName.includes('..') || entryName.startsWith('/') || entryName.startsWith('\\') || entryName.match(/^[A-Za-z]:/)) {
+      return false;
+    }
+
+    const resolvedDestination = path.resolve(destinationDir);
+    const resolvedEntryPath = path.resolve(destinationDir, entryName);
+
+    // Ensure the normalized path stays strictly inside destinationDir
+    return resolvedEntryPath.startsWith(resolvedDestination + path.sep) || resolvedEntryPath === resolvedDestination;
+  }
+
+  /**
+   * Import a .vpack archive with validation and path traversal checks
+   */
+  public static async importPack(zipPath: string): Promise<{ success: boolean; pack?: MyPack; error?: string; validationState?: VPackValidationState }> {
     try {
-      // Validate file exists
       if (!fs.existsSync(zipPath)) {
-        return { success: false, error: 'VPack file does not exist' };
+        return { success: false, error: 'VPack file does not exist', validationState: 'INVALID_MALFORMED' };
       }
 
-      // Validate file extension
       if (!zipPath.toLowerCase().endsWith('.vpack')) {
-        return { success: false, error: 'File must have .vpack extension' };
+        return { success: false, error: 'File must have .vpack extension', validationState: 'INVALID_MALFORMED' };
       }
 
       const zip = new AdmZip(zipPath);
       const entries = zip.getEntries();
       
-      // Security: validate no path traversal attempts
+      // Security: validate all archive entries to prevent path traversal
+      const tempDestDir = PathManager.getConfigDir();
       for (const entry of entries) {
-        if (entry.entryName.includes('..') || entry.entryName.startsWith('/') || entry.entryName.startsWith('\\')) {
-          return { success: false, error: 'VPack contains invalid path traversal attempt' };
-        }
-        
-        // Check for suspicious absolute paths
-        if (entry.entryName.match(/^[A-Za-z]:/)) {
-          return { success: false, error: 'VPack contains absolute path references' };
+        if (!this.isPathSafe(tempDestDir, entry.entryName)) {
+          return {
+            success: false,
+            error: `VPack contains unsafe archive entry path traversal attempt: ${entry.entryName}`,
+            validationState: 'INVALID_MALFORMED'
+          };
         }
       }
 
       const manifestEntry = zip.getEntry(this.MANIFEST_FILE);
       if (!manifestEntry) {
-        return { success: false, error: 'VPack missing manifest.json' };
+        return { success: false, error: 'VPack missing manifest.json', validationState: 'INVALID_MALFORMED' };
       }
 
       const raw = manifestEntry.getData().toString('utf-8');
@@ -112,23 +129,28 @@ export class VPackManager {
       
       try {
         manifest = JSON.parse(raw) as VPackManifest;
-      } catch (e) {
-        return { success: false, error: 'Invalid JSON in manifest.json' };
+      } catch {
+        return { success: false, error: 'Invalid JSON in manifest.json', validationState: 'INVALID_MALFORMED' };
       }
 
-      // Validate manifest structure
       const validationResult = this.validateManifest(manifest);
       if (!validationResult.isValid) {
-        return { success: false, error: `Manifest validation failed: ${validationResult.error}` };
+        return {
+          success: false,
+          error: `Manifest validation failed: ${validationResult.error}`,
+          validationState: 'INVALID_MALFORMED'
+        };
       }
 
-      // Check for duplicate pack IDs
       const existingPack = PackStore.getPack(manifest.id);
       if (existingPack) {
-        return { success: false, error: `A pack with ID "${manifest.id}" already exists` };
+        return {
+          success: false,
+          error: `A pack with ID "${manifest.id}" already exists`,
+          validationState: 'INVALID_MALFORMED'
+        };
       }
 
-      // Extract artwork if present
       let artwork: string | null = null;
       const artworkEntry = entries.find(e => e.entryName.startsWith('artwork.'));
       if (artworkEntry) {
@@ -136,10 +158,7 @@ export class VPackManager {
           const data = artworkEntry.getData();
           const ext = artworkEntry.entryName.split('.').pop();
           
-          // Validate it's an image extension
-          if (!['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext?.toLowerCase() || '')) {
-            console.warn('Invalid artwork extension in vpack:', ext);
-          } else {
+          if (ext && ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext.toLowerCase())) {
             const base64 = data.toString('base64');
             artwork = `data:image/${ext};base64,${base64}`;
           }
@@ -148,8 +167,8 @@ export class VPackManager {
         }
       }
 
-      const newPack: MyPack = {
-        id: manifest.id, // Use the original pack ID from manifest
+      const rawPack: MyPack = {
+        id: manifest.id,
         name: manifest.name,
         description: manifest.description,
         artwork,
@@ -165,103 +184,195 @@ export class VPackManager {
         updatedAt: new Date().toISOString()
       };
 
-      PackStore.savePack(newPack);
-      return { success: true, pack: newPack };
-    } catch (e: any) {
+      // Perform real Modrinth API verification to verify project, version, file, and compatibility
+      const { verifiedPack, validationResult: modrinthVal } = await this.resolveAndVerifyModrinthDependencies(rawPack);
+
+      PackStore.savePack(verifiedPack);
+      return {
+        success: true,
+        pack: verifiedPack,
+        validationState: modrinthVal.state
+      };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Unknown error during import';
       console.error('Failed to import vpack:', e);
-      return { success: false, error: e.message || 'Unknown error during import' };
+      return { success: false, error: msg, validationState: 'INVALID_MALFORMED' };
     }
   }
 
   /**
-   * Validate manifest structure
+   * Validate manifest structure and return explicit state (VALID_RESOLVED, VALID_UNRESOLVED, or INVALID_MALFORMED)
    */
-  private static validateManifest(manifest: any): { isValid: boolean; error?: string } {
+  public static validateManifest(manifest: unknown): VPackValidationResult {
     if (!manifest || typeof manifest !== 'object') {
-      return { isValid: false, error: 'Manifest is not an object' };
+      return { state: 'INVALID_MALFORMED', isValid: false, hasUnresolved: false, unresolvedCount: 0, error: 'Manifest is not an object' };
     }
     
-    // Check schema version
-    if (manifest.schemaVersion !== this.CURRENT_SCHEMA_VERSION) {
-      console.warn('VPack schema version mismatch:', manifest.schemaVersion);
-      // We could support migration here in the future
-      return { isValid: false, error: `Schema version mismatch. Expected ${this.CURRENT_SCHEMA_VERSION}, got ${manifest.schemaVersion}` };
+    const m = manifest as Record<string, unknown>;
+
+    if ('schemaVersion' in m && m.schemaVersion !== undefined && m.schemaVersion !== this.CURRENT_SCHEMA_VERSION) {
+      return { state: 'INVALID_MALFORMED', isValid: false, hasUnresolved: false, unresolvedCount: 0, error: `Schema version mismatch. Expected ${this.CURRENT_SCHEMA_VERSION}, got ${m.schemaVersion}` };
     }
     
-    // Required fields
-    if (!manifest.id || typeof manifest.id !== 'string') {
-      return { isValid: false, error: 'Missing or invalid pack ID' };
+    if (!m.id || typeof m.id !== 'string') return { state: 'INVALID_MALFORMED', isValid: false, hasUnresolved: false, unresolvedCount: 0, error: 'Missing or invalid pack ID' };
+    if (!m.name || typeof m.name !== 'string') return { state: 'INVALID_MALFORMED', isValid: false, hasUnresolved: false, unresolvedCount: 0, error: 'Missing or invalid pack name' };
+    if (!m.packVersion || typeof m.packVersion !== 'string') return { state: 'INVALID_MALFORMED', isValid: false, hasUnresolved: false, unresolvedCount: 0, error: 'Missing or invalid pack version' };
+    if (!m.minecraftVersion || typeof m.minecraftVersion !== 'string') return { state: 'INVALID_MALFORMED', isValid: false, hasUnresolved: false, unresolvedCount: 0, error: 'Missing or invalid Minecraft version' };
+    if (!m.loaderType || typeof m.loaderType !== 'string' || !['fabric', 'forge', 'neoforge', 'quilt'].includes(m.loaderType)) {
+      return { state: 'INVALID_MALFORMED', isValid: false, hasUnresolved: false, unresolvedCount: 0, error: 'Missing or invalid loader type' };
     }
-    if (!manifest.name || typeof manifest.name !== 'string') {
-      return { isValid: false, error: 'Missing or invalid pack name' };
-    }
-    if (!manifest.packVersion || typeof manifest.packVersion !== 'string') {
-      return { isValid: false, error: 'Missing or invalid pack version' };
-    }
-    if (!manifest.minecraftVersion || typeof manifest.minecraftVersion !== 'string') {
-      return { isValid: false, error: 'Missing or invalid Minecraft version' };
-    }
-    if (!manifest.loaderType || !['fabric', 'forge', 'neoforge', 'quilt'].includes(manifest.loaderType)) {
-      return { isValid: false, error: 'Missing or invalid loader type' };
-    }
-    if (!manifest.loaderVersion || typeof manifest.loaderVersion !== 'string') {
-      return { isValid: false, error: 'Missing or invalid loader version' };
+    if (!m.loaderVersion || typeof m.loaderVersion !== 'string') return { state: 'INVALID_MALFORMED', isValid: false, hasUnresolved: false, unresolvedCount: 0, error: 'Missing or invalid loader version' };
+    
+    if (!Array.isArray(m.mods)) return { state: 'INVALID_MALFORMED', isValid: false, hasUnresolved: false, unresolvedCount: 0, error: 'Mods must be an array' };
+    if (!Array.isArray(m.resourcePacks)) return { state: 'INVALID_MALFORMED', isValid: false, hasUnresolved: false, unresolvedCount: 0, error: 'Resource packs must be an array' };
+    if (!Array.isArray(m.shaderPacks)) return { state: 'INVALID_MALFORMED', isValid: false, hasUnresolved: false, unresolvedCount: 0, error: 'Shader packs must be an array' };
+    
+    let unresolvedCount = 0;
+    const seenProjectIds = new Set<string>();
+
+    const checkModRef = (item: unknown, typeName: string, index: number): string | null => {
+      if (!item || typeof item !== 'object') return `${typeName} at index ${index} is invalid`;
+      const ref = item as Record<string, unknown>;
+      if (!ref.provider || typeof ref.provider !== 'string' || ref.provider !== 'modrinth') {
+        return `${typeName} at index ${index} has unsupported provider "${ref.provider}". User VPacks only support Modrinth dependencies.`;
+      }
+      if (!ref.projectName || typeof ref.projectName !== 'string') {
+        return `${typeName} at index ${index} missing projectName`;
+      }
+      if (ref.unresolved === true) {
+        unresolvedCount++;
+        return null;
+      }
+      if (!ref.projectId || typeof ref.projectId !== 'string') return `${typeName} at index ${index} missing projectId`;
+      if (seenProjectIds.has(ref.projectId)) {
+        return `${typeName} at index ${index} has duplicate project ID "${ref.projectId}"`;
+      }
+      seenProjectIds.add(ref.projectId);
+      if (!ref.versionId || typeof ref.versionId !== 'string') return `${typeName} at index ${index} missing versionId`;
+      if (!ref.downloadUrl || typeof ref.downloadUrl !== 'string') return `${typeName} at index ${index} missing downloadUrl`;
+      if (ref.downloadUrl && !ref.downloadUrl.startsWith('https://cdn.modrinth.com/')) {
+        return `${typeName} at index ${index} has invalid download URL domain. User VPacks must use Modrinth CDN URLs.`;
+      }
+      if (!ref.filename || typeof ref.filename !== 'string') return `${typeName} at index ${index} missing filename`;
+      return null;
+    };
+
+    for (let i = 0; i < (m.mods as unknown[]).length; i++) {
+      const err = checkModRef((m.mods as unknown[])[i], 'Mod', i);
+      if (err) return { state: 'INVALID_MALFORMED', isValid: false, hasUnresolved: false, unresolvedCount: 0, error: err };
     }
     
-    // Validate arrays
-    if (!Array.isArray(manifest.mods)) {
-      return { isValid: false, error: 'Mods must be an array' };
+    for (let i = 0; i < (m.resourcePacks as unknown[]).length; i++) {
+      const err = checkModRef((m.resourcePacks as unknown[])[i], 'Resource pack', i);
+      if (err) return { state: 'INVALID_MALFORMED', isValid: false, hasUnresolved: false, unresolvedCount: 0, error: err };
     }
-    if (!Array.isArray(manifest.resourcePacks)) {
-      return { isValid: false, error: 'Resource packs must be an array' };
+
+    for (let i = 0; i < (m.shaderPacks as unknown[]).length; i++) {
+      const err = checkModRef((m.shaderPacks as unknown[])[i], 'Shader pack', i);
+      if (err) return { state: 'INVALID_MALFORMED', isValid: false, hasUnresolved: false, unresolvedCount: 0, error: err };
     }
-    if (!Array.isArray(manifest.shaderPacks)) {
-      return { isValid: false, error: 'Shader packs must be an array' };
+
+    const hasUnresolved = unresolvedCount > 0;
+    const state: VPackValidationState = hasUnresolved ? 'VALID_UNRESOLVED' : 'VALID_RESOLVED';
+
+    return {
+      state,
+      isValid: true,
+      hasUnresolved,
+      unresolvedCount
+    };
+  }
+
+  /**
+   * Resolve dependencies against Modrinth API to verify authenticity and obtain official download URLs.
+   * If a dependency cannot be resolved against Modrinth, it is marked as unresolved.
+   */
+  public static async resolveAndVerifyModrinthDependencies(pack: MyPack): Promise<{ verifiedPack: MyPack; validationResult: VPackValidationResult }> {
+    const structVal = this.validateManifest(pack);
+    if (!structVal.isValid) {
+      return { verifiedPack: pack, validationResult: structVal };
     }
-    
-    // Validate mod references
-    for (let i = 0; i < manifest.mods.length; i++) {
-      const mod = manifest.mods[i];
-      if (!mod.provider || !['modrinth', 'curseforge'].includes(mod.provider)) {
-        return { isValid: false, error: `Mod at index ${i} has invalid provider` };
+
+    let unresolvedCount = 0;
+
+    const verifyList = async (refs: CardModRef[]): Promise<CardModRef[]> => {
+      const list: CardModRef[] = [];
+      for (const ref of refs) {
+        if (ref.unresolved || !ref.projectId || !ref.versionId || ref.projectId === 'unresolved' || ref.versionId === 'unresolved') {
+          unresolvedCount++;
+          list.push({ ...ref, unresolved: true });
+          continue;
+        }
+
+        try {
+          const modrinthVer = await ModrinthClient.getVersion(ref.versionId);
+          if (!modrinthVer || modrinthVer.project_id !== ref.projectId) {
+            unresolvedCount++;
+            list.push({ ...ref, unresolved: true });
+            continue;
+          }
+
+          // Verify game version compatibility if specified
+          if (pack.minecraftVersion && modrinthVer.game_versions.length > 0 && !modrinthVer.game_versions.includes(pack.minecraftVersion)) {
+            unresolvedCount++;
+            list.push({ ...ref, unresolved: true });
+            continue;
+          }
+
+          // Verify loader compatibility for mods if specified
+          if (ref.contentType === 'mod' && pack.loaderType && modrinthVer.loaders.length > 0 && !modrinthVer.loaders.includes(pack.loaderType)) {
+            unresolvedCount++;
+            list.push({ ...ref, unresolved: true });
+            continue;
+          }
+
+          const officialFile = modrinthVer.files.find(f => f.filename === ref.filename) || modrinthVer.files.find(f => f.primary) || modrinthVer.files[0];
+          if (!officialFile || !officialFile.url || !officialFile.url.startsWith('https://cdn.modrinth.com/')) {
+            unresolvedCount++;
+            list.push({ ...ref, unresolved: true });
+            continue;
+          }
+
+          // Use verified official download URL from Modrinth API
+          list.push({
+            ...ref,
+            downloadUrl: officialFile.url,
+            filename: officialFile.filename,
+            sizeBytes: officialFile.size || ref.sizeBytes,
+            sha1: officialFile.hashes?.sha1 || ref.sha1,
+            unresolved: false
+          });
+        } catch {
+          unresolvedCount++;
+          list.push({ ...ref, unresolved: true });
+        }
       }
-      if (!mod.projectId || typeof mod.projectId !== 'string') {
-        return { isValid: false, error: `Mod at index ${i} has invalid project ID` };
+      return list;
+    };
+
+    const verifiedMods = await verifyList(pack.mods || []);
+    const verifiedResourcePacks = await verifyList(pack.resourcePacks || []);
+    const verifiedShaderPacks = await verifyList(pack.shaderPacks || []);
+
+    const verifiedPack: MyPack = {
+      ...pack,
+      mods: verifiedMods,
+      resourcePacks: verifiedResourcePacks,
+      shaderPacks: verifiedShaderPacks
+    };
+
+    const hasUnresolved = unresolvedCount > 0;
+    const state: VPackValidationState = hasUnresolved ? 'VALID_UNRESOLVED' : 'VALID_RESOLVED';
+
+    return {
+      verifiedPack,
+      validationResult: {
+        state,
+        isValid: true,
+        hasUnresolved,
+        unresolvedCount
       }
-      if (!mod.versionId || typeof mod.versionId !== 'string') {
-        return { isValid: false, error: `Mod at index ${i} has invalid version ID` };
-      }
-      if (!mod.downloadUrl || typeof mod.downloadUrl !== 'string') {
-        return { isValid: false, error: `Mod at index ${i} has invalid download URL` };
-      }
-      if (!mod.filename || typeof mod.filename !== 'string') {
-        return { isValid: false, error: `Mod at index ${i} has invalid filename` };
-      }
-    }
-    
-    // Validate resource pack references
-    for (let i = 0; i < manifest.resourcePacks.length; i++) {
-      const rp = manifest.resourcePacks[i];
-      if (!rp.provider || !['modrinth', 'curseforge'].includes(rp.provider)) {
-        return { isValid: false, error: `Resource pack at index ${i} has invalid provider` };
-      }
-      if (!rp.projectId || !rp.versionId || !rp.downloadUrl || !rp.filename) {
-        return { isValid: false, error: `Resource pack at index ${i} is missing required fields` };
-      }
-    }
-    
-    // Validate shader pack references
-    for (let i = 0; i < manifest.shaderPacks.length; i++) {
-      const sp = manifest.shaderPacks[i];
-      if (!sp.provider || !['modrinth', 'curseforge'].includes(sp.provider)) {
-        return { isValid: false, error: `Shader pack at index ${i} has invalid provider` };
-      }
-      if (!sp.projectId || !sp.versionId || !sp.downloadUrl || !sp.filename) {
-        return { isValid: false, error: `Shader pack at index ${i} is missing required fields` };
-      }
-    }
-    
-    return { isValid: true };
+    };
   }
 
   /**
@@ -272,15 +383,12 @@ export class VPackManager {
     if (!instance) return null;
 
     try {
-      // Scan installed mods
       const mods = await ModManager.listMods(instanceId);
       const resolvedMods = await this.resolveModIdentities(mods, instance.minecraft.version, instance.loader.type);
       
-      // Scan resource packs
       const resourcePacks = await PackManager.listResourcePacks(instanceId);
       const resolvedResourcePacks = await this.resolveResourcePackIdentities(resourcePacks, instance.minecraft.version);
       
-      // Scan shader packs
       const shaderPacks = await PackManager.listShaderPacks(instanceId);
       const resolvedShaderPacks = await this.resolveShaderIdentities(shaderPacks, instance.minecraft.version);
       
@@ -296,7 +404,7 @@ export class VPackManager {
         mods: resolvedMods,
         resourcePacks: resolvedResourcePacks,
         shaderPacks: resolvedShaderPacks,
-        configs: {}, // Configs would need special handling
+        configs: {},
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
@@ -309,16 +417,11 @@ export class VPackManager {
     }
   }
 
-  /**
-   * Resolve installed mods to Modrinth identities
-   */
-  private static async resolveModIdentities(mods: any[], mcVersion: string, loader: string): Promise<any[]> {
-    const resolved: any[] = [];
+  private static async resolveModIdentities(mods: ModInfo[], mcVersion: string, loader: string): Promise<CardModRef[]> {
+    const resolved: CardModRef[] = [];
     
     for (const mod of mods) {
       try {
-        // Try to find by filename hash search on Modrinth
-        // This is a best-effort approach - not all mods can be identified
         const searchResults = await ModrinthClient.searchProjects({
           query: mod.name,
           projectType: 'mod',
@@ -336,7 +439,7 @@ export class VPackManager {
             const file = version.files[0];
             
             resolved.push({
-              provider: 'modrinth' as const,
+              provider: 'modrinth',
               projectId: project.id,
               projectName: project.title,
               versionId: version.id,
@@ -345,48 +448,46 @@ export class VPackManager {
               filename: file.filename,
               sizeBytes: file.size,
               sha1: file.hashes?.sha1,
-              iconUrl: project.icon_url,
-              contentType: 'mod' as const
+              iconUrl: project.icon_url || undefined,
+              contentType: 'mod'
             });
           } else {
-            // Mark as unresolved
             resolved.push({
-              provider: 'modrinth' as const,
+              provider: 'modrinth',
               projectId: 'unresolved',
               projectName: mod.name,
               versionId: 'unresolved',
               versionName: mod.version || 'unknown',
               downloadUrl: '',
               filename: mod.filename,
-              contentType: 'mod' as const,
+              contentType: 'mod',
               unresolved: true
             });
           }
         } else {
-          // Could not find on Modrinth
           resolved.push({
-            provider: 'modrinth' as const,
+            provider: 'modrinth',
             projectId: 'unresolved',
             projectName: mod.name,
             versionId: 'unresolved',
             versionName: mod.version || 'unknown',
             downloadUrl: '',
             filename: mod.filename,
-            contentType: 'mod' as const,
+            contentType: 'mod',
             unresolved: true
           });
         }
       } catch (e) {
         console.warn(`Failed to resolve mod identity for ${mod.name}:`, e);
         resolved.push({
-          provider: 'modrinth' as const,
+          provider: 'modrinth',
           projectId: 'unresolved',
           projectName: mod.name,
           versionId: 'unresolved',
           versionName: mod.version || 'unknown',
           downloadUrl: '',
           filename: mod.filename,
-          contentType: 'mod' as const,
+          contentType: 'mod',
           unresolved: true
         });
       }
@@ -395,11 +496,8 @@ export class VPackManager {
     return resolved;
   }
 
-  /**
-   * Resolve resource pack identities
-   */
-  private static async resolveResourcePackIdentities(resourcePacks: any[], mcVersion: string): Promise<any[]> {
-    const resolved: any[] = [];
+  private static async resolveResourcePackIdentities(resourcePacks: ResourcePackInfo[], mcVersion: string): Promise<CardModRef[]> {
+    const resolved: CardModRef[] = [];
     
     for (const rp of resourcePacks) {
       try {
@@ -419,7 +517,7 @@ export class VPackManager {
             const file = version.files[0];
             
             resolved.push({
-              provider: 'modrinth' as const,
+              provider: 'modrinth',
               projectId: project.id,
               projectName: project.title,
               versionId: version.id,
@@ -428,46 +526,46 @@ export class VPackManager {
               filename: file.filename,
               sizeBytes: file.size,
               sha1: file.hashes?.sha1,
-              iconUrl: project.icon_url,
-              contentType: 'resourcepack' as const
+              iconUrl: project.icon_url || undefined,
+              contentType: 'resourcepack'
             });
           } else {
             resolved.push({
-              provider: 'modrinth' as const,
+              provider: 'modrinth',
               projectId: 'unresolved',
               projectName: rp.name,
               versionId: 'unresolved',
               versionName: 'unknown',
               downloadUrl: '',
               filename: rp.filename,
-              contentType: 'resourcepack' as const,
+              contentType: 'resourcepack',
               unresolved: true
             });
           }
         } else {
           resolved.push({
-            provider: 'modrinth' as const,
+            provider: 'modrinth',
             projectId: 'unresolved',
             projectName: rp.name,
             versionId: 'unresolved',
             versionName: 'unknown',
             downloadUrl: '',
             filename: rp.filename,
-            contentType: 'resourcepack' as const,
+            contentType: 'resourcepack',
             unresolved: true
           });
         }
       } catch (e) {
         console.warn(`Failed to resolve resource pack identity for ${rp.name}:`, e);
         resolved.push({
-          provider: 'modrinth' as const,
+          provider: 'modrinth',
           projectId: 'unresolved',
           projectName: rp.name,
           versionId: 'unresolved',
           versionName: 'unknown',
           downloadUrl: '',
           filename: rp.filename,
-          contentType: 'resourcepack' as const,
+          contentType: 'resourcepack',
           unresolved: true
         });
       }
@@ -476,11 +574,8 @@ export class VPackManager {
     return resolved;
   }
 
-  /**
-   * Resolve shader pack identities
-   */
-  private static async resolveShaderIdentities(shaderPacks: any[], mcVersion: string): Promise<any[]> {
-    const resolved: any[] = [];
+  private static async resolveShaderIdentities(shaderPacks: ShaderPackInfo[], mcVersion: string): Promise<CardModRef[]> {
+    const resolved: CardModRef[] = [];
     
     for (const sp of shaderPacks) {
       try {
@@ -500,7 +595,7 @@ export class VPackManager {
             const file = version.files[0];
             
             resolved.push({
-              provider: 'modrinth' as const,
+              provider: 'modrinth',
               projectId: project.id,
               projectName: project.title,
               versionId: version.id,
@@ -509,46 +604,46 @@ export class VPackManager {
               filename: file.filename,
               sizeBytes: file.size,
               sha1: file.hashes?.sha1,
-              iconUrl: project.icon_url,
-              contentType: 'shader' as const
+              iconUrl: project.icon_url || undefined,
+              contentType: 'shader'
             });
           } else {
             resolved.push({
-              provider: 'modrinth' as const,
+              provider: 'modrinth',
               projectId: 'unresolved',
               projectName: sp.name,
               versionId: 'unresolved',
               versionName: 'unknown',
               downloadUrl: '',
               filename: sp.filename,
-              contentType: 'shader' as const,
+              contentType: 'shader',
               unresolved: true
             });
           }
         } else {
           resolved.push({
-            provider: 'modrinth' as const,
+            provider: 'modrinth',
             projectId: 'unresolved',
             projectName: sp.name,
             versionId: 'unresolved',
             versionName: 'unknown',
             downloadUrl: '',
             filename: sp.filename,
-            contentType: 'shader' as const,
+            contentType: 'shader',
             unresolved: true
           });
         }
       } catch (e) {
         console.warn(`Failed to resolve shader pack identity for ${sp.name}:`, e);
         resolved.push({
-          provider: 'modrinth' as const,
+          provider: 'modrinth',
           projectId: 'unresolved',
           projectName: sp.name,
           versionId: 'unresolved',
           versionName: 'unknown',
           downloadUrl: '',
           filename: sp.filename,
-          contentType: 'shader' as const,
+          contentType: 'shader',
           unresolved: true
         });
       }

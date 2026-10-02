@@ -38,7 +38,7 @@ We welcome feature suggestions! Please:
 * **Explain why** this enhancement would be useful
 * **Consider** if this applies to most users or is a personal preference
 
-### Pull Requests
+### Pull Requests & Contributor Acknowledgment
 
 1. **Fork the repository**
 2. **Create a feature branch** (`git checkout -b feature/amazing-feature`)
@@ -46,6 +46,14 @@ We welcome feature suggestions! Please:
 4. **Commit your changes** (`git commit -m 'Add amazing feature'`)
 5. **Push to the branch** (`git push origin feature/amazing-feature`)
 6. **Open a Pull Request**
+
+> 🌟 **Contributor Policy:** Accepted contributors are acknowledged in the `README.md` contributor section. Maintainers update contributor acknowledgments upon PR merge.
+
+### Developer Catalog & Card Authoring
+
+- Built-in Shop Cards are canonical in `electron/backend/cards/defaultCards.ts`.
+- Developer Catalog management (creating/editing/deleting/retiring cards) requires running in Developer Mode (`npm run app:dev` or unpacked build). Backend IPC guards strictly authorize developer operations.
+- VPacks must use Modrinth CDN URLs (`cdn.modrinth.com`) and enforce path traversal extraction safety.
 
 ## 🛠️ Development Setup
 

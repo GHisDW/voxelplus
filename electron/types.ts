@@ -527,6 +527,9 @@ export interface CardModRef {
   unresolved?: boolean;
 }
 
+/** Card provenance source identifier. */
+export type CardSource = 'builtin' | 'developer' | 'user';
+
 /**
  * A Voxel+ Card — a curated, deterministic instance definition.
  *
@@ -554,6 +557,8 @@ export interface VoxelCard {
   loaderType: LoaderType;
   /** Exact loader version. */
   loaderVersion: string;
+  /** Card provenance source (builtin vs developer vs user created). */
+  source?: CardSource;
   /** Ordered list of exact mod/content references. */
   mods: CardModRef[];
   /** Optional tags for filtering (e.g. 'performance', 'magic', 'tech'). */

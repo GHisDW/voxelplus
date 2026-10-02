@@ -8,11 +8,11 @@
  * user customization. Only the install state is removed on failure.
  */
 
-import { VoxelCard, CardInstallState, CardModRef } from '../../types';
+import { VoxelCard, CardInstallState, CardModRef, InstanceMetadata } from '../../types';
 import { InstanceManager } from '../instances/instanceManager';
 import { DownloadManager } from '../modrinth/downloader';
+import { ModrinthClient } from '../modrinth/modrinthClient';
 import { CardStore } from './cardStore';
-import { randomBytes } from 'node:crypto';
 
 export interface CardInstallProgress {
   cardId: string;
@@ -58,13 +58,9 @@ export class CardInstaller {
       return 'Card must include at least one mod';
     }
     
-    // Validate mod references
     for (const mod of card.mods) {
       if (!mod.provider || !mod.projectId || !mod.projectName) {
         return `Invalid mod reference: ${mod.projectName || 'unknown'}`;
-      }
-      if (!mod.downloadUrl && !mod.unresolved) {
-        return `Mod "${mod.projectName}" has no download URL and is not marked as unresolved`;
       }
     }
     
@@ -91,8 +87,41 @@ export class CardInstaller {
   }
 
   /**
+   * Deterministically resolve download URL for a mod reference matching exact Minecraft version and loader.
+   * Does NOT fall back to arbitrary Minecraft versions.
+   */
+  public static async resolveModRef(
+    mod: CardModRef,
+    minecraftVersion: string,
+    loaderType: string
+  ): Promise<{ downloadUrl: string; filename: string } | null> {
+    if (mod.downloadUrl && mod.downloadUrl !== '' && !mod.downloadUrl.includes('PLACEHOLDER')) {
+      return { downloadUrl: mod.downloadUrl, filename: mod.filename };
+    }
+
+    if (mod.provider === 'modrinth' && mod.projectId) {
+      try {
+        const versions = await ModrinthClient.getProjectVersions(
+          mod.projectId,
+          [loaderType],
+          [minecraftVersion]
+        );
+
+        if (versions.length > 0 && versions[0].files.length > 0) {
+          const primaryFile = versions[0].files.find(f => f.primary) || versions[0].files[0];
+          return { downloadUrl: primaryFile.url, filename: primaryFile.filename };
+        }
+      } catch (e) {
+        console.warn(`Failed to resolve Modrinth version for ${mod.projectName} on MC ${minecraftVersion}:`, e);
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * Install a Card.
-   * Returns the resulting CardInstallState.
+   * Returns success: false if any required mod failed to download or is unresolved.
    */
   public static async install(
     card: VoxelCard
@@ -115,7 +144,7 @@ export class CardInstaller {
     const abortController = new AbortController();
     this.activeInstalls.set(card.id, abortController);
 
-    let instance: any = null;
+    let instance: InstanceMetadata | null = null;
     const failedMods: string[] = [];
     const totalMods = card.mods.length;
 
@@ -133,8 +162,8 @@ export class CardInstaller {
           artwork: card.artwork,
           item: 'minecraft:diamond',
         });
-      } catch (e: any) {
-        const msg = `Failed to create instance: ${e?.message ?? e}`;
+      } catch (e: unknown) {
+        const msg = `Failed to create instance: ${e instanceof Error ? e.message : String(e)}`;
         this.emit({ cardId: card.id, step: 'error', error: msg });
         return { success: false, error: msg };
       }
@@ -146,7 +175,7 @@ export class CardInstaller {
           throw new Error('Installation cancelled');
         }
 
-        const mod = card.mods[i]!;
+        const mod = card.mods[i];
         this.emit({
           cardId: card.id,
           step: 'downloading_mod',
@@ -155,36 +184,38 @@ export class CardInstaller {
           totalMods,
         });
 
-        // Skip unresolved mods
+        // Skip unresolved mods and track as failed
         if (mod.unresolved) {
-          failedMods.push(mod.filename);
+          failedMods.push(mod.filename || mod.projectName);
           continue;
         }
 
-        // Skip mods without download URLs
-        if (!mod.downloadUrl) {
-          failedMods.push(mod.filename);
+        // Dynamically resolve download URL if needed
+        const resolved = await this.resolveModRef(mod, card.minecraftVersion, card.loaderType);
+        if (!resolved || !resolved.downloadUrl) {
+          failedMods.push(mod.filename || mod.projectName);
           continue;
         }
 
         try {
           const result = await DownloadManager.downloadToInstance(
             instance.id,
-            mod.downloadUrl,
-            mod.filename,
+            resolved.downloadUrl,
+            resolved.filename || mod.filename,
             mod.projectName,
             mod.contentType
           );
 
           if (!result.success) {
-            failedMods.push(mod.filename);
+            failedMods.push(resolved.filename || mod.filename);
           }
-        } catch (e: any) {
-          // Log the error but continue with other mods
+        } catch (e: unknown) {
           console.error(`Failed to download mod ${mod.projectName}:`, e);
-          failedMods.push(mod.filename);
+          failedMods.push(resolved.filename || mod.filename);
         }
       }
+
+      const isComplete = failedMods.length === 0;
 
       // ── 3. Save install state ─────────────────────────────────────────────────
       const state: CardInstallState = {
@@ -192,42 +223,40 @@ export class CardInstaller {
         cardVersion: card.cardVersion,
         instanceId: instance.id,
         installedAt: new Date().toISOString(),
-        isComplete: failedMods.length === 0,
+        isComplete,
         failedMods,
       };
 
       CardStore.saveInstallState(state);
 
-      this.emit({ cardId: card.id, step: 'complete', totalMods });
-
-      return { success: true, state };
-    } catch (e: any) {
-      const msg = e?.message ?? 'Unknown installation error';
+      if (isComplete) {
+        this.emit({ cardId: card.id, step: 'complete', totalMods });
+        return { success: true, state };
+      } else {
+        const errMsg = `Installation incomplete: ${failedMods.length} mod(s) failed to download out of ${totalMods}.`;
+        this.emit({ cardId: card.id, step: 'error', error: errMsg });
+        return { success: false, state, error: errMsg };
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Unknown installation error';
       this.emit({ cardId: card.id, step: 'error', error: msg });
       
-      // Clean up install state if we saved it
       CardStore.removeInstallState(card.id);
-      
-      // Note: We do NOT delete the instance here to preserve user data
-      // The instance remains usable even if installation fails
-      
       return { success: false, error: msg };
     } finally {
-      // Clean up cancellation controller
       this.activeInstalls.delete(card.id);
     }
   }
 
   /**
-   * Uninstall a card — removes install state but does NOT delete the
-   * Voxel+ instance (user may have customized it).
+   * Uninstall a card — removes install state but does NOT delete the Voxel+ instance.
    */
   public static async uninstall(cardId: string): Promise<{ success: boolean; error?: string }> {
     try {
       CardStore.removeInstallState(cardId);
       return { success: true };
-    } catch (e: any) {
-      return { success: false, error: String(e?.message ?? e) };
+    } catch (e: unknown) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) };
     }
   }
 }

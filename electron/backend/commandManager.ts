@@ -1,4 +1,5 @@
 import { dialog, BrowserWindow } from 'electron';
+import fs from 'node:fs';
 import {
   AppSettings,
   CreateInstancePayload,
@@ -17,7 +18,9 @@ import {
   SkinMetadata,
   SkinSearchResult,
   SkinValidationResult,
-  SkinVersionCompatibility
+  SkinVersionCompatibility,
+  VoxelCard,
+  MyPack
 } from '../types';
 import { ConfigStore } from './storage/configStore';
 import { SystemScanner } from './system/systemScanner';
@@ -346,23 +349,36 @@ export class CommandManager {
     return CardStore.isBuiltInCard(cardId);
   }
 
-  public static isDeveloperMode() {
-    // This is set in main.ts based on defaultCards.ts existence
-    return (global as any).isDeveloperMode || false;
+  public static isDeveloperMode(): boolean {
+    return Boolean((global as unknown as { isDeveloperMode?: boolean }).isDeveloperMode);
   }
 
-  public static saveCard(card: any) {
+  public static saveCard(card: VoxelCard) {
+    if (this.isDeveloperMode() || card.source === 'developer') {
+      return CardStore.saveDeveloperCard(card);
+    }
     return CardStore.saveCard(card);
   }
 
   public static deleteCard(cardId: string) {
+    if (this.isDeveloperMode()) {
+      CardStore.deleteDeveloperCard(cardId);
+    }
     return CardStore.deleteCard(cardId);
   }
 
-  public static async exportCard(card: any) {
+  public static saveDeveloperCard(card: VoxelCard) {
+    return CardStore.saveDeveloperCard(card);
+  }
+
+  public static deleteDeveloperCard(cardId: string) {
+    return CardStore.deleteDeveloperCard(cardId);
+  }
+
+  public static async exportCard(card: VoxelCard) {
     const p = await this.selectSaveFileDialog(`${card.id}.json`, [{ name: 'JSON', extensions: ['json'] }]);
     if (p) {
-      require('node:fs').writeFileSync(p, JSON.stringify(card, null, 2), 'utf-8');
+      fs.writeFileSync(p, JSON.stringify(card, null, 2), 'utf-8');
       return true;
     }
     return false;
@@ -379,7 +395,6 @@ export class CommandManager {
   public static async installCard(cardId: string) {
     const card = CardStore.getCard(cardId);
     if (!card) return { success: false, error: 'Card not found' };
-    // Prevent installation of retired cards
     if (CardStore.isCardRetired(cardId)) {
       return { success: false, error: 'This card is retired and cannot be reinstalled. Your existing instance remains intact.' };
     }
@@ -394,8 +409,9 @@ export class CommandManager {
     try {
       CardStore.markAsRetired(cardId);
       return { success: true };
-    } catch (e: any) {
-      return { success: false, error: String(e?.message ?? e) };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { success: false, error: msg };
     }
   }
 
@@ -408,7 +424,7 @@ export class CommandManager {
     return PackStore.getPack(packId);
   }
 
-  public static savePack(pack: any) {
+  public static savePack(pack: MyPack) {
     PackStore.savePack(pack);
     return { success: true };
   }
@@ -433,14 +449,12 @@ export class CommandManager {
       if (result.success) {
         return result.pack;
       }
-      // For now, return null on error. The UI shows a generic error toast.
-      // In the future, we could return the error message for better UX.
       return null;
     }
     return null;
   }
 
-  public static async createPackFromInstance(instanceId: string, packDetails: any) {
+  public static async createPackFromInstance(instanceId: string, packDetails: Partial<MyPack>) {
     return VPackManager.createPackFromInstance(instanceId, packDetails);
   }
 
