@@ -3,10 +3,21 @@ import path from 'node:path';
 import AdmZip from 'adm-zip';
 import { MyPack, VPackManifest, CardModRef, ModInfo, ResourcePackInfo, ShaderPackInfo } from '../../types';
 import { PackStore } from './packStore';
+import { PathManager } from '../storage/paths';
 import { InstanceManager } from '../instances/instanceManager';
 import { ModManager } from '../content/modManager';
 import { PackManager } from '../content/packManager';
 import { ModrinthClient } from '../modrinth/modrinthClient';
+
+export type VPackValidationState = 'VALID_RESOLVED' | 'VALID_UNRESOLVED' | 'INVALID_MALFORMED';
+
+export interface VPackValidationResult {
+  state: VPackValidationState;
+  isValid: boolean;
+  hasUnresolved: boolean;
+  unresolvedCount: number;
+  error?: string;
+}
 
 export class VPackManager {
   private static readonly MANIFEST_FILE = 'manifest.json';
@@ -40,7 +51,7 @@ export class VPackManager {
       // Add manifest
       zip.addFile(this.MANIFEST_FILE, Buffer.from(JSON.stringify(manifest, null, 2), 'utf-8'));
       
-      // Add artwork if it's a data URI (convert to file)
+      // Add artwork if present as data URI
       if (pack.artwork && pack.artwork.startsWith('data:')) {
         try {
           const matches = pack.artwork.match(/^data:image\/(\w+);base64,(.+)$/);
@@ -63,38 +74,54 @@ export class VPackManager {
   }
 
   /**
-   * Import a .vpack archive with validation
+   * Validate a target extraction entry path to prevent directory traversal attacks
    */
-  public static async importPack(zipPath: string): Promise<{ success: boolean; pack?: MyPack; error?: string }> {
+  public static isPathSafe(destinationDir: string, entryName: string): boolean {
+    if (!entryName) return false;
+
+    // Reject entries containing traversal, leading slashes or drive letters
+    if (entryName.includes('..') || entryName.startsWith('/') || entryName.startsWith('\\') || entryName.match(/^[A-Za-z]:/)) {
+      return false;
+    }
+
+    const resolvedDestination = path.resolve(destinationDir);
+    const resolvedEntryPath = path.resolve(destinationDir, entryName);
+
+    // Ensure the normalized path stays strictly inside destinationDir
+    return resolvedEntryPath.startsWith(resolvedDestination + path.sep) || resolvedEntryPath === resolvedDestination;
+  }
+
+  /**
+   * Import a .vpack archive with validation and path traversal checks
+   */
+  public static async importPack(zipPath: string): Promise<{ success: boolean; pack?: MyPack; error?: string; validationState?: VPackValidationState }> {
     try {
-      // Validate file exists
       if (!fs.existsSync(zipPath)) {
-        return { success: false, error: 'VPack file does not exist' };
+        return { success: false, error: 'VPack file does not exist', validationState: 'INVALID_MALFORMED' };
       }
 
-      // Validate file extension
       if (!zipPath.toLowerCase().endsWith('.vpack')) {
-        return { success: false, error: 'File must have .vpack extension' };
+        return { success: false, error: 'File must have .vpack extension', validationState: 'INVALID_MALFORMED' };
       }
 
       const zip = new AdmZip(zipPath);
       const entries = zip.getEntries();
       
-      // Security: validate no path traversal attempts in zip archive entry names
+      // Security: validate all archive entries to prevent path traversal
+      const tempDestDir = PathManager.getConfigDir();
       for (const entry of entries) {
-        if (entry.entryName.includes('..') || entry.entryName.startsWith('/') || entry.entryName.startsWith('\\')) {
-          return { success: false, error: 'VPack contains invalid path traversal attempt in archive entries' };
-        }
-        
-        // Check for suspicious absolute paths or drive letters
-        if (entry.entryName.match(/^[A-Za-z]:/)) {
-          return { success: false, error: 'VPack contains absolute path references in archive entries' };
+        if (!this.isPathSafe(tempDestDir, entry.entryName)) {
+          return {
+            success: false,
+            error: `VPack contains unsafe archive entry path traversal attempt: ${entry.entryName}`,
+            validationState: 'INVALID_MALFORMED'
+          };
         }
       }
 
       const manifestEntry = zip.getEntry(this.MANIFEST_FILE);
       if (!manifestEntry) {
-        return { success: false, error: 'VPack missing manifest.json' };
+        return { success: false, error: 'VPack missing manifest.json', validationState: 'INVALID_MALFORMED' };
       }
 
       const raw = manifestEntry.getData().toString('utf-8');
@@ -103,22 +130,27 @@ export class VPackManager {
       try {
         manifest = JSON.parse(raw) as VPackManifest;
       } catch {
-        return { success: false, error: 'Invalid JSON in manifest.json' };
+        return { success: false, error: 'Invalid JSON in manifest.json', validationState: 'INVALID_MALFORMED' };
       }
 
-      // Validate manifest structure & security
       const validationResult = this.validateManifest(manifest);
       if (!validationResult.isValid) {
-        return { success: false, error: `Manifest validation failed: ${validationResult.error}` };
+        return {
+          success: false,
+          error: `Manifest validation failed: ${validationResult.error}`,
+          validationState: 'INVALID_MALFORMED'
+        };
       }
 
-      // Check for duplicate pack IDs
       const existingPack = PackStore.getPack(manifest.id);
       if (existingPack) {
-        return { success: false, error: `A pack with ID "${manifest.id}" already exists` };
+        return {
+          success: false,
+          error: `A pack with ID "${manifest.id}" already exists`,
+          validationState: 'INVALID_MALFORMED'
+        };
       }
 
-      // Extract artwork if present
       let artwork: string | null = null;
       const artworkEntry = entries.find(e => e.entryName.startsWith('artwork.'));
       if (artworkEntry) {
@@ -153,45 +185,47 @@ export class VPackManager {
       };
 
       PackStore.savePack(newPack);
-      return { success: true, pack: newPack };
+      return {
+        success: true,
+        pack: newPack,
+        validationState: validationResult.state
+      };
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Unknown error during import';
       console.error('Failed to import vpack:', e);
-      return { success: false, error: msg };
+      return { success: false, error: msg, validationState: 'INVALID_MALFORMED' };
     }
   }
 
   /**
-   * Validate manifest structure
+   * Validate manifest structure and return explicit state (VALID_RESOLVED, VALID_UNRESOLVED, or INVALID_MALFORMED)
    */
-  public static validateManifest(manifest: unknown): { isValid: boolean; error?: string } {
+  public static validateManifest(manifest: unknown): VPackValidationResult {
     if (!manifest || typeof manifest !== 'object') {
-      return { isValid: false, error: 'Manifest is not an object' };
+      return { state: 'INVALID_MALFORMED', isValid: false, hasUnresolved: false, unresolvedCount: 0, error: 'Manifest is not an object' };
     }
     
     const m = manifest as Record<string, unknown>;
 
-    // Check schema version
     if (m.schemaVersion !== this.CURRENT_SCHEMA_VERSION) {
-      return { isValid: false, error: `Schema version mismatch. Expected ${this.CURRENT_SCHEMA_VERSION}, got ${m.schemaVersion}` };
+      return { state: 'INVALID_MALFORMED', isValid: false, hasUnresolved: false, unresolvedCount: 0, error: `Schema version mismatch. Expected ${this.CURRENT_SCHEMA_VERSION}, got ${m.schemaVersion}` };
     }
     
-    // Required string fields
-    if (!m.id || typeof m.id !== 'string') return { isValid: false, error: 'Missing or invalid pack ID' };
-    if (!m.name || typeof m.name !== 'string') return { isValid: false, error: 'Missing or invalid pack name' };
-    if (!m.packVersion || typeof m.packVersion !== 'string') return { isValid: false, error: 'Missing or invalid pack version' };
-    if (!m.minecraftVersion || typeof m.minecraftVersion !== 'string') return { isValid: false, error: 'Missing or invalid Minecraft version' };
+    if (!m.id || typeof m.id !== 'string') return { state: 'INVALID_MALFORMED', isValid: false, hasUnresolved: false, unresolvedCount: 0, error: 'Missing or invalid pack ID' };
+    if (!m.name || typeof m.name !== 'string') return { state: 'INVALID_MALFORMED', isValid: false, hasUnresolved: false, unresolvedCount: 0, error: 'Missing or invalid pack name' };
+    if (!m.packVersion || typeof m.packVersion !== 'string') return { state: 'INVALID_MALFORMED', isValid: false, hasUnresolved: false, unresolvedCount: 0, error: 'Missing or invalid pack version' };
+    if (!m.minecraftVersion || typeof m.minecraftVersion !== 'string') return { state: 'INVALID_MALFORMED', isValid: false, hasUnresolved: false, unresolvedCount: 0, error: 'Missing or invalid Minecraft version' };
     if (!m.loaderType || typeof m.loaderType !== 'string' || !['fabric', 'forge', 'neoforge', 'quilt'].includes(m.loaderType)) {
-      return { isValid: false, error: 'Missing or invalid loader type' };
+      return { state: 'INVALID_MALFORMED', isValid: false, hasUnresolved: false, unresolvedCount: 0, error: 'Missing or invalid loader type' };
     }
-    if (!m.loaderVersion || typeof m.loaderVersion !== 'string') return { isValid: false, error: 'Missing or invalid loader version' };
+    if (!m.loaderVersion || typeof m.loaderVersion !== 'string') return { state: 'INVALID_MALFORMED', isValid: false, hasUnresolved: false, unresolvedCount: 0, error: 'Missing or invalid loader version' };
     
-    // Validate arrays
-    if (!Array.isArray(m.mods)) return { isValid: false, error: 'Mods must be an array' };
-    if (!Array.isArray(m.resourcePacks)) return { isValid: false, error: 'Resource packs must be an array' };
-    if (!Array.isArray(m.shaderPacks)) return { isValid: false, error: 'Shader packs must be an array' };
+    if (!Array.isArray(m.mods)) return { state: 'INVALID_MALFORMED', isValid: false, hasUnresolved: false, unresolvedCount: 0, error: 'Mods must be an array' };
+    if (!Array.isArray(m.resourcePacks)) return { state: 'INVALID_MALFORMED', isValid: false, hasUnresolved: false, unresolvedCount: 0, error: 'Resource packs must be an array' };
+    if (!Array.isArray(m.shaderPacks)) return { state: 'INVALID_MALFORMED', isValid: false, hasUnresolved: false, unresolvedCount: 0, error: 'Shader packs must be an array' };
     
-    // Helper to validate CardModRef items (strictly Modrinth for user VPacks)
+    let unresolvedCount = 0;
+
     const checkModRef = (item: unknown, typeName: string, index: number): string | null => {
       if (!item || typeof item !== 'object') return `${typeName} at index ${index} is invalid`;
       const ref = item as Record<string, unknown>;
@@ -202,12 +236,12 @@ export class VPackManager {
         return `${typeName} at index ${index} missing projectName`;
       }
       if (ref.unresolved === true) {
-        return null; // Valid unresolved reference
+        unresolvedCount++;
+        return null;
       }
       if (!ref.projectId || typeof ref.projectId !== 'string') return `${typeName} at index ${index} missing projectId`;
       if (!ref.versionId || typeof ref.versionId !== 'string') return `${typeName} at index ${index} missing versionId`;
       if (!ref.downloadUrl || typeof ref.downloadUrl !== 'string') return `${typeName} at index ${index} missing downloadUrl`;
-      // Ensure downloadUrl comes from official Modrinth CDN
       if (ref.downloadUrl && !ref.downloadUrl.startsWith('https://cdn.modrinth.com/')) {
         return `${typeName} at index ${index} has invalid download URL domain. User VPacks must use Modrinth CDN URLs.`;
       }
@@ -217,20 +251,28 @@ export class VPackManager {
 
     for (let i = 0; i < (m.mods as unknown[]).length; i++) {
       const err = checkModRef((m.mods as unknown[])[i], 'Mod', i);
-      if (err) return { isValid: false, error: err };
+      if (err) return { state: 'INVALID_MALFORMED', isValid: false, hasUnresolved: false, unresolvedCount: 0, error: err };
     }
     
     for (let i = 0; i < (m.resourcePacks as unknown[]).length; i++) {
       const err = checkModRef((m.resourcePacks as unknown[])[i], 'Resource pack', i);
-      if (err) return { isValid: false, error: err };
+      if (err) return { state: 'INVALID_MALFORMED', isValid: false, hasUnresolved: false, unresolvedCount: 0, error: err };
     }
 
     for (let i = 0; i < (m.shaderPacks as unknown[]).length; i++) {
       const err = checkModRef((m.shaderPacks as unknown[])[i], 'Shader pack', i);
-      if (err) return { isValid: false, error: err };
+      if (err) return { state: 'INVALID_MALFORMED', isValid: false, hasUnresolved: false, unresolvedCount: 0, error: err };
     }
 
-    return { isValid: true };
+    const hasUnresolved = unresolvedCount > 0;
+    const state: VPackValidationState = hasUnresolved ? 'VALID_UNRESOLVED' : 'VALID_RESOLVED';
+
+    return {
+      state,
+      isValid: true,
+      hasUnresolved,
+      unresolvedCount
+    };
   }
 
   /**
@@ -275,9 +317,6 @@ export class VPackManager {
     }
   }
 
-  /**
-   * Resolve installed mods to Modrinth identities
-   */
   private static async resolveModIdentities(mods: ModInfo[], mcVersion: string, loader: string): Promise<CardModRef[]> {
     const resolved: CardModRef[] = [];
     
@@ -357,9 +396,6 @@ export class VPackManager {
     return resolved;
   }
 
-  /**
-   * Resolve resource pack identities
-   */
   private static async resolveResourcePackIdentities(resourcePacks: ResourcePackInfo[], mcVersion: string): Promise<CardModRef[]> {
     const resolved: CardModRef[] = [];
     
@@ -438,9 +474,6 @@ export class VPackManager {
     return resolved;
   }
 
-  /**
-   * Resolve shader pack identities
-   */
   private static async resolveShaderIdentities(shaderPacks: ShaderPackInfo[], mcVersion: string): Promise<CardModRef[]> {
     const resolved: CardModRef[] = [];
     

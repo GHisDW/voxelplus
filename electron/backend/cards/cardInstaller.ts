@@ -58,7 +58,6 @@ export class CardInstaller {
       return 'Card must include at least one mod';
     }
     
-    // Validate mod references
     for (const mod of card.mods) {
       if (!mod.provider || !mod.projectId || !mod.projectName) {
         return `Invalid mod reference: ${mod.projectName || 'unknown'}`;
@@ -88,9 +87,10 @@ export class CardInstaller {
   }
 
   /**
-   * Dynamically resolve download URL for a mod reference if downloadUrl is missing or PLACEHOLDER.
+   * Deterministically resolve download URL for a mod reference matching exact Minecraft version and loader.
+   * Does NOT fall back to arbitrary Minecraft versions.
    */
-  private static async resolveModRef(
+  public static async resolveModRef(
     mod: CardModRef,
     minecraftVersion: string,
     loaderType: string
@@ -111,15 +111,8 @@ export class CardInstaller {
           const primaryFile = versions[0].files.find(f => f.primary) || versions[0].files[0];
           return { downloadUrl: primaryFile.url, filename: primaryFile.filename };
         }
-
-        // Fallback without version filter
-        const fallbackVersions = await ModrinthClient.getProjectVersions(mod.projectId, [loaderType], []);
-        if (fallbackVersions.length > 0 && fallbackVersions[0].files.length > 0) {
-          const primaryFile = fallbackVersions[0].files.find(f => f.primary) || fallbackVersions[0].files[0];
-          return { downloadUrl: primaryFile.url, filename: primaryFile.filename };
-        }
       } catch (e) {
-        console.warn(`Failed to dynamically resolve Modrinth version for ${mod.projectName}:`, e);
+        console.warn(`Failed to resolve Modrinth version for ${mod.projectName} on MC ${minecraftVersion}:`, e);
       }
     }
 
@@ -128,7 +121,7 @@ export class CardInstaller {
 
   /**
    * Install a Card.
-   * Returns the resulting CardInstallState.
+   * Returns success: false if any required mod failed to download or is unresolved.
    */
   public static async install(
     card: VoxelCard
@@ -191,7 +184,7 @@ export class CardInstaller {
           totalMods,
         });
 
-        // Skip unresolved mods
+        // Skip unresolved mods and track as failed
         if (mod.unresolved) {
           failedMods.push(mod.filename || mod.projectName);
           continue;
@@ -222,38 +215,41 @@ export class CardInstaller {
         }
       }
 
+      const isComplete = failedMods.length === 0;
+
       // ── 3. Save install state ─────────────────────────────────────────────────
       const state: CardInstallState = {
         cardId: card.id,
         cardVersion: card.cardVersion,
         instanceId: instance.id,
         installedAt: new Date().toISOString(),
-        isComplete: failedMods.length === 0,
+        isComplete,
         failedMods,
       };
 
       CardStore.saveInstallState(state);
 
-      this.emit({ cardId: card.id, step: 'complete', totalMods });
-
-      return { success: true, state };
+      if (isComplete) {
+        this.emit({ cardId: card.id, step: 'complete', totalMods });
+        return { success: true, state };
+      } else {
+        const errMsg = `Installation incomplete: ${failedMods.length} mod(s) failed to download out of ${totalMods}.`;
+        this.emit({ cardId: card.id, step: 'error', error: errMsg });
+        return { success: false, state, error: errMsg };
+      }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Unknown installation error';
       this.emit({ cardId: card.id, step: 'error', error: msg });
       
-      // Clean up install state if we saved it
       CardStore.removeInstallState(card.id);
-      
       return { success: false, error: msg };
     } finally {
-      // Clean up cancellation controller
       this.activeInstalls.delete(card.id);
     }
   }
 
   /**
-   * Uninstall a card — removes install state but does NOT delete the
-   * Voxel+ instance (user may have customized it).
+   * Uninstall a card — removes install state but does NOT delete the Voxel+ instance.
    */
   public static async uninstall(cardId: string): Promise<{ success: boolean; error?: string }> {
     try {
