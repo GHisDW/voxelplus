@@ -1,0 +1,129 @@
+import { TenantScale } from '@tenantscale/sdk';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { CloudSyncPayload, PublicUserProfile, UserProfile } from './accountTypes';
+
+export class TenantScaleClient {
+  private static tenantScale: TenantScale | null = null;
+  private static supabase: SupabaseClient | null = null;
+  private static isInitialized = false;
+
+  public static initialize(): boolean {
+    if (this.isInitialized) return !!this.supabase;
+
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+
+    if (supabaseUrl && supabaseServiceKey) {
+      try {
+        this.supabase = createClient(supabaseUrl, supabaseServiceKey, {
+          auth: { persistSession: false }
+        });
+        this.tenantScale = new TenantScale({
+          supabaseUrl,
+          supabaseKey: supabaseServiceKey
+        });
+        this.isInitialized = true;
+        console.log('[TenantScaleClient] Initialized with Supabase & TenantScale SDK.');
+        return true;
+      } catch (err) {
+        console.warn('[TenantScaleClient] Failed to initialize cloud clients:', err);
+        this.isInitialized = true;
+        return false;
+      }
+    } else {
+      console.log('[TenantScaleClient] No cloud configuration present. Operating in local mode.');
+      this.isInitialized = true;
+      return false;
+    }
+  }
+
+  public static isCloudEnabled(): boolean {
+    this.initialize();
+    return !!this.supabase;
+  }
+
+  public static async syncProfileToCloud(profile: UserProfile): Promise<boolean> {
+    if (!this.isCloudEnabled() || !this.supabase) return false;
+    try {
+      const { error } = await this.supabase
+        .from('voxel_users')
+        .upsert({
+          id: profile.id,
+          username: profile.username,
+          avatar: profile.avatar,
+          bio: profile.bio,
+          is_public: profile.isPublic,
+          updated_at: profile.updatedAt
+        }, { onConflict: 'id' });
+
+      if (error) {
+        console.warn('[TenantScaleClient] Sync profile cloud error:', error.message);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn('[TenantScaleClient] Cloud sync exception:', e);
+      return false;
+    }
+  }
+
+  public static async syncDataToCloud(userId: string, payload: CloudSyncPayload): Promise<boolean> {
+    if (!this.isCloudEnabled() || !this.supabase) return false;
+    try {
+      const { error } = await this.supabase
+        .from('voxel_cloud_sync')
+        .upsert({
+          user_id: userId,
+          sync_payload: payload,
+          last_synced_at: payload.lastSyncedAt
+        }, { onConflict: 'user_id' });
+
+      if (error) {
+        console.warn('[TenantScaleClient] Cloud sync data error:', error.message);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn('[TenantScaleClient] Cloud sync data exception:', e);
+      return false;
+    }
+  }
+
+  public static async fetchPublicProfilesFromCloud(): Promise<PublicUserProfile[] | null> {
+    if (!this.isCloudEnabled() || !this.supabase) return null;
+    try {
+      const { data, error } = await this.supabase
+        .from('voxel_users')
+        .select('id, username, avatar, bio, created_at')
+        .eq('is_public', true)
+        .limit(50);
+
+      if (error || !data) return null;
+
+      return data.map((item) => ({
+        id: item.id,
+        username: item.username,
+        avatar: item.avatar,
+        bio: item.bio || '',
+        createdAt: item.created_at,
+        publicPacksCount: 0,
+        publicSkinsCount: 0,
+        isCreator: false
+      }));
+    } catch (e) {
+      console.warn('[TenantScaleClient] Fetch public profiles exception:', e);
+      return null;
+    }
+  }
+
+  public static async deleteCloudUserData(userId: string): Promise<boolean> {
+    if (!this.isCloudEnabled() || !this.supabase) return false;
+    try {
+      await this.supabase.from('voxel_users').delete().eq('id', userId);
+      await this.supabase.from('voxel_cloud_sync').delete().eq('user_id', userId);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
