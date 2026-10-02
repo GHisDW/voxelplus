@@ -54,26 +54,26 @@ See [`SKIN_MANAGER_TEST.md`](SKIN_MANAGER_TEST.md) for the comprehensive testing
 
 ---
 
-## 📦 Pack System — Shop & My Packs
+## 📦 Card & Pack Systems — Shop Cards & My Packs
 
 **Status:** ✅ Implemented
 
-Voxel⁺ includes a comprehensive Pack system with two content models:
+Voxel⁺ distinguishes between official Shop Cards and user-created My Packs:
 
 ### Shop Cards
 
-* 🛒 Official Voxel⁺ curated content
-* 📋 Deterministic mod/resource pack/shader selections
-* 🎯 Exact version pinning for reproducibility
-* 📦 One-click installation to new or existing instances
+* 🛒 Official Voxel⁺ curated blueprints defined canonical in `electron/backend/cards/defaultCards.ts`
+* 🔒 Strict provenance (`builtin` | `developer` | `user`)
+* 🎯 Exact Minecraft & loader version resolution with no silent fallbacks
+* 📦 Developer catalog authoring gated behind secure Electron developer mode IPC guards
 
 ### My Packs
 
-* ✍️ Create custom packs from scratch
-* 🔄 Create packs from existing instances with content resolution
-* 📤 Export packs as `.vpack` archives
-* 📥 Import `.vpack` archives with validation
-* 🎨 Custom artwork support (`cc.png`)
+* ✍️ Create custom user portable packs from scratch
+* 🔄 Create packs from existing instances with Modrinth identity resolution
+* 📤 Export packs as portable `.vpack` archives
+* 📥 Import `.vpack` archives with security path traversal validation
+* 🎨 Custom artwork support
 * 🧩 Mods, resource packs, and shader packs
 * ⚙️ Configuration file support
 * 🔍 Unresolved content tracking for manually installed files

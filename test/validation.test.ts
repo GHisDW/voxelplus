@@ -143,7 +143,7 @@ test('CardStore - missing source explicitly defaults to user provenance', () => 
   CardStore.saveCard(sampleUserCard as any);
   const loaded = CardStore.getCard('user-custom-card-99');
   assert.ok(loaded);
-  assert.equal(loaded.source, 'developer');
+  assert.equal(loaded.source, 'user');
 
   // Clean up
   CardStore.deleteCard('user-custom-card-99');
@@ -190,4 +190,85 @@ test('CardInstaller - rejects version fallback when exact Minecraft version is u
   // Attempt to resolve Sodium for non-existent Minecraft version 99.99
   const resolved = await CardInstaller.resolveModRef(unresolvableModRef, '99.99', 'fabric');
   assert.equal(resolved, null, 'Must not select arbitrary fallback version when target MC version is unmatched');
+});
+
+test('Developer Catalog - CRUD operations and deletion independence', () => {
+  const devCard = {
+    schemaVersion: 1,
+    id: 'dev-curated-card-101',
+    name: 'Dev Curated Pack',
+    description: 'Developer catalog item',
+    tagline: 'Curated',
+    artwork: null,
+    cardVersion: '1.0.0',
+    minecraftVersion: '26.3',
+    loaderType: 'fabric' as const,
+    loaderVersion: '0.19.5',
+    source: 'developer' as const,
+    mods: [],
+    tags: ['dev'],
+    author: 'Voxel+ Developer',
+    publishedAt: new Date().toISOString(),
+    signature: null
+  };
+
+  // Save developer catalog
+  CardStore.saveDeveloperCatalog([devCard]);
+
+  const loadedCatalog = CardStore.loadDeveloperCatalog();
+  assert.equal(loadedCatalog.length, 1);
+  assert.equal(loadedCatalog[0].id, 'dev-curated-card-101');
+  assert.equal(loadedCatalog[0].source, 'developer');
+
+  // Verify listCards includes developer card as well as built-in cards
+  const allCards = CardStore.listCards();
+  assert.ok(allCards.some(c => c.id === 'dev-curated-card-101' && c.source === 'developer'));
+
+  // Delete developer catalog file and verify built-in cards remain active and unretired
+  const devCatalogFile = CardStore.getDeveloperCatalogFile();
+  if (fs.existsSync(devCatalogFile)) {
+    fs.unlinkSync(devCatalogFile);
+  }
+
+  const catalogAfterDelete = CardStore.loadDeveloperCatalog();
+  assert.equal(catalogAfterDelete.length, 0);
+
+  const builtInCard = CardStore.getBuiltInCards()[0];
+  assert.equal(CardStore.isCardRetired(builtInCard.id), false);
+});
+
+test('VPackManager - real ZIP import rejects malicious path traversal archive without file escape', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vpack-sec-test-'));
+  const zipPath = path.join(tmpDir, 'malicious.vpack');
+  const outsidePath = path.join(tmpDir, 'outside.txt');
+
+  const zip = new AdmZip();
+  const manifest = {
+    schemaVersion: 1,
+    id: 'malicious-pack',
+    name: 'Malicious Pack',
+    description: 'Exploit test',
+    packVersion: '1.0.0',
+    minecraftVersion: '26.3',
+    loaderType: 'fabric',
+    loaderVersion: '0.19.5',
+    mods: [],
+    resourcePacks: [],
+    shaderPacks: []
+  };
+
+  zip.addFile('manifest.json', Buffer.from(JSON.stringify(manifest), 'utf-8'));
+  zip.addFile('dummy.txt', Buffer.from('hacked', 'utf-8'));
+  // Mutate archive entry name directly to inject path traversal header
+  (zip.getEntries().find(e => e.entryName === 'dummy.txt') as any).entryName = '../outside.txt';
+  zip.writeZip(zipPath);
+
+  const result = await VPackManager.importPack(zipPath);
+  assert.equal(result.success, false);
+  assert.equal(result.validationState, 'INVALID_MALFORMED');
+  assert.match(result.error || '', /path traversal attempt/i);
+  assert.equal(fs.existsSync(outsidePath), false, 'File must not escape target directory');
+
+  // Cleanup
+  fs.rmSync(tmpDir, { recursive: true, force: true });
 });

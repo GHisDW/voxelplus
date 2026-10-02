@@ -121,14 +121,31 @@ function registerIpcHandlers() {
   handle('cards:isRetired', 'INSTANCE', async (_, cardId) => CommandManager.isCardRetired(cardId));
   handle('cards:isBuiltIn', 'INSTANCE', async (_, cardId) => CommandManager.isBuiltInCard(cardId));
   handle('cards:isDeveloperMode', 'INSTANCE', async () => CommandManager.isDeveloperMode());
-  handle('cards:save', 'INSTANCE', async (_, card) => { CommandManager.saveCard(card); return { success: true }; });
-  handle('cards:delete', 'INSTANCE', async (_, cardId) => { CommandManager.deleteCard(cardId); return { success: true }; });
+  handle('cards:save', 'INSTANCE', async (_, card) => {
+    if (!CommandManager.isDeveloperMode()) {
+      throw new Error('DEVELOPER_MODE_REQUIRED: Saving or editing cards is restricted to developer mode.');
+    }
+    CommandManager.saveCard(card);
+    return { success: true };
+  });
+  handle('cards:delete', 'INSTANCE', async (_, cardId) => {
+    if (!CommandManager.isDeveloperMode()) {
+      throw new Error('DEVELOPER_MODE_REQUIRED: Deleting cards is restricted to developer mode.');
+    }
+    CommandManager.deleteCard(cardId);
+    return { success: true };
+  });
   handle('cards:export', 'INSTANCE', async (_, card) => CommandManager.exportCard(card));
   handle('cards:listInstalled', 'INSTANCE', async () => CommandManager.listInstalledCards());
   handle('cards:getInstallState', 'INSTANCE', async (_, cardId) => CommandManager.getCardInstallState(cardId));
   handle('cards:install', 'INSTANCE', async (_, cardId) => CommandManager.installCard(cardId));
   handle('cards:uninstall', 'INSTANCE', async (_, cardId) => CommandManager.uninstallCard(cardId));
-  handle('cards:retire', 'INSTANCE', async (_, cardId) => CommandManager.retireCard(cardId));
+  handle('cards:retire', 'INSTANCE', async (_, cardId) => {
+    if (!CommandManager.isDeveloperMode()) {
+      throw new Error('DEVELOPER_MODE_REQUIRED: Retiring cards is restricted to developer mode.');
+    }
+    return CommandManager.retireCard(cardId);
+  });
 
   // Packs
   handle('packs:list', 'INSTANCE', async () => CommandManager.listPacks());

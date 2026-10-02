@@ -225,6 +225,7 @@ export class VPackManager {
     if (!Array.isArray(m.shaderPacks)) return { state: 'INVALID_MALFORMED', isValid: false, hasUnresolved: false, unresolvedCount: 0, error: 'Shader packs must be an array' };
     
     let unresolvedCount = 0;
+    const seenProjectIds = new Set<string>();
 
     const checkModRef = (item: unknown, typeName: string, index: number): string | null => {
       if (!item || typeof item !== 'object') return `${typeName} at index ${index} is invalid`;
@@ -240,6 +241,10 @@ export class VPackManager {
         return null;
       }
       if (!ref.projectId || typeof ref.projectId !== 'string') return `${typeName} at index ${index} missing projectId`;
+      if (seenProjectIds.has(ref.projectId)) {
+        return `${typeName} at index ${index} has duplicate project ID "${ref.projectId}"`;
+      }
+      seenProjectIds.add(ref.projectId);
       if (!ref.versionId || typeof ref.versionId !== 'string') return `${typeName} at index ${index} missing versionId`;
       if (!ref.downloadUrl || typeof ref.downloadUrl !== 'string') return `${typeName} at index ${index} missing downloadUrl`;
       if (ref.downloadUrl && !ref.downloadUrl.startsWith('https://cdn.modrinth.com/')) {

@@ -13,7 +13,11 @@ All built-in cards are defined in:
 electron/backend/cards/defaultCards.ts
 ```
 
-This file contains the complete definition of all cards shipped with Voxel⁺. To add, edit, or remove a built-in card, you only need to modify this file.
+This file is the canonical single source of truth for all built-in cards shipped with Voxel⁺. The application never fabricates fallback cards if `defaultCards.ts` cannot be loaded.
+
+## Developer Mode IPC Authorization
+
+Developer operations (saving, deleting, or retiring cards) are protected by backend IPC authorization guards in `electron/main.ts`. Attempting to invoke developer card commands without developer mode active (`!app.isPackaged || process.env.NODE_ENV === 'development'`) throws a structured `DEVELOPER_MODE_REQUIRED` error.
 
 ## Card Structure
 

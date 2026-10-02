@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Added
 
+* Canonical Single Source of Truth for built-in Cards in `electron/backend/cards/defaultCards.ts`
+* Dedicated Developer Catalog persistence (`<config>/developer/catalog.json`)
+* Explicit card provenance model (`builtin` | `developer` | `user`) with legacy missing source migration to `'user'`
+* Backend IPC authorization guards restricting card save, delete, and retire operations to Developer Mode
+* Extensible VPack validation with strict Modrinth CDN URL checks and path safety against archive extraction directory escape
+* Explicit VPack validation states (`VALID_RESOLVED`, `VALID_UNRESOLVED`, `INVALID_MALFORMED`)
+
 * Pack System with Shop Cards and My Packs
 * Pack Creator Modal with full editor for mods, resource packs, and shader packs
 * VPack archive format (`.vpack`) with manifest, artwork, and content references
