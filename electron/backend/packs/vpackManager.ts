@@ -80,15 +80,15 @@ export class VPackManager {
       const zip = new AdmZip(zipPath);
       const entries = zip.getEntries();
       
-      // Security: validate no path traversal attempts
+      // Security: validate no path traversal attempts in zip archive entry names
       for (const entry of entries) {
         if (entry.entryName.includes('..') || entry.entryName.startsWith('/') || entry.entryName.startsWith('\\')) {
-          return { success: false, error: 'VPack contains invalid path traversal attempt' };
+          return { success: false, error: 'VPack contains invalid path traversal attempt in archive entries' };
         }
         
-        // Check for suspicious absolute paths
+        // Check for suspicious absolute paths or drive letters
         if (entry.entryName.match(/^[A-Za-z]:/)) {
-          return { success: false, error: 'VPack contains absolute path references' };
+          return { success: false, error: 'VPack contains absolute path references in archive entries' };
         }
       }
 
@@ -106,7 +106,7 @@ export class VPackManager {
         return { success: false, error: 'Invalid JSON in manifest.json' };
       }
 
-      // Validate manifest structure
+      // Validate manifest structure & security
       const validationResult = this.validateManifest(manifest);
       if (!validationResult.isValid) {
         return { success: false, error: `Manifest validation failed: ${validationResult.error}` };
@@ -191,12 +191,12 @@ export class VPackManager {
     if (!Array.isArray(m.resourcePacks)) return { isValid: false, error: 'Resource packs must be an array' };
     if (!Array.isArray(m.shaderPacks)) return { isValid: false, error: 'Shader packs must be an array' };
     
-    // Helper to validate CardModRef items
+    // Helper to validate CardModRef items (strictly Modrinth for user VPacks)
     const checkModRef = (item: unknown, typeName: string, index: number): string | null => {
       if (!item || typeof item !== 'object') return `${typeName} at index ${index} is invalid`;
       const ref = item as Record<string, unknown>;
-      if (!ref.provider || typeof ref.provider !== 'string' || !['modrinth', 'curseforge'].includes(ref.provider)) {
-        return `${typeName} at index ${index} has invalid provider`;
+      if (!ref.provider || typeof ref.provider !== 'string' || ref.provider !== 'modrinth') {
+        return `${typeName} at index ${index} has unsupported provider "${ref.provider}". User VPacks only support Modrinth dependencies.`;
       }
       if (!ref.projectName || typeof ref.projectName !== 'string') {
         return `${typeName} at index ${index} missing projectName`;
@@ -207,6 +207,10 @@ export class VPackManager {
       if (!ref.projectId || typeof ref.projectId !== 'string') return `${typeName} at index ${index} missing projectId`;
       if (!ref.versionId || typeof ref.versionId !== 'string') return `${typeName} at index ${index} missing versionId`;
       if (!ref.downloadUrl || typeof ref.downloadUrl !== 'string') return `${typeName} at index ${index} missing downloadUrl`;
+      // Ensure downloadUrl comes from official Modrinth CDN
+      if (ref.downloadUrl && !ref.downloadUrl.startsWith('https://cdn.modrinth.com/')) {
+        return `${typeName} at index ${index} has invalid download URL domain. User VPacks must use Modrinth CDN URLs.`;
+      }
       if (!ref.filename || typeof ref.filename !== 'string') return `${typeName} at index ${index} missing filename`;
       return null;
     };
