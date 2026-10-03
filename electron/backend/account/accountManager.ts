@@ -400,6 +400,12 @@ export class AccountManager {
   public static async getLibrary(): Promise<UserLibraryItem[]> {
     const session = await this.getCurrentSession();
     if (!session) return [];
+
+    if (TenantScaleClient.isCloudEnabled()) {
+      const cloudLibrary = await TenantScaleClient.fetchLibraryFromCloud(session.user.id);
+      if (cloudLibrary) return cloudLibrary;
+    }
+
     return AccountStore.getLibrary(session.user.id);
   }
 
@@ -426,16 +432,21 @@ export class AccountManager {
       authorUsername: session.user.username
     };
 
-    AccountStore.savePack(session.user.id, item);
-
-    AccountStore.saveLibraryItem(session.user.id, {
+    const libraryItem: UserLibraryItem = {
       id: item.id,
       title: item.name,
       type: 'pack',
       source: 'VPack',
       addedAt: new Date().toISOString(),
-      metadata: { author: item.authorUsername, version: item.version }
-    });
+      metadata: { author: item.authorUsername, version: item.version, isPublic: item.isPublic }
+    };
+
+    AccountStore.savePack(session.user.id, item);
+    AccountStore.saveLibraryItem(session.user.id, libraryItem);
+
+    if (TenantScaleClient.isCloudEnabled()) {
+      await TenantScaleClient.saveLibraryItemToCloud(session.user.id, libraryItem);
+    }
 
     return item;
   }
@@ -462,16 +473,21 @@ export class AccountManager {
       authorUsername: session.user.username
     };
 
-    AccountStore.saveSkin(session.user.id, item);
-
-    AccountStore.saveLibraryItem(session.user.id, {
+    const libraryItem: UserLibraryItem = {
       id: item.id,
       title: item.name,
       type: 'skin',
       source: 'Skin Manager',
       addedAt: new Date().toISOString(),
-      metadata: { author: item.authorUsername, model: item.model }
-    });
+      metadata: { author: item.authorUsername, model: item.model, isPublic: item.isPublic }
+    };
+
+    AccountStore.saveSkin(session.user.id, item);
+    AccountStore.saveLibraryItem(session.user.id, libraryItem);
+
+    if (TenantScaleClient.isCloudEnabled()) {
+      await TenantScaleClient.saveLibraryItemToCloud(session.user.id, libraryItem);
+    }
 
     return item;
   }

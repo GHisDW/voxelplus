@@ -59,5 +59,43 @@ CREATE POLICY "Users can access only their own cloud sync payload"
 
 -- 7. RLS Policies for voxel_library
 CREATE POLICY "Users can manage only their own library items"
-  ON public.voxel_library FOR ALL
+  ON public.voxel_library FOR SELECT
+  USING (auth.uid() = user_id OR (metadata->>'isPublic')::boolean = true);
+
+CREATE POLICY "Users can insert their own library items"
+  ON public.voxel_library FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own library items"
+  ON public.voxel_library FOR UPDATE
   USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their own library items"
+  ON public.voxel_library FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- 8. Secure PostgreSQL RPC Function for Public Creator Profile Counts
+CREATE OR REPLACE FUNCTION public.get_public_user_profiles()
+RETURNS TABLE (
+  id UUID,
+  username TEXT,
+  avatar TEXT,
+  bio TEXT,
+  created_at TIMESTAMPTZ,
+  public_packs_count BIGINT,
+  public_skins_count BIGINT
+) LANGUAGE sql SECURITY DEFINER AS $$
+  SELECT
+    u.id,
+    u.username,
+    u.avatar,
+    u.bio,
+    u.created_at,
+    COUNT(CASE WHEN l.type = 'pack' AND (l.metadata->>'isPublic')::boolean = true THEN 1 END) AS public_packs_count,
+    COUNT(CASE WHEN l.type = 'skin' AND (l.metadata->>'isPublic')::boolean = true THEN 1 END) AS public_skins_count
+  FROM public.voxel_users u
+  LEFT JOIN public.voxel_library l ON l.user_id = u.id
+  WHERE u.is_public = true
+  GROUP BY u.id, u.username, u.avatar, u.bio, u.created_at
+  LIMIT 50;
+$$;
