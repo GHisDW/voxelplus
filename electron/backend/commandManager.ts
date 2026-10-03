@@ -33,8 +33,66 @@ import { ModrinthClient } from './modrinth/modrinthClient';
 import { DownloadManager } from './modrinth/downloader';
 import { LogStreamer } from './processes/logStreamer';
 import { SkinManager } from './skins/skinManager';
+import { AccountManager } from './account/accountManager';
 
 export class CommandManager {
+  // Accounts & Cloud Identity
+  public static async createAccount(payload: any) {
+    return AccountManager.createAccount(payload);
+  }
+
+  public static async loginAccount(username: string, password: string) {
+    return AccountManager.login(username, password);
+  }
+
+  public static async logoutAccount() {
+    return AccountManager.logout();
+  }
+
+  public static async getCurrentSession() {
+    return AccountManager.getCurrentSession();
+  }
+
+  public static async getCurrentUser() {
+    return AccountManager.getCurrentUser();
+  }
+
+  public static async updateProfile(payload: any) {
+    return AccountManager.updateProfile(payload);
+  }
+
+  public static async changePassword(payload: any) {
+    return AccountManager.changePassword(payload);
+  }
+
+  public static async deleteAccount() {
+    return AccountManager.deleteAccount();
+  }
+
+  public static async listPublicProfiles(query?: string) {
+    return AccountManager.listPublicProfiles(query);
+  }
+
+  public static async getPublicProfile(idOrUsername: string) {
+    return AccountManager.getPublicProfile(idOrUsername);
+  }
+
+  public static async syncCloudData() {
+    return AccountManager.syncCloudData();
+  }
+
+  public static async getLibrary() {
+    return AccountManager.getLibrary();
+  }
+
+  public static async savePackToAccount(pack: any) {
+    return AccountManager.savePackToAccount(pack);
+  }
+
+  public static async saveSkinToAccount(skin: any) {
+    return AccountManager.saveSkinToAccount(skin);
+  }
+
   // Settings
   public static async getAppSettings(): Promise<AppSettings> {
     return ConfigStore.getSettings();

@@ -48,6 +48,23 @@ Voxel⁺ now includes a built-in Skin Manager for managing Minecraft skins acros
 * **Skins Page:** `frontend/src/pages/SkinsPage.ts`
 * **Integration:** Instance details, skin selection, and settings persistence
 
+---
+
+## 👤 Voxel⁺ Accounts & Cloud Identity
+
+**Status:** ✅ Implemented
+
+Voxel⁺ includes a custom Voxel⁺ Account and Cloud Identity system.
+
+> **Note:** A Voxel⁺ account is separate from your Minecraft / Microsoft account. No email, phone number, real name, or payment information is collected. Lost passwords cannot be recovered.
+
+### Features
+* 👤 **Custom Identity:** Username, salted PBKDF2 SHA-256 password, preset/custom avatars, and optional bio.
+* 🚀 **First-Launch Onboarding:** 9-step account setup flow during application initialization.
+* 📊 **Profile & Settings:** Overview, My Packs, My Skins, Public Profile preview, password change, and permanent account deletion.
+* 🌐 **Community Directory:** Discover public Voxel⁺ user profiles and community content.
+* ☁ **Cloud Sync & Library:** Synchronize launcher settings, instance metadata, packs, and skin metadata with TenantScale / Supabase cloud backend.
+
 ### Testing
 
 See [`SKIN_MANAGER_TEST.md`](SKIN_MANAGER_TEST.md) for the comprehensive testing guide.
