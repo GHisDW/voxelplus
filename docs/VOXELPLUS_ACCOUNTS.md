@@ -1,18 +1,30 @@
-# Voxel⁺ Account, Cloud Identity & Architecture Documentation
+# Voxel⁺ Account, Cloud Identity & Security Architecture Documentation
 
 ## Overview
 
-The **Voxel⁺ Account System** provides a custom launcher identity and cloud synchronization platform designed specifically for Voxel⁺ platform users.
+The **Voxel⁺ Account & Cloud Identity System** provides a custom launcher identity and cloud synchronization platform built for Voxel⁺.
 
-> **Important Distinction:**
+> **Important Identity Distinction:**
 > A Voxel⁺ Account is **NOT** a Minecraft account and is **NOT** a Microsoft account.
-> It does not replace or interfere with Minecraft authentication or Mojang session tokens.
+> It does not replace or interfere with Minecraft authentication, Mojang tokens, or standard offline player UUIDs.
 
 ---
 
-## Navigation Architecture
+## 1. Secret Boundary & Client Security Model
 
-Voxel⁺ top-level navigation is consolidated into 6 primary sections:
+### Absolute Rule: No Privileged Keys in Distributed Software
+In desktop Electron applications (including main process, preload, and renderer bundles), **privileged service-role credentials (`SUPABASE_SERVICE_ROLE_KEY` / admin secret keys) MUST NEVER be embedded or distributed**. An Electron main process running on a user's local machine is distributed software, not a trusted server environment.
+
+### Security Architecture Implementation:
+1. **Unprivileged Public Client Keys:** Desktop launcher instances communicate with Supabase and TenantScale using unprivileged public anon keys (`SUPABASE_ANON_KEY`).
+2. **Server-Side Authorization via Row Level Security (RLS):** Data access rules, ownership boundaries, and privacy restrictions are strictly enforced database-side via PostgreSQL Row Level Security (RLS) policies.
+3. **Narrow IPC Boundary:** The Electron renderer communicates with the main process strictly over `contextBridge` via sanitized IPC invocations. No raw SQL or administrative database handles are exposed to the UI.
+
+---
+
+## 2. Navigation & Information Architecture
+
+Voxel⁺ global navigation is consolidated into 6 primary sections:
 
 ```
 Voxel⁺ Navigation
@@ -24,69 +36,31 @@ Voxel⁺ Navigation
  └── Settings      (Launcher & Java runtime configuration)
 ```
 
-Content items (Cards, Mods, Resource Packs, Shaders, Skins) are embedded directly within their natural parent sections rather than occupying unnecessary global navigation tabs.
+Content items (Cards, Mods, Resource Packs, Shaders, Skins) are contextual sub-views within their natural parent sections rather than occupying redundant top-level global navigation tabs.
 
 ---
 
-## Privacy & Security Model
+## 3. Local vs. Cloud Data Boundary Table
 
-1. **No Personal Identification Data:**
-   - No email address required.
-   - No phone number required.
-   - No real-world name or address required.
-   - No payment details or credit cards required.
-
-2. **Core Account Attributes:**
-   - **Username:** 3–20 characters (alphanumeric, hyphens, underscores).
-   - **Password:** Salted PBKDF2 SHA-256 (100,000 iterations).
-   - **Profile Picture (Avatar):** Preset Voxel⁺ avatars or custom uploaded image.
-   - **Bio:** Optional profile description.
-   - **Profile Visibility:** Toggle for public community directory listing.
-
-3. **No Password Recovery Policy:**
-   - Because Voxel⁺ collects no personal recovery vectors (email/phone), **lost passwords cannot be recovered**.
-   - This policy is explicitly communicated during first-launch onboarding and inside Account Settings.
+| Data Category | Stored Locally | Synced to Cloud | Notes / Rationale |
+| :--- | :---: | :---: | :--- |
+| Account Identity (Username, Avatar, Bio) | Yes | Yes | Public or private based on `is_public` setting |
+| Password Hash (PBKDF2 SHA-256 + Salt) | Yes | Yes | Never stored/sent as plaintext |
+| Launcher Preferences & Theme | Yes | Yes | Syncs across Voxel⁺ client installations |
+| Instance Cloud Manifest (Name, MC version, Loader, Mod list) | Yes | Yes | Enables metadata recognition & recreation on 2nd PC |
+| Local Minecraft Installation Files & Binaries | Yes | **No** | Remains 100% local (no arbitrary file uploads) |
+| Local World Saves & Screenshots | Yes | **No** | Remains 100% local |
+| Library Items, Saved VPacks & Skin Metadata | Yes | Yes | Associated with Voxel⁺ creator profile |
+| Minecraft / Microsoft Credentials | Local Auth | **No** | Untouched by Voxel⁺ accounts |
 
 ---
 
-## Local vs. Cloud Data Model
+## 4. Supabase Database Schema & Row Level Security (RLS)
 
-| Category | Stored Locally | Synced to Cloud |
-| :--- | :---: | :---: |
-| Account Credentials (PBKDF2 Hash + Salt) | Yes | Yes (Supabase) |
-| Launcher Preferences & Theme | Yes | Yes |
-| Instance Metadata (Name, MC version, Loader, Mod manifest) | Yes | Yes |
-| Local Minecraft Installation Files & Binaries | Yes | **No** (Kept local) |
-| Local World Saves & Screenshots | Yes | **No** (Kept local) |
-| Library Items, Saved Packs & Skin Metadata | Yes | Yes |
-| Public Profile & Bio | Yes | Yes |
-
----
-
-## Technical Architecture
-
-```
-Electron Renderer (React/Vanilla UI)
-       ↓ (ContextBridge IPC - window.voxelApi)
-Electron Main Process (CommandManager & AccountManager)
-       ↓ (Local Persistent Caching + PBKDF2 Crypto)
-%APPDATA%/VoxelPlus/account/account-store.json (Local Store)
-       ↓ (HTTPS Cloud Adapter)
-TenantScale SDK / Supabase Cloud Platform
-       ↓
-PostgreSQL Database
-```
-
-### Secret Boundary Protection
-- Privileged keys (`SUPABASE_SERVICE_ROLE_KEY`, `TENANTSCALE_API_KEY`) reside exclusively in the main Electron backend process and environment variables.
-- Secrets are **never** bundled or exposed inside the renderer bundle (`dist/`) or preload script (`dist-electron/preload.js`).
-
----
-
-## Supabase Database Schema
+To initialize Supabase database tables and Row Level Security policies for Voxel⁺ Cloud Identity, run the following SQL:
 
 ```sql
--- Voxel+ User Profiles Table
+-- 1. Voxel+ User Profiles Table
 CREATE TABLE IF NOT EXISTS public.voxel_users (
   id UUID PRIMARY KEY,
   username TEXT UNIQUE NOT NULL,
@@ -97,32 +71,43 @@ CREATE TABLE IF NOT EXISTS public.voxel_users (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Voxel+ Cloud Sync Metadata Table
+-- 2. Voxel+ Cloud Sync Metadata Table
 CREATE TABLE IF NOT EXISTS public.voxel_cloud_sync (
   user_id UUID PRIMARY KEY REFERENCES public.voxel_users(id) ON DELETE CASCADE,
   sync_payload JSONB NOT NULL,
   last_synced_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Row Level Security (RLS)
+-- 3. Enable Row Level Security (RLS)
 ALTER TABLE public.voxel_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.voxel_cloud_sync ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Public profiles visible to all users"
+-- RLS Policy 1: Allow public read access to profiles marked is_public = true
+CREATE POLICY "Public profiles are visible to all users"
   ON public.voxel_users FOR SELECT
-  USING (is_public = true);
+  USING (is_public = true OR auth.uid() = id);
+
+-- RLS Policy 2: Allow users to insert/update ONLY their own profile
+CREATE POLICY "Users can edit their own profile"
+  ON public.voxel_users FOR ALL
+  USING (auth.uid() = id);
+
+-- RLS Policy 3: Allow users to access ONLY their own cloud sync payload
+CREATE POLICY "Users can manage their own cloud sync data"
+  ON public.voxel_cloud_sync FOR ALL
+  USING (auth.uid() = user_id);
 ```
 
 ---
 
-## Developer Setup Instructions
+## 5. Developer Setup Guide
 
 1. **Environment Configuration:**
    Copy `.env.example` to `.env`:
    ```env
    SUPABASE_URL=https://your-project.supabase.co
-   SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
-   TENANTSCALE_API_KEY=your-tenantscale-api-key
+   SUPABASE_ANON_KEY=your-supabase-public-anon-key
+   TENANTSCALE_CLIENT_KEY=your-tenantscale-client-key
    ```
 
 2. **Install Dependencies:**

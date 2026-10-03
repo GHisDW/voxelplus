@@ -7,23 +7,31 @@ export class TenantScaleClient {
   private static supabase: SupabaseClient | null = null;
   private static isInitialized = false;
 
+  /**
+   * Initializes cloud database and TenantScale client strictly using unprivileged,
+   * client-safe anon keys (SUPABASE_ANON_KEY / TENANTSCALE_CLIENT_KEY).
+   *
+   * Security Guarantee: Desktop client executables NEVER handle or bundle
+   * privileged administrative credentials. All user-owned
+   * cloud operations are authorized database-side via Supabase Row Level Security (RLS).
+   */
   public static initialize(): boolean {
     if (this.isInitialized) return !!this.supabase;
 
     const supabaseUrl = process.env.SUPABASE_URL;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 
-    if (supabaseUrl && supabaseServiceKey) {
+    if (supabaseUrl && supabaseAnonKey) {
       try {
-        this.supabase = createClient(supabaseUrl, supabaseServiceKey, {
+        this.supabase = createClient(supabaseUrl, supabaseAnonKey, {
           auth: { persistSession: false }
         });
         this.tenantScale = new TenantScale({
           supabaseUrl,
-          supabaseKey: supabaseServiceKey
+          supabaseKey: supabaseAnonKey
         });
         this.isInitialized = true;
-        console.log('[TenantScaleClient] Initialized with Supabase & TenantScale SDK.');
+        console.log('[TenantScaleClient] Initialized with unprivileged public client key.');
         return true;
       } catch (err) {
         console.warn('[TenantScaleClient] Failed to initialize cloud clients:', err);
@@ -31,7 +39,7 @@ export class TenantScaleClient {
         return false;
       }
     } else {
-      console.log('[TenantScaleClient] No cloud configuration present. Operating in local mode.');
+      console.log('[TenantScaleClient] No public cloud configuration present. Operating in local mode.');
       this.isInitialized = true;
       return false;
     }
