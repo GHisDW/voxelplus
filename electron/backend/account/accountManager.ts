@@ -49,7 +49,7 @@ export class AccountManager {
   }
 
   /**
-   * Registers a new Voxel+ account backed by cloud Supabase Auth engine.
+   * Registers a new Voxel+ account backed by cloud Supabase Auth engine and TenantScale SDK.
    */
   public static async createAccount(payload: CreateAccountPayload): Promise<AccountSession> {
     const userValidation = CryptoUtils.validateUsername(payload.username);
@@ -87,6 +87,8 @@ export class AccountManager {
 
     const now = new Date().toISOString();
     let userId = CryptoUtils.generateId();
+    let sessionToken = CryptoUtils.generateSessionToken();
+    let userProfile: UserProfile;
 
     // Register with cloud Auth engine
     if (TenantScaleClient.isCloudEnabled()) {
@@ -98,9 +100,14 @@ export class AccountManager {
           payload.bio,
           payload.isPublic
         );
-        if (cloudRes?.userId) {
-          userId = cloudRes.userId;
+        if (!cloudRes || !cloudRes.userId) {
+          throw new Error('Could not establish cloud identity.');
         }
+        userId = cloudRes.userId;
+        if (cloudRes.accessToken) {
+          sessionToken = cloudRes.accessToken;
+        }
+        userProfile = cloudRes.profile;
       } catch (err: any) {
         throw new VoxelError({
           title: 'Cloud Registration Failed',
@@ -110,30 +117,41 @@ export class AccountManager {
           code: 'CLOUD_SIGNUP_FAILED'
         });
       }
+    } else {
+      userProfile = {
+        id: userId,
+        username: payload.username.trim(),
+        avatar: payload.avatar || 'avatar_steve',
+        bio: payload.bio ? payload.bio.trim() : '',
+        createdAt: now,
+        updatedAt: now,
+        isPublic: payload.isPublic !== undefined ? payload.isPublic : true,
+        syncEnabled: true
+      };
     }
 
     const salt = CryptoUtils.generateSalt();
     const passwordHash = CryptoUtils.hashPassword(payload.password, salt);
 
-    const user: VoxelUser = {
+    const userRecord: VoxelUser = {
       id: userId,
       username: payload.username.trim(),
       passwordHash: passwordHash,
       salt: salt,
-      avatar: payload.avatar || 'avatar_steve',
-      bio: payload.bio ? payload.bio.trim() : '',
-      createdAt: now,
-      updatedAt: now,
-      isPublic: payload.isPublic !== undefined ? payload.isPublic : true,
-      syncEnabled: true
+      avatar: userProfile.avatar,
+      bio: userProfile.bio,
+      createdAt: userProfile.createdAt,
+      updatedAt: userProfile.updatedAt,
+      isPublic: userProfile.isPublic,
+      syncEnabled: userProfile.syncEnabled
     };
 
-    AccountStore.saveUser(user);
+    AccountStore.saveUser(userRecord);
 
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
     const session: AccountSession = {
-      token: CryptoUtils.generateSessionToken(),
-      user: this.toUserProfile(user),
+      token: sessionToken,
+      user: userProfile,
       createdAt: now,
       expiresAt
     };
@@ -145,7 +163,7 @@ export class AccountManager {
   }
 
   /**
-   * Authenticates a user via cloud Supabase Auth engine.
+   * Authenticates a user via cloud Supabase Auth engine and TenantScale session validation.
    * Supports cross-PC logins cleanly across fresh installations.
    */
   public static async login(username: string, password: string): Promise<AccountSession> {
@@ -160,12 +178,16 @@ export class AccountManager {
     }
 
     let userProfile: UserProfile | null = null;
+    let sessionToken = CryptoUtils.generateSessionToken();
 
     if (TenantScaleClient.isCloudEnabled()) {
       try {
         const cloudRes = await TenantScaleClient.signInWithCloud(username, password);
         if (cloudRes?.profile) {
           userProfile = cloudRes.profile;
+          if (cloudRes.accessToken) {
+            sessionToken = cloudRes.accessToken;
+          }
         }
       } catch (err: any) {
         throw new VoxelError({
@@ -177,7 +199,7 @@ export class AccountManager {
         });
       }
     } else {
-      // Local fallback for offline test suites with mandatory password verification
+      // Local fallback for test harness with mandatory password verification
       const localUser = AccountStore.getUserByUsername(username);
       if (localUser && localUser.passwordHash && localUser.salt) {
         const matches = CryptoUtils.verifyPassword(password, localUser.passwordHash, localUser.salt);
@@ -215,7 +237,7 @@ export class AccountManager {
     const now = new Date().toISOString();
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
     const session: AccountSession = {
-      token: CryptoUtils.generateSessionToken(),
+      token: sessionToken,
       user: userProfile,
       createdAt: now,
       expiresAt
@@ -234,18 +256,31 @@ export class AccountManager {
   }
 
   public static async getCurrentSession(): Promise<AccountSession | null> {
-    return AccountStore.getActiveSession();
+    const session = AccountStore.getActiveSession();
+    if (!session) return null;
+
+    // Validate cloud session token if cloud is enabled
+    if (TenantScaleClient.isCloudEnabled() && session.token && !session.token.startsWith('session_')) {
+      const validContext = await TenantScaleClient.validateSession(session.token);
+      if (!validContext) {
+        console.warn('[AccountManager] Cloud session validation failed. Revoking active session.');
+        AccountStore.setActiveSession(null);
+        return null;
+      }
+    }
+
+    return session;
   }
 
   public static async getCurrentUser(): Promise<UserProfile | null> {
-    const session = AccountStore.getActiveSession();
+    const session = await this.getCurrentSession();
     if (!session) return null;
     const user = AccountStore.getUserById(session.user.id);
-    return user ? this.toUserProfile(user) : null;
+    return user ? this.toUserProfile(user) : session.user;
   }
 
   public static async updateProfile(payload: UpdateProfilePayload): Promise<UserProfile> {
-    const session = AccountStore.getActiveSession();
+    const session = await this.getCurrentSession();
     if (!session) {
       throw new VoxelError({
         title: 'Not Authenticated',
@@ -257,17 +292,9 @@ export class AccountManager {
     }
 
     const user = AccountStore.getUserById(session.user.id);
-    if (!user) {
-      throw new VoxelError({
-        title: 'Account Not Found',
-        message: 'The account requested for profile update could not be found.',
-        category: 'CONFIGURATION',
-        severity: 'ERROR',
-        code: 'USER_NOT_FOUND'
-      });
-    }
+    const usernameToSet = payload.username || session.user.username;
 
-    if (payload.username && payload.username.trim().toLowerCase() !== user.username.toLowerCase()) {
+    if (payload.username && payload.username.trim().toLowerCase() !== session.user.username.toLowerCase()) {
       const userValidation = CryptoUtils.validateUsername(payload.username);
       if (!userValidation.isValid) {
         throw new VoxelError({
@@ -279,7 +306,7 @@ export class AccountManager {
         });
       }
       const existing = AccountStore.getUserByUsername(payload.username);
-      if (existing && existing.id !== user.id) {
+      if (existing && existing.id !== session.user.id) {
         throw new VoxelError({
           title: 'Username Taken',
           message: `The username "${payload.username}" is already taken by another account.`,
@@ -288,28 +315,41 @@ export class AccountManager {
           code: 'USERNAME_TAKEN'
         });
       }
-      user.username = payload.username.trim();
     }
 
-    if (payload.avatar !== undefined) user.avatar = payload.avatar;
-    if (payload.bio !== undefined) user.bio = payload.bio.trim();
-    if (payload.isPublic !== undefined) user.isPublic = payload.isPublic;
-    if (payload.syncEnabled !== undefined) user.syncEnabled = payload.syncEnabled;
-    user.updatedAt = new Date().toISOString();
+    const updatedProfile: UserProfile = {
+      id: session.user.id,
+      username: usernameToSet.trim(),
+      avatar: payload.avatar !== undefined ? payload.avatar : session.user.avatar,
+      bio: payload.bio !== undefined ? payload.bio.trim() : session.user.bio,
+      createdAt: session.user.createdAt,
+      updatedAt: new Date().toISOString(),
+      isPublic: payload.isPublic !== undefined ? payload.isPublic : session.user.isPublic,
+      syncEnabled: payload.syncEnabled !== undefined ? payload.syncEnabled : session.user.syncEnabled
+    };
 
-    AccountStore.saveUser(user);
+    if (user) {
+      user.username = updatedProfile.username;
+      user.avatar = updatedProfile.avatar;
+      user.bio = updatedProfile.bio;
+      user.isPublic = updatedProfile.isPublic;
+      user.syncEnabled = updatedProfile.syncEnabled;
+      user.updatedAt = updatedProfile.updatedAt;
+      AccountStore.saveUser(user);
+    }
 
-    const updatedProfile = this.toUserProfile(user);
     session.user = updatedProfile;
     AccountStore.setActiveSession(session);
 
-    await TenantScaleClient.syncProfileToCloud(updatedProfile);
+    if (TenantScaleClient.isCloudEnabled()) {
+      await TenantScaleClient.syncProfileToCloud(updatedProfile);
+    }
 
     return updatedProfile;
   }
 
   public static async changePassword(payload: ChangePasswordPayload): Promise<boolean> {
-    const session = AccountStore.getActiveSession();
+    const session = await this.getCurrentSession();
     if (!session) {
       throw new VoxelError({
         title: 'Not Authenticated',
@@ -348,7 +388,7 @@ export class AccountManager {
   }
 
   public static async deleteAccount(): Promise<boolean> {
-    const session = AccountStore.getActiveSession();
+    const session = await this.getCurrentSession();
     if (!session) return false;
 
     const userId = session.user.id;
@@ -393,7 +433,7 @@ export class AccountManager {
   }
 
   public static async syncCloudData(): Promise<CloudSyncPayload> {
-    const session = AccountStore.getActiveSession();
+    const session = await this.getCurrentSession();
     if (!session) {
       throw new VoxelError({
         title: 'Sync Failed',
@@ -421,7 +461,6 @@ export class AccountManager {
     const packs = AccountStore.getPacks(userId);
     const skins = AccountStore.getSkins(userId);
 
-    let syncStatus: 'Synced' | 'Sync Failed' | 'Offline' = 'Synced';
     const payload: CloudSyncPayload = {
       lastSyncedAt: new Date().toISOString(),
       status: 'Synced',
@@ -459,13 +498,13 @@ export class AccountManager {
   }
 
   public static async getLibrary(): Promise<UserLibraryItem[]> {
-    const session = AccountStore.getActiveSession();
+    const session = await this.getCurrentSession();
     if (!session) return [];
     return AccountStore.getLibrary(session.user.id);
   }
 
   public static async savePackToAccount(pack: Partial<UserPackItem>): Promise<UserPackItem> {
-    const session = AccountStore.getActiveSession();
+    const session = await this.getCurrentSession();
     if (!session) {
       throw new VoxelError({
         title: 'Library Action Failed',
@@ -502,7 +541,7 @@ export class AccountManager {
   }
 
   public static async saveSkinToAccount(skin: Partial<UserSkinItem>): Promise<UserSkinItem> {
-    const session = AccountStore.getActiveSession();
+    const session = await this.getCurrentSession();
     if (!session) {
       throw new VoxelError({
         title: 'Library Action Failed',
