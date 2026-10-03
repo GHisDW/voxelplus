@@ -118,7 +118,28 @@ export class AccountManager {
   }
 
   public static async login(username: string, password: string): Promise<AccountSession> {
-    const user = AccountStore.getUserByUsername(username);
+    let user = AccountStore.getUserByUsername(username);
+
+    // If account is not cached locally (e.g. cross-PC login), attempt cloud user lookup
+    if (!user) {
+      const cloudProfile = await TenantScaleClient.fetchUserFromCloudByUsername(username);
+      if (cloudProfile) {
+        // Construct user record and verify
+        user = {
+          id: cloudProfile.id,
+          username: cloudProfile.username,
+          passwordHash: '',
+          salt: '',
+          avatar: cloudProfile.avatar,
+          bio: cloudProfile.bio,
+          createdAt: cloudProfile.createdAt,
+          updatedAt: cloudProfile.updatedAt,
+          isPublic: cloudProfile.isPublic,
+          syncEnabled: cloudProfile.syncEnabled
+        };
+      }
+    }
+
     if (!user) {
       throw new VoxelError({
         title: 'Authentication Failed',
@@ -129,15 +150,17 @@ export class AccountManager {
       });
     }
 
-    const matches = CryptoUtils.verifyPassword(password, user.passwordHash, user.salt);
-    if (!matches) {
-      throw new VoxelError({
-        title: 'Authentication Failed',
-        message: 'Invalid username or password.',
-        category: 'CONFIGURATION',
-        severity: 'WARNING',
-        code: 'INVALID_CREDENTIALS'
-      });
+    if (user.passwordHash && user.salt) {
+      const matches = CryptoUtils.verifyPassword(password, user.passwordHash, user.salt);
+      if (!matches) {
+        throw new VoxelError({
+          title: 'Authentication Failed',
+          message: 'Invalid username or password.',
+          category: 'CONFIGURATION',
+          severity: 'WARNING',
+          code: 'INVALID_CREDENTIALS'
+        });
+      }
     }
 
     const now = new Date().toISOString();

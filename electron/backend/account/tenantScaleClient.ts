@@ -97,6 +97,32 @@ export class TenantScaleClient {
     }
   }
 
+  public static async fetchUserFromCloudByUsername(username: string): Promise<UserProfile | null> {
+    if (!this.isCloudEnabled() || !this.supabase) return null;
+    try {
+      const { data, error } = await this.supabase
+        .from('voxel_users')
+        .select('id, username, avatar, bio, is_public, created_at, updated_at')
+        .ilike('username', username)
+        .single();
+
+      if (error || !data) return null;
+
+      return {
+        id: data.id,
+        username: data.username,
+        avatar: data.avatar,
+        bio: data.bio || '',
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+        isPublic: data.is_public,
+        syncEnabled: true
+      };
+    } catch {
+      return null;
+    }
+  }
+
   public static async fetchPublicProfilesFromCloud(): Promise<PublicUserProfile[] | null> {
     if (!this.isCloudEnabled() || !this.supabase) return null;
     try {
