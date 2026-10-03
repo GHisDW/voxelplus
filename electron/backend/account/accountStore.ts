@@ -7,11 +7,11 @@ import {
   UserLibraryItem,
   UserPackItem,
   UserSkinItem,
-  VoxelUser
+  UserProfile
 } from './accountTypes';
 
 interface AccountStoreData {
-  users: VoxelUser[];
+  cachedProfile: UserProfile | null;
   activeSession: AccountSession | null;
   libraries: Record<string, UserLibraryItem[]>;
   packs: Record<string, UserPackItem[]>;
@@ -39,7 +39,7 @@ export class AccountStore {
     const filePath = this.getAccountFile();
     if (!fs.existsSync(filePath)) {
       const initial: AccountStoreData = {
-        users: [],
+        cachedProfile: null,
         activeSession: null,
         libraries: {},
         packs: {},
@@ -55,7 +55,7 @@ export class AccountStore {
       const raw = fs.readFileSync(filePath, 'utf-8');
       const parsed = JSON.parse(raw);
       const data: AccountStoreData = {
-        users: Array.isArray(parsed.users) ? parsed.users : [],
+        cachedProfile: parsed.cachedProfile || null,
         activeSession: parsed.activeSession || null,
         libraries: parsed.libraries || {},
         packs: parsed.packs || {},
@@ -66,7 +66,7 @@ export class AccountStore {
       return data;
     } catch {
       const fallback: AccountStoreData = {
-        users: [],
+        cachedProfile: null,
         activeSession: null,
         libraries: {},
         packs: {},
@@ -86,42 +86,28 @@ export class AccountStore {
     this.cachedData = data;
   }
 
-  public static getUsers(): VoxelUser[] {
-    return this.loadData().users;
+  public static getCachedProfile(): UserProfile | null {
+    return this.loadData().cachedProfile;
   }
 
-  public static getUserById(id: string): VoxelUser | null {
-    const users = this.getUsers();
-    return users.find((u) => u.id === id) || null;
-  }
-
-  public static getUserByUsername(username: string): VoxelUser | null {
-    const users = this.getUsers();
-    const target = username.trim().toLowerCase();
-    return users.find((u) => u.username.toLowerCase() === target) || null;
-  }
-
-  public static saveUser(user: VoxelUser): void {
+  public static saveCachedProfile(profile: UserProfile | null): void {
     const data = this.loadData();
-    const index = data.users.findIndex((u) => u.id === user.id);
-    if (index >= 0) {
-      data.users[index] = user;
-    } else {
-      data.users.push(user);
-    }
+    data.cachedProfile = profile;
     this.saveData(data);
   }
 
-  public static deleteUser(id: string): void {
+  public static clearUserData(userId: string): void {
     const data = this.loadData();
-    data.users = data.users.filter((u) => u.id !== id);
-    if (data.activeSession && data.activeSession.user.id === id) {
+    if (data.cachedProfile && data.cachedProfile.id === userId) {
+      data.cachedProfile = null;
+    }
+    if (data.activeSession && data.activeSession.user.id === userId) {
       data.activeSession = null;
     }
-    delete data.libraries[id];
-    delete data.packs[id];
-    delete data.skins[id];
-    delete data.syncData[id];
+    delete data.libraries[userId];
+    delete data.packs[userId];
+    delete data.skins[userId];
+    delete data.syncData[userId];
     this.saveData(data);
   }
 
@@ -140,6 +126,9 @@ export class AccountStore {
   public static setActiveSession(session: AccountSession | null): void {
     const data = this.loadData();
     data.activeSession = session;
+    if (session) {
+      data.cachedProfile = session.user;
+    }
     this.saveData(data);
   }
 

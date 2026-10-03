@@ -31,71 +31,18 @@ test('CryptoUtils - Password Hashing and Verification', () => {
   assert.equal(CryptoUtils.verifyPassword('wrongPass', hash, salt), false);
 });
 
-test('AccountManager - Full Lifecycle (Create, Login, Update, Sync, Delete)', async () => {
-  // 1. Create Account
-  const username = 'Crafter_' + (Date.now() % 100000);
-  const session = await AccountManager.createAccount({
-    username,
-    password: 'Password123!',
-    avatar: 'avatar_steve',
-    bio: 'Building awesome Fabric mods'
-  });
+test('AccountManager - Rejects Local Authentication When Cloud Unavailable', async () => {
+  // When cloud mode is disabled (no SUPABASE_URL / SUPABASE_ANON_KEY), local login & signup must fail explicitly
+  await assert.rejects(async () => {
+    await AccountManager.login('any_user', 'any_password');
+  }, /unavailable/i);
 
-  assert.equal(session.user.username, username);
-  assert.equal(session.user.bio, 'Building awesome Fabric mods');
-  assert.ok(session.token);
-
-  // 2. Prevent Duplicate Username
   await assert.rejects(async () => {
     await AccountManager.createAccount({
-      username,
+      username: 'test_user',
       password: 'Password123!'
     });
-  }, /USERNAME_TAKEN|already taken/);
-
-  // 3. Login
-  const loginSession = await AccountManager.login(username, 'Password123!');
-  assert.equal(loginSession.user.username, username);
-
-  // 4. Update Profile
-  const updated = await AccountManager.updateProfile({
-    bio: 'Updated bio for testing',
-    isPublic: true
-  });
-  assert.equal(updated.bio, 'Updated bio for testing');
-  assert.equal(updated.isPublic, true);
-
-  // 5. Change Password
-  const changeRes = await AccountManager.changePassword({
-    oldPassword: 'Password123!',
-    newPassword: 'NewSecurePassword456!'
-  });
-  assert.equal(changeRes, true);
-
-  // Verify new password works on login
-  const reLoginSession = await AccountManager.login(username, 'NewSecurePassword456!');
-  assert.equal(reLoginSession.user.username, username);
-
-  // 6. Public Directory Sanitization
-  const publicProfiles = await AccountManager.listPublicProfiles(username);
-  assert.equal(publicProfiles.length, 1);
-  assert.equal(publicProfiles[0].username, username);
-  assert.equal('passwordHash' in publicProfiles[0], false);
-  assert.equal('salt' in publicProfiles[0], false);
-
-  // 7. Save Pack & Skin to Account
-  const pack = await AccountManager.savePackToAccount({
-    name: 'Ultra Modpack',
-    version: '1.0.0'
-  });
-  assert.equal(pack.authorUsername, username);
-
-  // 8. Delete Account
-  const deleteRes = await AccountManager.deleteAccount();
-  assert.equal(deleteRes, true);
-
-  const currentSession = await AccountManager.getCurrentSession();
-  assert.equal(currentSession, null);
+  }, /unavailable/i);
 });
 
 // Clean up temporary test files

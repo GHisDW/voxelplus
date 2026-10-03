@@ -9,8 +9,7 @@ import {
   UserLibraryItem,
   UserPackItem,
   UserSkinItem,
-  UserProfile,
-  VoxelUser
+  UserProfile
 } from './accountTypes';
 import { CryptoUtils } from './cryptoUtils';
 import { TenantScaleClient } from './tenantScaleClient';
@@ -19,37 +18,8 @@ import { ConfigStore } from '../storage/configStore';
 import { InstanceManager } from '../instances/instanceManager';
 
 export class AccountManager {
-  public static toUserProfile(user: VoxelUser): UserProfile {
-    return {
-      id: user.id,
-      username: user.username,
-      avatar: user.avatar,
-      bio: user.bio,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-      isPublic: user.isPublic,
-      syncEnabled: user.syncEnabled
-    };
-  }
-
-  public static toPublicUserProfile(user: VoxelUser): PublicUserProfile {
-    const packs = AccountStore.getPacks(user.id).filter((p) => p.isPublic);
-    const skins = AccountStore.getSkins(user.id).filter((s) => s.isPublic);
-
-    return {
-      id: user.id,
-      username: user.username,
-      avatar: user.avatar,
-      bio: user.bio,
-      createdAt: user.createdAt,
-      publicPacksCount: packs.length,
-      publicSkinsCount: skins.length,
-      isCreator: packs.length > 0 || skins.length > 0
-    };
-  }
-
   /**
-   * Registers a new Voxel+ account backed by cloud Supabase Auth engine and TenantScale SDK.
+   * Registers a new Voxel+ account backed strictly by cloud Supabase Auth engine and TenantScale SDK.
    */
   public static async createAccount(payload: CreateAccountPayload): Promise<AccountSession> {
     const userValidation = CryptoUtils.validateUsername(payload.username);
@@ -74,84 +44,50 @@ export class AccountManager {
       });
     }
 
-    const existing = AccountStore.getUserByUsername(payload.username);
-    if (existing) {
+    if (!TenantScaleClient.isCloudEnabled()) {
       throw new VoxelError({
-        title: 'Username Unavailable',
-        message: `The username "${payload.username}" is already taken. Please choose a different username.`,
-        category: 'CONFIGURATION',
-        severity: 'WARNING',
-        code: 'USERNAME_TAKEN'
+        title: 'Cloud Service Unavailable',
+        message: 'Cloud authentication service is currently unavailable. Voxel⁺ accounts require an active cloud connection.',
+        category: 'NETWORK',
+        severity: 'ERROR',
+        code: 'CLOUD_UNAVAILABLE'
+      });
+    }
+
+    let cloudRes;
+    try {
+      cloudRes = await TenantScaleClient.signUpWithCloud(
+        payload.username,
+        payload.password,
+        payload.avatar,
+        payload.bio,
+        payload.isPublic
+      );
+    } catch (err: any) {
+      throw new VoxelError({
+        title: 'Account Creation Failed',
+        message: err.message || 'Could not register account with Voxel⁺ cloud identity server.',
+        category: 'NETWORK',
+        severity: 'ERROR',
+        code: 'CLOUD_SIGNUP_FAILED'
+      });
+    }
+
+    if (!cloudRes || !cloudRes.userId || !cloudRes.accessToken) {
+      throw new VoxelError({
+        title: 'Account Creation Failed',
+        message: 'Cloud identity registration returned incomplete credentials.',
+        category: 'NETWORK',
+        severity: 'ERROR',
+        code: 'CLOUD_SIGNUP_INCOMPLETE'
       });
     }
 
     const now = new Date().toISOString();
-    let userId = CryptoUtils.generateId();
-    let sessionToken = CryptoUtils.generateSessionToken();
-    let userProfile: UserProfile;
-
-    // Register with cloud Auth engine
-    if (TenantScaleClient.isCloudEnabled()) {
-      try {
-        const cloudRes = await TenantScaleClient.signUpWithCloud(
-          payload.username,
-          payload.password,
-          payload.avatar,
-          payload.bio,
-          payload.isPublic
-        );
-        if (!cloudRes || !cloudRes.userId) {
-          throw new Error('Could not establish cloud identity.');
-        }
-        userId = cloudRes.userId;
-        if (cloudRes.accessToken) {
-          sessionToken = cloudRes.accessToken;
-        }
-        userProfile = cloudRes.profile;
-      } catch (err: any) {
-        throw new VoxelError({
-          title: 'Cloud Registration Failed',
-          message: err.message || 'Could not register account with Voxel⁺ cloud identity server.',
-          category: 'NETWORK',
-          severity: 'ERROR',
-          code: 'CLOUD_SIGNUP_FAILED'
-        });
-      }
-    } else {
-      userProfile = {
-        id: userId,
-        username: payload.username.trim(),
-        avatar: payload.avatar || 'avatar_steve',
-        bio: payload.bio ? payload.bio.trim() : '',
-        createdAt: now,
-        updatedAt: now,
-        isPublic: payload.isPublic !== undefined ? payload.isPublic : true,
-        syncEnabled: true
-      };
-    }
-
-    const salt = CryptoUtils.generateSalt();
-    const passwordHash = CryptoUtils.hashPassword(payload.password, salt);
-
-    const userRecord: VoxelUser = {
-      id: userId,
-      username: payload.username.trim(),
-      passwordHash: passwordHash,
-      salt: salt,
-      avatar: userProfile.avatar,
-      bio: userProfile.bio,
-      createdAt: userProfile.createdAt,
-      updatedAt: userProfile.updatedAt,
-      isPublic: userProfile.isPublic,
-      syncEnabled: userProfile.syncEnabled
-    };
-
-    AccountStore.saveUser(userRecord);
-
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
     const session: AccountSession = {
-      token: sessionToken,
-      user: userProfile,
+      token: cloudRes.accessToken,
+      user: cloudRes.profile,
       createdAt: now,
       expiresAt
     };
@@ -163,8 +99,7 @@ export class AccountManager {
   }
 
   /**
-   * Authenticates a user via cloud Supabase Auth engine and TenantScale session validation.
-   * Supports cross-PC logins cleanly across fresh installations.
+   * Authenticates a user strictly via cloud Supabase Auth engine and TenantScale session validation.
    */
   public static async login(username: string, password: string): Promise<AccountSession> {
     if (!username || !password) {
@@ -177,39 +112,30 @@ export class AccountManager {
       });
     }
 
-    let userProfile: UserProfile | null = null;
-    let sessionToken = CryptoUtils.generateSessionToken();
-
-    if (TenantScaleClient.isCloudEnabled()) {
-      try {
-        const cloudRes = await TenantScaleClient.signInWithCloud(username, password);
-        if (cloudRes?.profile) {
-          userProfile = cloudRes.profile;
-          if (cloudRes.accessToken) {
-            sessionToken = cloudRes.accessToken;
-          }
-        }
-      } catch (err: any) {
-        throw new VoxelError({
-          title: 'Authentication Failed',
-          message: err.message || 'Invalid username or password.',
-          category: 'CONFIGURATION',
-          severity: 'WARNING',
-          code: 'INVALID_CREDENTIALS'
-        });
-      }
-    } else {
-      // Local fallback for test harness with mandatory password verification
-      const localUser = AccountStore.getUserByUsername(username);
-      if (localUser && localUser.passwordHash && localUser.salt) {
-        const matches = CryptoUtils.verifyPassword(password, localUser.passwordHash, localUser.salt);
-        if (matches) {
-          userProfile = this.toUserProfile(localUser);
-        }
-      }
+    if (!TenantScaleClient.isCloudEnabled()) {
+      throw new VoxelError({
+        title: 'Cloud Service Unavailable',
+        message: 'Unable to authenticate. Cloud authentication service is currently unavailable.',
+        category: 'NETWORK',
+        severity: 'ERROR',
+        code: 'CLOUD_UNAVAILABLE'
+      });
     }
 
-    if (!userProfile) {
+    let cloudRes;
+    try {
+      cloudRes = await TenantScaleClient.signInWithCloud(username, password);
+    } catch (err: any) {
+      throw new VoxelError({
+        title: 'Authentication Failed',
+        message: err.message || 'Invalid username or password.',
+        category: 'CONFIGURATION',
+        severity: 'WARNING',
+        code: 'INVALID_CREDENTIALS'
+      });
+    }
+
+    if (!cloudRes || !cloudRes.profile || !cloudRes.accessToken) {
       throw new VoxelError({
         title: 'Authentication Failed',
         message: 'Invalid username or password.',
@@ -219,26 +145,11 @@ export class AccountManager {
       });
     }
 
-    const userRecord: VoxelUser = {
-      id: userProfile.id,
-      username: userProfile.username,
-      passwordHash: '',
-      salt: '',
-      avatar: userProfile.avatar,
-      bio: userProfile.bio,
-      createdAt: userProfile.createdAt,
-      updatedAt: userProfile.updatedAt,
-      isPublic: userProfile.isPublic,
-      syncEnabled: userProfile.syncEnabled
-    };
-
-    AccountStore.saveUser(userRecord);
-
     const now = new Date().toISOString();
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
     const session: AccountSession = {
-      token: sessionToken,
-      user: userProfile,
+      token: cloudRes.accessToken,
+      user: cloudRes.profile,
       createdAt: now,
       expiresAt
     };
@@ -251,7 +162,9 @@ export class AccountManager {
 
   public static async logout(): Promise<boolean> {
     AccountStore.setActiveSession(null);
-    TenantScaleClient.signOutCloud().catch(() => {});
+    if (TenantScaleClient.isCloudEnabled()) {
+      await TenantScaleClient.signOutCloud();
+    }
     return true;
   }
 
@@ -259,14 +172,18 @@ export class AccountManager {
     const session = AccountStore.getActiveSession();
     if (!session) return null;
 
-    // Validate cloud session token if cloud is enabled
-    if (TenantScaleClient.isCloudEnabled() && session.token && !session.token.startsWith('session_')) {
-      const validContext = await TenantScaleClient.validateSession(session.token);
-      if (!validContext) {
-        console.warn('[AccountManager] Cloud session validation failed. Revoking active session.');
-        AccountStore.setActiveSession(null);
-        return null;
-      }
+    if (!TenantScaleClient.isCloudEnabled()) {
+      console.warn('[AccountManager] Cloud unavailable. Revoking local session cache.');
+      AccountStore.setActiveSession(null);
+      return null;
+    }
+
+    // Validate cloud session JWT token against TenantScale SDK
+    const validContext = await TenantScaleClient.validateSession(session.token);
+    if (!validContext) {
+      console.warn('[AccountManager] Cloud session validation failed. Revoking active session.');
+      AccountStore.setActiveSession(null);
+      return null;
     }
 
     return session;
@@ -274,9 +191,7 @@ export class AccountManager {
 
   public static async getCurrentUser(): Promise<UserProfile | null> {
     const session = await this.getCurrentSession();
-    if (!session) return null;
-    const user = AccountStore.getUserById(session.user.id);
-    return user ? this.toUserProfile(user) : session.user;
+    return session ? session.user : null;
   }
 
   public static async updateProfile(payload: UpdateProfilePayload): Promise<UserProfile> {
@@ -291,7 +206,6 @@ export class AccountManager {
       });
     }
 
-    const user = AccountStore.getUserById(session.user.id);
     const usernameToSet = payload.username || session.user.username;
 
     if (payload.username && payload.username.trim().toLowerCase() !== session.user.username.toLowerCase()) {
@@ -303,16 +217,6 @@ export class AccountManager {
           category: 'CONFIGURATION',
           severity: 'WARNING',
           code: 'INVALID_USERNAME'
-        });
-      }
-      const existing = AccountStore.getUserByUsername(payload.username);
-      if (existing && existing.id !== session.user.id) {
-        throw new VoxelError({
-          title: 'Username Taken',
-          message: `The username "${payload.username}" is already taken by another account.`,
-          category: 'CONFIGURATION',
-          severity: 'WARNING',
-          code: 'USERNAME_TAKEN'
         });
       }
     }
@@ -328,22 +232,12 @@ export class AccountManager {
       syncEnabled: payload.syncEnabled !== undefined ? payload.syncEnabled : session.user.syncEnabled
     };
 
-    if (user) {
-      user.username = updatedProfile.username;
-      user.avatar = updatedProfile.avatar;
-      user.bio = updatedProfile.bio;
-      user.isPublic = updatedProfile.isPublic;
-      user.syncEnabled = updatedProfile.syncEnabled;
-      user.updatedAt = updatedProfile.updatedAt;
-      AccountStore.saveUser(user);
+    if (TenantScaleClient.isCloudEnabled()) {
+      await TenantScaleClient.syncProfileToCloud(updatedProfile);
     }
 
     session.user = updatedProfile;
     AccountStore.setActiveSession(session);
-
-    if (TenantScaleClient.isCloudEnabled()) {
-      await TenantScaleClient.syncProfileToCloud(updatedProfile);
-    }
 
     return updatedProfile;
   }
@@ -371,19 +265,17 @@ export class AccountManager {
       });
     }
 
-    if (TenantScaleClient.isCloudEnabled()) {
-      await TenantScaleClient.updateCloudPassword(payload.newPassword);
+    if (!TenantScaleClient.isCloudEnabled()) {
+      throw new VoxelError({
+        title: 'Cloud Service Unavailable',
+        message: 'Unable to change password while cloud service is unavailable.',
+        category: 'NETWORK',
+        severity: 'ERROR',
+        code: 'CLOUD_UNAVAILABLE'
+      });
     }
 
-    const user = AccountStore.getUserById(session.user.id);
-    if (user) {
-      const newSalt = CryptoUtils.generateSalt();
-      user.salt = newSalt;
-      user.passwordHash = CryptoUtils.hashPassword(payload.newPassword, newSalt);
-      user.updatedAt = new Date().toISOString();
-      AccountStore.saveUser(user);
-    }
-
+    await TenantScaleClient.updateCloudPassword(payload.newPassword);
     return true;
   }
 
@@ -393,28 +285,27 @@ export class AccountManager {
 
     const userId = session.user.id;
 
-    if (TenantScaleClient.isCloudEnabled()) {
-      await TenantScaleClient.deleteCloudUserData(userId);
+    if (!TenantScaleClient.isCloudEnabled()) {
+      throw new VoxelError({
+        title: 'Account Deletion Failed',
+        message: 'Unable to delete account while cloud service is unavailable.',
+        category: 'NETWORK',
+        severity: 'ERROR',
+        code: 'CLOUD_UNAVAILABLE'
+      });
     }
 
-    AccountStore.deleteUser(userId);
+    await TenantScaleClient.deleteCloudUserData(userId);
+    AccountStore.clearUserData(userId);
     AccountStore.setActiveSession(null);
     return true;
   }
 
   public static async listPublicProfiles(query?: string): Promise<PublicUserProfile[]> {
     const cloudProfiles = await TenantScaleClient.fetchPublicProfilesFromCloud();
-    if (cloudProfiles && cloudProfiles.length > 0) {
-      if (!query) return cloudProfiles;
-      const q = query.toLowerCase();
-      return cloudProfiles.filter(
-        (p) => p.username.toLowerCase().includes(q) || p.bio.toLowerCase().includes(q)
-      );
-    }
+    if (!cloudProfiles) return [];
 
-    const allUsers = AccountStore.getUsers().filter((u) => u.isPublic);
-    let publicList = allUsers.map((u) => this.toPublicUserProfile(u));
-
+    let publicList = cloudProfiles;
     if (query) {
       const q = query.trim().toLowerCase();
       publicList = publicList.filter(
@@ -426,10 +317,19 @@ export class AccountManager {
   }
 
   public static async getPublicProfile(idOrUsername: string): Promise<PublicUserProfile | null> {
-    const user =
-      AccountStore.getUserById(idOrUsername) || AccountStore.getUserByUsername(idOrUsername);
-    if (!user || !user.isPublic) return null;
-    return this.toPublicUserProfile(user);
+    const userProfile = await TenantScaleClient.fetchUserFromCloudByUsername(idOrUsername);
+    if (!userProfile || !userProfile.isPublic) return null;
+
+    return {
+      id: userProfile.id,
+      username: userProfile.username,
+      avatar: userProfile.avatar,
+      bio: userProfile.bio,
+      createdAt: userProfile.createdAt,
+      publicPacksCount: 0,
+      publicSkinsCount: 0,
+      isCreator: false
+    };
   }
 
   public static async syncCloudData(): Promise<CloudSyncPayload> {

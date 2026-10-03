@@ -1,16 +1,3 @@
-export interface VoxelUser {
-  id: string;
-  username: string;
-  passwordHash: string;
-  salt: string;
-  avatar: string;
-  bio: string;
-  createdAt: string;
-  updatedAt: string;
-  isPublic: boolean;
-  syncEnabled: boolean;
-}
-
 export interface UserProfile {
   id: string;
   username: string;
