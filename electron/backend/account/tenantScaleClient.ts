@@ -17,14 +17,14 @@ export class TenantScaleClient {
   private static tenantScale: TenantScale | null = null;
   private static supabase: SupabaseClient | null = null;
   private static isInitialized = false;
+  private static currentTenantContext: ValidatedTenantContext | null = null;
 
   /**
    * Initializes cloud database and TenantScale client strictly using unprivileged,
    * client-safe anon keys (SUPABASE_ANON_KEY / TENANTSCALE_CLIENT_KEY).
    *
    * Security Guarantee: Desktop client executables NEVER handle or bundle
-   * privileged administrative credentials. All user-owned
-   * cloud operations are authorized database-side via Supabase Row Level Security (RLS).
+   * privileged administrative credentials.
    */
   public static initialize(): boolean {
     if (this.isInitialized) return !!this.supabase;
@@ -61,11 +61,12 @@ export class TenantScaleClient {
     return !!this.supabase;
   }
 
-  /**
-   * Converts Voxel+ username to internal Supabase Auth email.
-   */
   public static toInternalEmail(username: string): string {
     return `${username.trim().toLowerCase()}@voxel.internal`;
+  }
+
+  public static getCurrentTenantContext(): ValidatedTenantContext | null {
+    return this.currentTenantContext;
   }
 
   /**
@@ -76,9 +77,11 @@ export class TenantScaleClient {
 
     try {
       const tenantContext = await this.tenantScale.validateSession(jwtToken);
-      return tenantContext as ValidatedTenantContext;
+      this.currentTenantContext = tenantContext as ValidatedTenantContext;
+      return this.currentTenantContext;
     } catch (err) {
       console.warn('[TenantScaleClient] TenantScale session validation rejected:', err);
+      this.currentTenantContext = null;
       return null;
     }
   }
@@ -87,7 +90,7 @@ export class TenantScaleClient {
    * Logs audit event via TenantScale SDK logAuditEvent.
    */
   public static async logAuditEvent(input: {
-    tenant_id: string | null;
+    tenant_id?: string | null;
     actor_id: string;
     actor_type: 'user' | 'system' | 'admin_api' | 'admin_impersonation';
     action: string;
@@ -95,9 +98,10 @@ export class TenantScaleClient {
     details?: Record<string, any>;
   }): Promise<void> {
     if (!this.isCloudEnabled() || !this.tenantScale) return;
+    const activeTenantId = input.tenant_id !== undefined ? input.tenant_id : (this.currentTenantContext?.tenant_id || null);
     try {
       await this.tenantScale.logAuditEvent({
-        tenant_id: input.tenant_id,
+        tenant_id: activeTenantId,
         actor_id: input.actor_id,
         actor_type: input.actor_type,
         action: input.action,
@@ -105,19 +109,24 @@ export class TenantScaleClient {
         details: input.details || {}
       });
     } catch (err) {
-      console.warn('[TenantScaleClient] Audit log failed:', err);
+      console.warn('[TenantScaleClient] Audit log error:', err);
     }
   }
 
   /**
-   * Enforces feature limits using TenantScale plans module.
+   * Strict feature entitlement check using TenantScale plans module.
+   * Fails closed (returns false) if tenant or feature check fails.
    */
-  public static async hasPlanFeature(tenantId: string, feature: string): Promise<boolean> {
-    if (!this.isCloudEnabled() || !this.tenantScale) return true;
+  public static async hasPlanFeature(feature: string): Promise<boolean> {
+    if (!this.isCloudEnabled() || !this.tenantScale) return false;
+    const tenantId = this.currentTenantContext?.tenant_id;
+    if (!tenantId) return false;
+
     try {
       return await this.tenantScale.plans.hasPlanFeature(tenantId, feature);
-    } catch {
-      return true; // Fail open for feature limits
+    } catch (err) {
+      console.warn(`[TenantScaleClient] Policy feature check failed for "${feature}":`, err);
+      return false; // Fail closed for policy enforcement
     }
   }
 
@@ -149,7 +158,6 @@ export class TenantScaleClient {
     const userId = data.user.id;
     const now = new Date().toISOString();
 
-    // Create profile row in voxel_users
     const { error: profileError } = await this.supabase.from('voxel_users').upsert({
       id: userId,
       username,
@@ -177,9 +185,11 @@ export class TenantScaleClient {
 
     const accessToken = data.session?.access_token || '';
 
-    // Log account creation audit event
+    if (accessToken) {
+      await this.validateSession(accessToken);
+    }
+
     await this.logAuditEvent({
-      tenant_id: null,
       actor_id: userId,
       actor_type: 'user',
       action: 'account.create',
@@ -213,16 +223,18 @@ export class TenantScaleClient {
     const userId = data.user.id;
     const accessToken = data.session.access_token;
 
-    // Validate session via TenantScale SDK
     const tenantContext = await this.validateSession(accessToken);
     const tenantId = tenantContext?.tenant_id || null;
 
-    // Fetch profile row from voxel_users
-    const { data: profileRow } = await this.supabase
+    const { data: profileRow, error: fetchErr } = await this.supabase
       .from('voxel_users')
       .select('*')
       .eq('id', userId)
       .single();
+
+    if (fetchErr) {
+      console.warn('[TenantScaleClient] Profile fetch error:', fetchErr.message);
+    }
 
     const profile: UserProfile = {
       id: userId,
@@ -235,7 +247,6 @@ export class TenantScaleClient {
       syncEnabled: true
     };
 
-    // Log login audit event
     await this.logAuditEvent({
       tenant_id: tenantId,
       actor_id: userId,
@@ -248,18 +259,21 @@ export class TenantScaleClient {
     return { userId, accessToken, profile, tenantId };
   }
 
-  /**
-   * Signs out active cloud session.
-   */
   public static async signOutCloud(): Promise<void> {
     if (this.isCloudEnabled() && this.supabase) {
+      if (this.currentTenantContext) {
+        await this.logAuditEvent({
+          actor_id: this.currentTenantContext.user_id,
+          actor_type: 'user',
+          action: 'account.logout',
+          resource: 'voxel_users'
+        });
+      }
       await this.supabase.auth.signOut();
+      this.currentTenantContext = null;
     }
   }
 
-  /**
-   * Updates password in Supabase Auth engine.
-   */
   public static async updateCloudPassword(newPassword: string): Promise<boolean> {
     if (!this.isCloudEnabled() || !this.supabase) return false;
     const { error } = await this.supabase.auth.updateUser({ password: newPassword });
@@ -269,9 +283,6 @@ export class TenantScaleClient {
     return true;
   }
 
-  /**
-   * Syncs user profile metadata to Supabase / TenantScale cloud.
-   */
   public static async syncProfileToCloud(profile: UserProfile): Promise<boolean> {
     if (!this.isCloudEnabled() || !this.supabase) return false;
     const { error } = await this.supabase
@@ -290,7 +301,6 @@ export class TenantScaleClient {
     }
 
     await this.logAuditEvent({
-      tenant_id: null,
       actor_id: profile.id,
       actor_type: 'user',
       action: 'profile.update',
@@ -301,9 +311,6 @@ export class TenantScaleClient {
     return true;
   }
 
-  /**
-   * Syncs cloud payload data to cloud DB.
-   */
   public static async syncDataToCloud(userId: string, payload: CloudSyncPayload): Promise<boolean> {
     if (!this.isCloudEnabled() || !this.supabase) return false;
     const { error } = await this.supabase
@@ -319,7 +326,6 @@ export class TenantScaleClient {
     }
 
     await this.logAuditEvent({
-      tenant_id: null,
       actor_id: userId,
       actor_type: 'user',
       action: 'data.sync',
@@ -332,62 +338,82 @@ export class TenantScaleClient {
 
   public static async fetchUserFromCloudByUsername(username: string): Promise<UserProfile | null> {
     if (!this.isCloudEnabled() || !this.supabase) return null;
-    try {
-      const { data, error } = await this.supabase
-        .from('voxel_users')
-        .select('id, username, avatar, bio, is_public, created_at, updated_at')
-        .ilike('username', username)
-        .single();
 
-      if (error || !data) return null;
+    const { data, error } = await this.supabase
+      .from('voxel_users')
+      .select('id, username, avatar, bio, is_public, created_at, updated_at')
+      .ilike('username', username)
+      .single();
 
-      return {
-        id: data.id,
-        username: data.username,
-        avatar: data.avatar,
-        bio: data.bio || '',
-        createdAt: data.created_at,
-        updatedAt: data.updated_at,
-        isPublic: data.is_public,
-        syncEnabled: true
-      };
-    } catch {
-      return null;
-    }
+    if (error || !data) return null;
+
+    return {
+      id: data.id,
+      username: data.username,
+      avatar: data.avatar,
+      bio: data.bio || '',
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+      isPublic: data.is_public,
+      syncEnabled: true
+    };
   }
 
+  /**
+   * Fetches public user profiles and calculates real public pack/skin counts from voxel_library.
+   */
   public static async fetchPublicProfilesFromCloud(): Promise<PublicUserProfile[] | null> {
     if (!this.isCloudEnabled() || !this.supabase) return null;
-    try {
-      const { data, error } = await this.supabase
-        .from('voxel_users')
-        .select('id, username, avatar, bio, created_at')
-        .eq('is_public', true)
-        .limit(50);
 
-      if (error || !data) return null;
+    const { data: users, error } = await this.supabase
+      .from('voxel_users')
+      .select('id, username, avatar, bio, created_at')
+      .eq('is_public', true)
+      .limit(50);
 
-      return data.map((item) => ({
-        id: item.id,
-        username: item.username,
-        avatar: item.avatar,
-        bio: item.bio || '',
-        createdAt: item.created_at,
-        publicPacksCount: 0,
-        publicSkinsCount: 0,
-        isCreator: false
-      }));
-    } catch (e) {
-      console.warn('[TenantScaleClient] Fetch public profiles exception:', e);
-      return null;
+    if (error || !users) return null;
+
+    const userIds = users.map((u) => u.id);
+    let libraryItems: Array<{ user_id: string; type: string }> = [];
+
+    if (userIds.length > 0) {
+      const { data: items } = await this.supabase
+        .from('voxel_library')
+        .select('user_id, type')
+        .in('user_id', userIds);
+      if (items) {
+        libraryItems = items;
+      }
     }
+
+    const packCounts: Record<string, number> = {};
+    const skinCounts: Record<string, number> = {};
+
+    for (const item of libraryItems) {
+      if (item.type === 'pack') packCounts[item.user_id] = (packCounts[item.user_id] || 0) + 1;
+      if (item.type === 'skin') skinCounts[item.user_id] = (skinCounts[item.user_id] || 0) + 1;
+    }
+
+    return users.map((u) => {
+      const publicPacksCount = packCounts[u.id] || 0;
+      const publicSkinsCount = skinCounts[u.id] || 0;
+      return {
+        id: u.id,
+        username: u.username,
+        avatar: u.avatar,
+        bio: u.bio || '',
+        createdAt: u.created_at,
+        publicPacksCount,
+        publicSkinsCount,
+        isCreator: publicPacksCount > 0 || publicSkinsCount > 0
+      };
+    });
   }
 
   public static async deleteCloudUserData(userId: string): Promise<boolean> {
     if (!this.isCloudEnabled() || !this.supabase) return false;
 
     await this.logAuditEvent({
-      tenant_id: null,
       actor_id: userId,
       actor_type: 'user',
       action: 'account.delete',
