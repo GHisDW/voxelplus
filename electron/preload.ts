@@ -22,6 +22,22 @@ import {
 } from './types';
 
 const api = {
+  // Accounts & Cloud Identity
+  createAccount: (payload: any) => ipcRenderer.invoke('account:create', payload),
+  loginAccount: (username: string, password: string) => ipcRenderer.invoke('account:login', username, password),
+  logoutAccount: () => ipcRenderer.invoke('account:logout'),
+  getCurrentSession: () => ipcRenderer.invoke('account:getSession'),
+  getCurrentUser: () => ipcRenderer.invoke('account:getUser'),
+  updateProfile: (payload: any) => ipcRenderer.invoke('account:updateProfile', payload),
+  changePassword: (payload: any) => ipcRenderer.invoke('account:changePassword', payload),
+  deleteAccount: () => ipcRenderer.invoke('account:delete'),
+  listPublicProfiles: (query?: string) => ipcRenderer.invoke('account:listPublic', query),
+  getPublicProfile: (idOrUsername: string) => ipcRenderer.invoke('account:getPublic', idOrUsername),
+  syncCloudData: () => ipcRenderer.invoke('cloud:sync'),
+  getLibrary: () => ipcRenderer.invoke('cloud:getLibrary'),
+  savePackToAccount: (pack: any) => ipcRenderer.invoke('cloud:savePack', pack),
+  saveSkinToAccount: (skin: any) => ipcRenderer.invoke('cloud:saveSkin', skin),
+
   // Settings
   getAppSettings: (): Promise<AppSettings> => ipcRenderer.invoke('settings:get'),
   setAppSettings: (settings: Partial<AppSettings>): Promise<AppSettings> => ipcRenderer.invoke('settings:set', settings),

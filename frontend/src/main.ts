@@ -31,8 +31,9 @@ class VoxelApp {
   public async init(): Promise<void> {
     await ThemeService.initialize();
     const settings = await api.getAppSettings();
+    const session = await api.getCurrentSession();
 
-    if (!settings.firstRunCompleted) {
+    if (!settings.firstRunCompleted || !session) {
       this.showOnboarding();
     } else {
       this.showMainApp();

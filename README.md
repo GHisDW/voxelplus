@@ -63,7 +63,7 @@ Voxel⁺ includes a custom Voxel⁺ Account and Cloud Identity system.
 * 🚀 **First-Launch Onboarding:** 9-step account setup flow during application initialization.
 * 📊 **Profile & Settings:** Overview, My Packs, My Skins, Public Profile preview, password change, and permanent account deletion.
 * 🌐 **Community Directory:** Discover public Voxel⁺ user profiles and community content.
-* ☁ **Cloud Sync & Library:** Synchronize launcher settings, instance metadata, packs, and skin metadata with TenantScale / Supabase cloud backend (with automatic offline local storage fallback).
+* ☁ **Cloud Sync & Library:** Synchronize launcher settings, instance metadata, packs, and skin metadata with TenantScale / Supabase cloud backend.
 
 ### Testing
 

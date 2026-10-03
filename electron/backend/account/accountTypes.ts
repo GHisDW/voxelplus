@@ -72,6 +72,7 @@ export interface UserSkinItem {
 
 export interface CloudSyncPayload {
   lastSyncedAt: string;
+  status?: 'Synced' | 'Sync Failed' | 'Offline' | 'Unauthenticated';
   settings?: Record<string, any>;
   instances?: Array<{
     id: string;

@@ -50,51 +50,158 @@ export class TenantScaleClient {
     return !!this.supabase;
   }
 
-  public static async syncProfileToCloud(profile: UserProfile): Promise<boolean> {
-    if (!this.isCloudEnabled() || !this.supabase) return false;
-    try {
-      const { error } = await this.supabase
-        .from('voxel_users')
-        .upsert({
-          id: profile.id,
-          username: profile.username,
-          avatar: profile.avatar,
-          bio: profile.bio,
-          is_public: profile.isPublic,
-          updated_at: profile.updatedAt
-        }, { onConflict: 'id' });
+  /**
+   * Helper converting Voxel+ username to internal Supabase Auth email.
+   * Keeps user-facing UI 100% username/password based without requiring real emails.
+   */
+  public static toInternalEmail(username: string): string {
+    return `${username.trim().toLowerCase()}@voxel.internal`;
+  }
 
-      if (error) {
-        console.warn('[TenantScaleClient] Sync profile cloud error:', error.message);
-        return false;
+  /**
+   * Registers a new Voxel+ account against Supabase Auth engine.
+   */
+  public static async signUpWithCloud(
+    username: string,
+    password: string,
+    avatar: string = 'avatar_steve',
+    bio: string = '',
+    isPublic: boolean = true
+  ): Promise<{ userId: string; email: string } | null> {
+    if (!this.isCloudEnabled() || !this.supabase) return null;
+
+    const internalEmail = this.toInternalEmail(username);
+    const { data, error } = await this.supabase.auth.signUp({
+      email: internalEmail,
+      password,
+      options: {
+        data: { username, avatar, bio, isPublic }
       }
-      return true;
-    } catch (e) {
-      console.warn('[TenantScaleClient] Cloud sync exception:', e);
-      return false;
+    });
+
+    if (error || !data.user) {
+      throw new Error(error?.message || 'Supabase Auth signup failed.');
+    }
+
+    const userId = data.user.id;
+    const now = new Date().toISOString();
+
+    // Create profile row in voxel_users
+    await this.supabase.from('voxel_users').upsert({
+      id: userId,
+      username,
+      avatar,
+      bio,
+      is_public: isPublic,
+      updated_at: now,
+      created_at: now
+    }, { onConflict: 'id' });
+
+    return { userId, email: internalEmail };
+  }
+
+  /**
+   * Authenticates an existing Voxel+ account against Supabase Auth engine.
+   */
+  public static async signInWithCloud(
+    username: string,
+    password: string
+  ): Promise<{ userId: string; profile: UserProfile } | null> {
+    if (!this.isCloudEnabled() || !this.supabase) return null;
+
+    const internalEmail = this.toInternalEmail(username);
+    const { data, error } = await this.supabase.auth.signInWithPassword({
+      email: internalEmail,
+      password
+    });
+
+    if (error || !data.user) {
+      throw new Error(error?.message || 'Invalid username or password.');
+    }
+
+    const userId = data.user.id;
+
+    // Fetch profile row from voxel_users
+    const { data: profileRow } = await this.supabase
+      .from('voxel_users')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    const profile: UserProfile = {
+      id: userId,
+      username: profileRow?.username || username,
+      avatar: profileRow?.avatar || 'avatar_steve',
+      bio: profileRow?.bio || '',
+      createdAt: profileRow?.created_at || new Date().toISOString(),
+      updatedAt: profileRow?.updated_at || new Date().toISOString(),
+      isPublic: profileRow?.is_public !== undefined ? profileRow.is_public : true,
+      syncEnabled: true
+    };
+
+    return { userId, profile };
+  }
+
+  /**
+   * Signs out active cloud session.
+   */
+  public static async signOutCloud(): Promise<void> {
+    if (this.isCloudEnabled() && this.supabase) {
+      await this.supabase.auth.signOut();
     }
   }
 
+  /**
+   * Updates password in Supabase Auth engine.
+   */
+  public static async updateCloudPassword(newPassword: string): Promise<boolean> {
+    if (!this.isCloudEnabled() || !this.supabase) return false;
+    const { error } = await this.supabase.auth.updateUser({ password: newPassword });
+    if (error) {
+      throw new Error(error.message);
+    }
+    return true;
+  }
+
+  /**
+   * Syncs user profile metadata to Supabase / TenantScale cloud.
+   */
+  public static async syncProfileToCloud(profile: UserProfile): Promise<boolean> {
+    if (!this.isCloudEnabled() || !this.supabase) return false;
+    const { error } = await this.supabase
+      .from('voxel_users')
+      .upsert({
+        id: profile.id,
+        username: profile.username,
+        avatar: profile.avatar,
+        bio: profile.bio,
+        is_public: profile.isPublic,
+        updated_at: profile.updatedAt
+      }, { onConflict: 'id' });
+
+    if (error) {
+      throw new Error(`Profile sync failed: ${error.message}`);
+    }
+    return true;
+  }
+
+  /**
+   * Syncs cloud payload data to cloud DB.
+   */
   public static async syncDataToCloud(userId: string, payload: CloudSyncPayload): Promise<boolean> {
     if (!this.isCloudEnabled() || !this.supabase) return false;
-    try {
-      const { error } = await this.supabase
-        .from('voxel_cloud_sync')
-        .upsert({
-          user_id: userId,
-          sync_payload: payload,
-          last_synced_at: payload.lastSyncedAt
-        }, { onConflict: 'user_id' });
+    const { error } = await this.supabase
+      .from('voxel_cloud_sync')
+      .upsert({
+        user_id: userId,
+        sync_payload: payload,
+        last_synced_at: payload.lastSyncedAt
+      }, { onConflict: 'user_id' });
 
-      if (error) {
-        console.warn('[TenantScaleClient] Cloud sync data error:', error.message);
-        return false;
-      }
-      return true;
-    } catch (e) {
-      console.warn('[TenantScaleClient] Cloud sync data exception:', e);
-      return false;
+    if (error) {
+      throw new Error(`Cloud sync data failed: ${error.message}`);
     }
+    return true;
   }
 
   public static async fetchUserFromCloudByUsername(username: string): Promise<UserProfile | null> {
@@ -152,12 +259,13 @@ export class TenantScaleClient {
 
   public static async deleteCloudUserData(userId: string): Promise<boolean> {
     if (!this.isCloudEnabled() || !this.supabase) return false;
-    try {
-      await this.supabase.from('voxel_users').delete().eq('id', userId);
-      await this.supabase.from('voxel_cloud_sync').delete().eq('user_id', userId);
-      return true;
-    } catch {
-      return false;
+    const { error: err1 } = await this.supabase.from('voxel_cloud_sync').delete().eq('user_id', userId);
+    const { error: err2 } = await this.supabase.from('voxel_users').delete().eq('id', userId);
+    await this.signOutCloud();
+
+    if (err1 || err2) {
+      throw new Error(`Cloud account deletion failed: ${err1?.message || err2?.message}`);
     }
+    return true;
   }
 }
