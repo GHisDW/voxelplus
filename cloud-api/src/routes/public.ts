@@ -1,14 +1,68 @@
 import { Hono } from 'hono';
 import { getPublicSupabaseClient } from '../supabase.js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 export const publicRouter = new Hono();
+
+type PublicProfileRow = {
+  id: string;
+  username: string;
+  avatar: string;
+  bio: string | null;
+  created_at: string;
+  is_creator?: boolean | null;
+};
+
+/**
+ * Builds PublicUserProfile DTOs for the given rows with REAL pack/skin counts
+ * fetched from voxel_library. Public RLS on voxel_library only exposes rows
+ * whose metadata.isPublic is true, so these counts are genuinely equivalent
+ * to the SECURITY DEFINER RPC.
+ * Throws when the library query fails — callers must surface an unavailable
+ * state rather than fabricated zero counts.
+ */
+async function withLibraryCounts(supabase: SupabaseClient, rows: PublicProfileRow[]) {
+  const counts = new Map<string, { packs: number; skins: number }>();
+  for (const row of rows) counts.set(row.id, { packs: 0, skins: 0 });
+
+  if (rows.length > 0) {
+    const { data: libRows, error: libErr } = await supabase
+      .from('voxel_library')
+      .select('user_id, type')
+      .in('user_id', rows.map(r => r.id))
+      .in('type', ['pack', 'skin']);
+
+    if (libErr) throw libErr;
+
+    for (const l of libRows || []) {
+      const c = counts.get(l.user_id);
+      if (!c) continue;
+      if (l.type === 'pack') c.packs++;
+      else if (l.type === 'skin') c.skins++;
+    }
+  }
+
+  return rows.map(row => {
+    const c = counts.get(row.id)!;
+    return {
+      id: row.id,
+      username: row.username,
+      avatar: row.avatar,
+      bio: row.bio || '',
+      createdAt: row.created_at,
+      publicPacksCount: c.packs,
+      publicSkinsCount: c.skins,
+      isCreator: row.is_creator === true
+    };
+  });
+}
 
 publicRouter.get('/profiles', async (c) => {
   const query = c.req.query('q')?.toLowerCase();
   const supabase = getPublicSupabaseClient();
 
   if (!supabase) {
-    return c.json([]);
+    return c.json({ error: 'Cloud service unconfigured.' }, 503);
   }
 
   const { data: rpcData, error: rpcError } = await supabase.rpc('get_public_user_profiles');
@@ -22,7 +76,7 @@ publicRouter.get('/profiles', async (c) => {
       createdAt: row.created_at,
       publicPacksCount: Number(row.public_packs_count || 0),
       publicSkinsCount: Number(row.public_skins_count || 0),
-      isCreator: Number(row.public_packs_count || 0) > 0 || Number(row.public_skins_count || 0) > 0
+      isCreator: row.is_creator === true
     }));
 
     if (query) {
@@ -31,27 +85,24 @@ publicRouter.get('/profiles', async (c) => {
     return c.json(list);
   }
 
-  // Safe public projection fallback using PostgreSQL RPC view projection
+  // Equivalent safe query fallback: public profiles from voxel_users (public
+  // RLS) plus real public library counts. No fabricated zero counts.
   const { data: users, error } = await supabase
     .from('voxel_users')
-    .select('id, username, avatar, bio, created_at')
+    .select('id, username, avatar, bio, created_at, is_creator')
     .eq('is_public', true)
     .limit(50);
 
   if (error || !users) {
-    return c.json([]);
+    return c.json({ error: 'Public profiles are temporarily unavailable.' }, 503);
   }
 
-  let list = users.map(u => ({
-    id: u.id,
-    username: u.username,
-    avatar: u.avatar,
-    bio: u.bio || '',
-    createdAt: u.created_at,
-    publicPacksCount: 0,
-    publicSkinsCount: 0,
-    isCreator: false
-  }));
+  let list;
+  try {
+    list = await withLibraryCounts(supabase, users as PublicProfileRow[]);
+  } catch {
+    return c.json({ error: 'Public profiles are temporarily unavailable.' }, 503);
+  }
 
   if (query) {
     list = list.filter(p => p.username.toLowerCase().includes(query) || p.bio.toLowerCase().includes(query));
@@ -81,14 +132,14 @@ publicRouter.get('/profiles/:username', async (c) => {
         createdAt: match.created_at,
         publicPacksCount: Number(match.public_packs_count || 0),
         publicSkinsCount: Number(match.public_skins_count || 0),
-        isCreator: Number(match.public_packs_count || 0) > 0 || Number(match.public_skins_count || 0) > 0
+        isCreator: match.is_creator === true
       });
     }
   }
 
   const { data: user, error } = await supabase
     .from('voxel_users')
-    .select('id, username, avatar, bio, created_at, is_public')
+    .select('id, username, avatar, bio, created_at, is_public, is_creator')
     .ilike('username', username)
     .single();
 
@@ -96,14 +147,12 @@ publicRouter.get('/profiles/:username', async (c) => {
     return c.json({ error: 'User not found or profile is private.' }, 404);
   }
 
-  return c.json({
-    id: user.id,
-    username: user.username,
-    avatar: user.avatar,
-    bio: user.bio || '',
-    createdAt: user.created_at,
-    publicPacksCount: 0,
-    publicSkinsCount: 0,
-    isCreator: false
-  });
+  let list;
+  try {
+    list = await withLibraryCounts(supabase, [user as PublicProfileRow]);
+  } catch {
+    return c.json({ error: 'Public profile is temporarily unavailable.' }, 503);
+  }
+
+  return c.json(list[0]);
 });

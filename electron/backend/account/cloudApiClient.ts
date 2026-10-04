@@ -17,7 +17,7 @@ export class CloudApiClient {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 3000);
-      const res = await fetch(`${this.apiBaseUrl}/api/health`, {
+      const res = await fetch(`${this.apiBaseUrl}/health`, {
         signal: controller.signal
       });
       clearTimeout(timeout);
@@ -27,12 +27,6 @@ export class CloudApiClient {
     }
     this._lastReachableCheck = now;
     return this._cloudReachable;
-  }
-
-  public static isCloudEnabled(): boolean {
-    // Returns synchronously — only used as a gate before making real calls.
-    // If we've never checked, assume cloud might be available (calls will handle failures).
-    return true;
   }
 
   public static toInternalEmail(username: string): string {
@@ -208,32 +202,47 @@ export class CloudApiClient {
     return true;
   }
 
-  public static async fetchLibraryFromCloud(accessToken: string, userId: string): Promise<UserLibraryItem[] | null> {
+  /**
+   * Fetches the authoritative cloud library. Throws on failure so callers
+   * can surface a real unavailable state instead of falling back to local
+   * cache as if it were authoritative.
+   */
+  public static async fetchLibraryFromCloud(accessToken: string, userId: string): Promise<UserLibraryItem[]> {
     const res = await fetch(`${this.apiBaseUrl}/api/library`, {
       headers: { 'Authorization': `Bearer ${accessToken}` }
     });
 
     if (!res.ok) {
-      return null;
+      const errJson = (await res.json().catch(() => ({}))) as any;
+      throw new Error(errJson.error || 'Cloud library is unavailable.');
     }
 
     return (await res.json()) as UserLibraryItem[];
   }
 
-  public static async fetchUserFromCloudByUsername(username: string): Promise<UserProfile | null> {
+  /**
+   * Fetches a public profile (with real pack/skin counts and creator status).
+   * Returns null only for a genuine 404; other failures throw.
+   */
+  public static async fetchPublicProfileFromCloud(username: string): Promise<PublicUserProfile | null> {
     const res = await fetch(`${this.apiBaseUrl}/api/public/profiles/${encodeURIComponent(username)}`);
-    if (!res.ok) {
+    if (res.status === 404) {
       return null;
     }
+    if (!res.ok) {
+      const errJson = (await res.json().catch(() => ({}))) as any;
+      throw new Error(errJson.error || 'Public profile is unavailable.');
+    }
 
-    return (await res.json()) as UserProfile;
+    return (await res.json()) as PublicUserProfile;
   }
 
-  public static async fetchPublicProfilesFromCloud(query?: string): Promise<PublicUserProfile[] | null> {
+  public static async fetchPublicProfilesFromCloud(query?: string): Promise<PublicUserProfile[]> {
     const url = query ? `${this.apiBaseUrl}/api/public/profiles?q=${encodeURIComponent(query)}` : `${this.apiBaseUrl}/api/public/profiles`;
     const res = await fetch(url);
     if (!res.ok) {
-      return null;
+      const errJson = (await res.json().catch(() => ({}))) as any;
+      throw new Error(errJson.error || 'Public profiles are unavailable.');
     }
 
     return (await res.json()) as PublicUserProfile[];
@@ -266,15 +275,14 @@ export class CloudApiClient {
   }
 
   public static async fetchUserCosmetics(accessToken: string): Promise<any[]> {
-    try {
-      const res = await fetch(`${this.apiBaseUrl}/api/cosmetics`, {
-        headers: { Authorization: `Bearer ${accessToken}` }
-      });
-      if (!res.ok) return [];
-      return (await res.json()) as any[];
-    } catch {
-      return [];
+    const res = await fetch(`${this.apiBaseUrl}/api/cosmetics`, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if (!res.ok) {
+      const errJson = (await res.json().catch(() => ({}))) as any;
+      throw new Error(errJson.error || 'User cosmetics are unavailable.');
     }
+    return (await res.json()) as any[];
   }
 
   public static async selectCosmetic(accessToken: string, cosmeticId: string | null): Promise<boolean> {
@@ -306,15 +314,14 @@ export class CloudApiClient {
   }
 
   public static async fetchUserAchievements(accessToken: string): Promise<any[]> {
-    try {
-      const res = await fetch(`${this.apiBaseUrl}/api/achievements`, {
-        headers: { Authorization: `Bearer ${accessToken}` }
-      });
-      if (!res.ok) return [];
-      return (await res.json()) as any[];
-    } catch {
-      return [];
+    const res = await fetch(`${this.apiBaseUrl}/api/achievements`, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if (!res.ok) {
+      const errJson = (await res.json().catch(() => ({}))) as any;
+      throw new Error(errJson.error || 'User achievements are unavailable.');
     }
+    return (await res.json()) as any[];
   }
 
   public static async reportAchievementEvent(accessToken: string, eventType: string, metadata?: any): Promise<any> {
@@ -326,7 +333,10 @@ export class CloudApiClient {
       },
       body: JSON.stringify({ eventType, metadata })
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const errJson = (await res.json().catch(() => ({}))) as any;
+      throw new Error(errJson.error || 'Achievement event reporting failed.');
+    }
     return await res.json();
   }
 
@@ -361,7 +371,11 @@ export class CloudApiClient {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${accessToken}` }
     });
-    return res.ok;
+    if (!res.ok) {
+      const errJson = (await res.json().catch(() => ({}))) as any;
+      throw new Error(errJson.error || 'Avatar deletion failed.');
+    }
+    return true;
   }
 
   // ─── Owner Control Panel ───

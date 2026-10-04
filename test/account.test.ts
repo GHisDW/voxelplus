@@ -24,19 +24,62 @@ test('CryptoUtils - Password Validation', () => {
   assert.equal(CryptoUtils.validatePassword('12345').isValid, false); // < 6 chars
 });
 
-test('AccountManager - Handles Account Creation and Authentication Fallback', async () => {
-  // When cloud mode or cloud API endpoint is unavailable, account creation & login must succeed gracefully with local fallback
-  const created = await AccountManager.createAccount({
-    username: 'test_user',
-    password: 'Password123!'
-  });
-  assert.ok(created);
-  assert.equal(created.user.username, 'test_user');
-  assert.ok(created.accessToken);
+test('AccountManager - Account Creation Fails Closed When Cloud Unavailable', async () => {
+  // Cloud-authoritative auth: there is NO local/offline account creation.
+  // With the Cloud API unreachable, creation must reject — never silently
+  // fabricate a local account.
+  await assert.rejects(
+    AccountManager.createAccount({
+      username: 'test_user',
+      password: 'Password123!'
+    })
+  );
 
-  const loginSession = await AccountManager.login('test_user', 'Password123!');
-  assert.ok(loginSession);
-  assert.equal(loginSession.user.username, 'test_user');
+  // And no session may exist after the failed attempt.
+  const session = await AccountManager.getCurrentSession();
+  assert.equal(session, null);
+});
+
+test('AccountManager - Login Fails Closed When Cloud Unavailable', async () => {
+  // A cached profile must never substitute for cloud authentication.
+  AccountStore.saveCachedProfile({
+    id: 'user_cached',
+    username: 'test_user',
+    avatar: 'avatar_steve',
+    bio: '',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    isPublic: true,
+    syncEnabled: true
+  });
+
+  await assert.rejects(
+    AccountManager.login('test_user', 'Password123!')
+  );
+
+  AccountStore.clearUserData('user_cached');
+});
+
+test('AccountManager - Legacy Local Sessions Are Not Accepted', async () => {
+  // Tokens minted by the old offline fallback ("local_*") are not valid
+  // cloud sessions and must not restore access without cloud validation.
+  AccountStore.setActiveSession({
+    accessToken: 'local_deadbeef1234',
+    refreshToken: 'refresh_deadbeef1234',
+    user: {
+      id: 'user_local',
+      username: 'legacy_local_user',
+      avatar: 'avatar_steve',
+      bio: '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      isPublic: true,
+      syncEnabled: false
+    }
+  });
+
+  const session = await AccountManager.getCurrentSession();
+  assert.equal(session, null);
 });
 
 test('AccountManager - Session Enforcement and Startup Validation', async () => {

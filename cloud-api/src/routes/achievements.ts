@@ -80,19 +80,29 @@ achievementsRouter.post('/event', authMiddleware, async (c) => {
     return c.json({ error: 'eventType is required.' }, 400);
   }
 
-  // Only allow known event types — prevent clients from sending arbitrary strings
-  const ALLOWED_EVENTS = [
+  // Only allow known client-reportable event types. Privileged grants
+  // (founder status, titles, creator privileges) are NEVER client-reportable
+  // — they are granted by owner/admin endpoints only.
+  const CLIENT_REPORTABLE_EVENTS = new Set([
     'ACCOUNT_CREATED', 'INSTANCE_CREATED', 'CONTENT_INSTALLED',
     'LIBRARY_TEN_ITEMS', 'PACK_PUBLISHED', 'MULTI_VERSION',
-    'PROFILE_MADE_PUBLIC', 'FOUNDER_GRANTED'
-  ];
+    'PROFILE_MADE_PUBLIC'
+  ]);
 
-  if (!ALLOWED_EVENTS.includes(eventType)) {
+  if (!CLIENT_REPORTABLE_EVENTS.has(eventType)) {
     return c.json({ error: 'Unknown event type.' }, 400);
   }
 
   const adminSupabase = getAdminSupabaseClient();
   if (!adminSupabase) return c.json({ error: 'Privileged admin client unconfigured.' }, 503);
+
+  // Server-side validation: verify the reported event is actually true for
+  // this user where the authoritative data exists. A fabricated event cannot
+  // unlock achievements it did not earn.
+  const isEventGenuine = await validateAchievementEvent(adminSupabase, authUser.id, eventType);
+  if (!isEventGenuine) {
+    return c.json({ unlocked: [], rejected: true });
+  }
 
   // Find achievements triggered by this event
   const { data: triggered } = await adminSupabase
@@ -151,3 +161,52 @@ achievementsRouter.post('/event', authMiddleware, async (c) => {
 
   return c.json({ unlocked });
 });
+
+/**
+ * Verifies a client-reported event against authoritative cloud data.
+ * Events whose ground truth lives only on the client device (e.g. local
+ * instance creation) are structural progress signals and pass; events that
+ * claim cloud-visible state (public content, library size, public profile)
+ * are verified against the database. Returns false when the claimed state
+ * cannot be verified.
+ */
+async function validateAchievementEvent(
+  adminSupabase: any,
+  userId: string,
+  eventType: string
+): Promise<boolean> {
+  switch (eventType) {
+    case 'LIBRARY_TEN_ITEMS': {
+      const { count, error } = await adminSupabase
+        .from('voxel_library')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId);
+      if (error) return false;
+      return (count || 0) >= 10;
+    }
+    case 'PACK_PUBLISHED': {
+      const { count, error } = await adminSupabase
+        .from('voxel_library')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .eq('type', 'pack')
+        .eq('metadata->>isPublic', 'true');
+      if (error) return false;
+      return (count || 0) >= 1;
+    }
+    case 'PROFILE_MADE_PUBLIC': {
+      const { data, error } = await adminSupabase
+        .from('voxel_users')
+        .select('is_public')
+        .eq('id', userId)
+        .maybeSingle();
+      if (error || !data) return false;
+      return data.is_public === true;
+    }
+    default:
+      // Local-device progress signals (ACCOUNT_CREATED, INSTANCE_CREATED,
+      // CONTENT_INSTALLED, MULTI_VERSION): allowed; dedupe below still
+      // prevents repeat grants.
+      return true;
+  }
+}

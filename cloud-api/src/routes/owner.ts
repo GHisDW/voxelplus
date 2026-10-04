@@ -319,7 +319,29 @@ ownerRouter.delete('/users/:userId', ownerAuthMiddleware, async (c) => {
     return c.json({ error: 'Only the owner can delete other owner/admin accounts.', code: 'FORBIDDEN' }, 403);
   }
 
-  // Audit BEFORE deletion
+  // Delete the Supabase Auth identity FIRST — never report success while the
+  // auth identity still exists, and never destroy data rows for an account
+  // whose deletion ultimately failed.
+  const { error: authDeleteErr } = await adminSupabase.auth.admin.deleteUser(targetId);
+  if (authDeleteErr) {
+    return c.json({ error: `Auth identity deletion failed: ${authDeleteErr.message}` }, 500);
+  }
+
+  // Delete cloud-owned data rows, verifying each delete.
+  const { error: syncDelErr } = await adminSupabase.from('voxel_cloud_sync').delete().eq('user_id', targetId);
+  if (syncDelErr) {
+    return c.json({ error: `Related-data deletion failed (voxel_cloud_sync): ${syncDelErr.message}` }, 500);
+  }
+  const { error: libDelErr } = await adminSupabase.from('voxel_library').delete().eq('user_id', targetId);
+  if (libDelErr) {
+    return c.json({ error: `Related-data deletion failed (voxel_library): ${libDelErr.message}` }, 500);
+  }
+  const { error: userDelErr } = await adminSupabase.from('voxel_users').delete().eq('id', targetId);
+  if (userDelErr) {
+    return c.json({ error: `Related-data deletion failed (voxel_users): ${userDelErr.message}` }, 500);
+  }
+
+  // Audit only after the deletion fully succeeded.
   await adminSupabase.from('voxel_owner_audit_log').insert({
     actor_id: actorUser.id,
     actor_role: actorRole,
@@ -336,17 +358,6 @@ ownerRouter.delete('/users/:userId', ownerAuthMiddleware, async (c) => {
     resource: 'voxel_users',
     details: { target_id: targetId, target_username: targetUser?.username }
   });
-
-  // Delete cloud data
-  await adminSupabase.from('voxel_cloud_sync').delete().eq('user_id', targetId);
-  await adminSupabase.from('voxel_library').delete().eq('user_id', targetId);
-  await adminSupabase.from('voxel_users').delete().eq('id', targetId);
-
-  // Delete Auth identity
-  const { error: authDeleteErr } = await adminSupabase.auth.admin.deleteUser(targetId);
-  if (authDeleteErr) {
-    return c.json({ error: `Auth identity deletion failed: ${authDeleteErr.message}` }, 500);
-  }
 
   return c.json({ success: true, deletedUserId: targetId });
 });
@@ -371,13 +382,20 @@ ownerRouter.delete('/bulk', ownerAuthMiddleware, async (c) => {
 
   const adminSupabase = getAdminSupabaseClient()!;
 
-  // Get all non-owner users
-  const { data: allUsers } = await adminSupabase
-    .from('voxel_users')
-    .select('id, username')
-    .not('id', 'in', `(SELECT user_id FROM voxel_owner_roles)`);
+  // Get all non-owner users (PostgREST does not support subqueries inside
+  // .not('in', ...), so resolve owner-role ids explicitly first).
+  const { data: roleRows } = await adminSupabase
+    .from('voxel_owner_roles')
+    .select('user_id');
+  const protectedIds = new Set((roleRows || []).map((r: any) => r.user_id));
 
-  if (!allUsers || allUsers.length === 0) {
+  const { data: userRows } = await adminSupabase
+    .from('voxel_users')
+    .select('id, username');
+
+  const allUsers = (userRows || []).filter((u: any) => !protectedIds.has(u.id));
+
+  if (allUsers.length === 0) {
     return c.json({ message: 'No non-owner accounts to delete.', deleted: 0 });
   }
 
@@ -398,13 +416,28 @@ ownerRouter.delete('/bulk', ownerAuthMiddleware, async (c) => {
   });
 
   let deleted = 0;
+  const failedIds: string[] = [];
   for (const u of allUsers) {
-    try {
-      await adminSupabase.auth.admin.deleteUser(u.id);
-      deleted++;
-    } catch (e) {
-      console.error('[OwnerPanel] Failed to delete user:', u.id, e);
+    // Auth identity first; related rows afterwards. Failures are reported,
+    // not silently counted as deletions.
+    const { error: authErr } = await adminSupabase.auth.admin.deleteUser(u.id);
+    if (authErr) {
+      console.error('[OwnerPanel] Failed to delete auth user:', u.id, authErr.message);
+      failedIds.push(u.id);
+      continue;
     }
+    await adminSupabase.from('voxel_cloud_sync').delete().eq('user_id', u.id);
+    await adminSupabase.from('voxel_library').delete().eq('user_id', u.id);
+    await adminSupabase.from('voxel_users').delete().eq('id', u.id);
+    deleted++;
+  }
+
+  if (failedIds.length > 0) {
+    return c.json({
+      error: `Bulk deletion partially failed for ${failedIds.length} account(s).`,
+      deleted,
+      failedIds
+    }, 500);
   }
 
   return c.json({ success: true, deleted });

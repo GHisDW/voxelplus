@@ -38,9 +38,51 @@ test('Cloud API - Unauthenticated Request Rejection on Protected Endpoints', asy
 test('Cloud API - Public Profiles Route', async () => {
   const req = new Request('http://localhost/api/public/profiles');
   const res = await app.fetch(req);
-  assert.equal(res.status, 200);
-  const data = await res.json();
-  assert.ok(Array.isArray(data));
+  // 200 with a real array when the database is configured; 503 when the
+  // cloud backend is unconfigured — never fabricated empty/zero data.
+  if (res.status === 200) {
+    const data = await res.json();
+    assert.ok(Array.isArray(data));
+  } else {
+    assert.equal(res.status, 503, `Expected 200 or 503, got ${res.status}`);
+  }
+});
+
+test('Cloud API - Public Profile By Username Boundary', async () => {
+  const req = new Request('http://localhost/api/public/profiles/nonexistent_user_xyz');
+  const res = await app.fetch(req);
+  // 404 when the DB is reachable but user missing; 503 when unconfigured.
+  assert.ok(res.status === 404 || res.status === 503, `Expected 404 or 503, got ${res.status}`);
+});
+
+test('Cloud API - Signup Rejects Invalid Input', async () => {
+  const res = await app.fetch(new Request('http://localhost/api/account/signup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'ab', password: 'x' })
+  }));
+  assert.equal(res.status, 400);
+});
+
+test('Cloud API - Achievement Event Requires Authentication', async () => {
+  const res = await app.fetch(new Request('http://localhost/api/achievements/event', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ eventType: 'FOUNDER_GRANTED' })
+  }));
+  // Unauthenticated requests are rejected before any event processing —
+  // clients can never grant themselves privileged achievements.
+  assert.ok(res.status === 401 || res.status === 503, `Expected 401 or 503, got ${res.status}`);
+});
+
+test('Cloud API - Avatar Upload Requires Authentication', async () => {
+  const form = new FormData();
+  form.append('avatar', new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], { type: 'image/png' }), 'a.png');
+  const res = await app.fetch(new Request('http://localhost/api/avatar/upload', {
+    method: 'POST',
+    body: form
+  }));
+  assert.ok(res.status === 401 || res.status === 503, `Expected 401 or 503, got ${res.status}`);
 });
 
 test('Cloud API - Public Cosmetics Catalog Route', async () => {

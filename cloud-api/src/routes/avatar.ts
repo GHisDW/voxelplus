@@ -9,6 +9,32 @@ const MAX_AVATAR_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 const ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.gif'];
 
+/** Magic-byte signatures for the allowed image formats. */
+const MAGIC_SIGNATURES: { mime: string; bytes: number[] }[] = [
+  { mime: 'image/jpeg', bytes: [0xff, 0xd8, 0xff] },
+  { mime: 'image/png', bytes: [0x89, 0x50, 0x4e, 0x47] },
+  { mime: 'image/gif', bytes: [0x47, 0x49, 0x46, 0x38] },
+  { mime: 'image/webp', bytes: [0x52, 0x49, 0x46, 0x46] } // RIFF....WEBP
+];
+
+function sniffImageMime(buf: Buffer): string | null {
+  for (const sig of MAGIC_SIGNATURES) {
+    if (buf.length < sig.bytes.length) continue;
+    let match = true;
+    for (let i = 0; i < sig.bytes.length; i++) {
+      if (buf[i] !== sig.bytes[i]) { match = false; break; }
+    }
+    if (match) {
+      if (sig.mime === 'image/webp') {
+        // Confirm the WEBP fourcc at bytes 8-11.
+        if (buf.length < 12 || buf.toString('ascii', 8, 12) !== 'WEBP') continue;
+      }
+      return sig.mime;
+    }
+  }
+  return null;
+}
+
 /**
  * POST /api/avatar — upload avatar image to Supabase Storage
  * Validates: MIME type, extension, file size, then uploads to avatars/{userId}/avatar.{ext}
@@ -69,6 +95,16 @@ async function handleAvatarUpload(c: any) {
 
   const fileBuffer = Buffer.from(await file.arrayBuffer());
 
+  // Content validation: the declared MIME must match the actual image bytes
+  // (the renderer's file.type is client-supplied and not a security boundary).
+  const sniffedMime = sniffImageMime(fileBuffer);
+  if (!sniffedMime || sniffedMime !== file.type) {
+    return c.json({
+      error: 'Uploaded content is not a valid image of the declared type.',
+      code: 'INVALID_IMAGE_CONTENT'
+    }, 415);
+  }
+
   // Upload to Supabase Storage (admin client bypasses RLS for upload)
   const { data: uploadData, error: uploadError } = await adminSupabase.storage
     .from('avatars')
@@ -89,6 +125,20 @@ async function handleAvatarUpload(c: any) {
   const avatarUrl = urlData?.publicUrl;
   if (!avatarUrl) {
     return c.json({ error: 'Failed to retrieve public URL for uploaded avatar.' }, 500);
+  }
+
+  // Remove any previous avatar files with different extensions so replacing
+  // an avatar never leaves orphaned files behind.
+  const { data: existingFiles } = await adminSupabase.storage
+    .from('avatars')
+    .list(authUser.id);
+  if (existingFiles && existingFiles.length > 0) {
+    const stale = existingFiles
+      .map(f => `${authUser.id}/${f.name}`)
+      .filter(p => p !== storagePath);
+    if (stale.length > 0) {
+      await adminSupabase.storage.from('avatars').remove(stale);
+    }
   }
 
   // Update profile with new avatar_url

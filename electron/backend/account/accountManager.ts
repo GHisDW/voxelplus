@@ -44,49 +44,29 @@ export class AccountManager {
       });
     }
 
-    // Try cloud first, fall back to local
-    const cloudReachable = await CloudApiClient.checkCloudReachable();
-
-    let session: AccountSession | null = null;
-
-    if (cloudReachable) {
-      try {
-        session = await CloudApiClient.signUpWithCloud(
-          payload.username,
-          payload.password,
-          payload.avatar,
-          payload.bio,
-          payload.isPublic
-        );
-      } catch (err: any) {
-        console.warn('[AccountManager] Cloud signup failed, falling back to local:', err.message);
-        // Fall through to local account creation
-      }
+    // Voxel+ accounts are cloud-authoritative: signup MUST go through the
+    // Cloud API / Supabase Auth. There is no local/offline account creation.
+    let session: AccountSession;
+    try {
+      session = await CloudApiClient.signUpWithCloud(
+        payload.username,
+        payload.password,
+        payload.avatar,
+        payload.bio,
+        payload.isPublic
+      );
+    } catch (err: any) {
+      if (err instanceof VoxelError) throw err;
+      throw new VoxelError({
+        title: 'Account Creation Failed',
+        message: err?.message || 'Cloud signup failed.',
+        category: 'NETWORK',
+        severity: 'ERROR',
+        code: 'CLOUD_SIGNUP_FAILED'
+      });
     }
 
-    // Local account creation fallback
-    if (!session) {
-      const userId = CryptoUtils.generateId();
-      const now = new Date().toISOString();
-      const localToken = `local_${CryptoUtils.generateId()}`;
-      session = {
-        accessToken: localToken,
-        refreshToken: `refresh_${CryptoUtils.generateId()}`,
-        user: {
-          id: userId,
-          username: payload.username,
-          avatar: payload.avatar || 'avatar_steve',
-          bio: payload.bio || '',
-          createdAt: now,
-          updatedAt: now,
-          isPublic: payload.isPublic !== undefined ? payload.isPublic : true,
-          syncEnabled: false
-        }
-      };
-      console.log(`[AccountManager] Created local account for @${payload.username} (cloud unavailable)`);
-    }
-
-    if (!session || !session.user || !session.accessToken) {
+    if (!session.user || !session.accessToken) {
       throw new VoxelError({
         title: 'Account Creation Failed',
         message: 'Could not create account.',
@@ -117,49 +97,24 @@ export class AccountManager {
       });
     }
 
-    const cloudReachable = await CloudApiClient.checkCloudReachable();
-
-    let session: AccountSession | null = null;
-
-    if (cloudReachable) {
-      try {
-        session = await CloudApiClient.signInWithCloud(username, password);
-      } catch (err: any) {
-        console.warn('[AccountManager] Cloud login failed:', err.message);
-        // Fall through to local check
-      }
+    // Cloud-authoritative login only: a valid session can only come from a
+    // successful Cloud API / Supabase Auth sign-in. Cached data is never used
+    // to authenticate.
+    let session: AccountSession;
+    try {
+      session = await CloudApiClient.signInWithCloud(username, password);
+    } catch (err: any) {
+      if (err instanceof VoxelError) throw err;
+      throw new VoxelError({
+        title: 'Authentication Failed',
+        message: err?.message || 'Invalid username or password.',
+        category: 'CONFIGURATION',
+        severity: 'WARNING',
+        code: 'INVALID_CREDENTIALS'
+      });
     }
 
-    // Local login fallback: check if there's a cached profile with the same username
-    if (!session) {
-      const cachedSession = AccountStore.getActiveSession();
-      if (cachedSession && cachedSession.user.username.toLowerCase() === username.toLowerCase()) {
-        // Re-use the existing local session
-        session = cachedSession;
-        console.log(`[AccountManager] Local login matched cached session for @${username}`);
-      } else {
-        // Create a new local session for this login
-        const userId = CryptoUtils.generateId();
-        const now = new Date().toISOString();
-        session = {
-          accessToken: `local_${CryptoUtils.generateId()}`,
-          refreshToken: `refresh_${CryptoUtils.generateId()}`,
-          user: {
-            id: userId,
-            username,
-            avatar: 'avatar_steve',
-            bio: '',
-            createdAt: now,
-            updatedAt: now,
-            isPublic: true,
-            syncEnabled: false
-          }
-        };
-        console.log(`[AccountManager] Created local login session for @${username} (cloud unavailable)`);
-      }
-    }
-
-    if (!session || !session.user || !session.accessToken) {
+    if (!session.user || !session.accessToken) {
       throw new VoxelError({
         title: 'Authentication Failed',
         message: 'Invalid username or password.',
@@ -178,9 +133,7 @@ export class AccountManager {
 
   public static async logout(): Promise<boolean> {
     AccountStore.setActiveSession(null);
-    if (CloudApiClient.isCloudEnabled()) {
-      await CloudApiClient.signOutCloud();
-    }
+    await CloudApiClient.signOutCloud();
     return true;
   }
 
@@ -192,17 +145,9 @@ export class AccountManager {
     const session = AccountStore.getActiveSession();
     if (!session || !session.accessToken) return null;
 
-    // Local offline sessions are valid locally
-    if (session.accessToken.startsWith('local_')) {
-      return session;
-    }
-
-    if (!CloudApiClient.isCloudEnabled()) {
-      console.warn('[AccountManager] Cloud service unavailable. Session unverified.');
-      AccountStore.setActiveSession(null);
-      return null;
-    }
-
+    // The cached session is only restored after its cloud token validates
+    // against the Cloud API. Invalid/expired tokens or an unreachable cloud
+    // revokes the session and returns the user to the authentication UI.
     try {
       const verifiedProfile = await CloudApiClient.validateCloudToken(session.accessToken);
       session.user = verifiedProfile;
@@ -258,9 +203,9 @@ export class AccountManager {
       syncEnabled: payload.syncEnabled !== undefined ? payload.syncEnabled : session.user.syncEnabled
     };
 
-    if (CloudApiClient.isCloudEnabled()) {
-      await CloudApiClient.syncProfileToCloud(session.accessToken, updatedProfile);
-    }
+    // Profile data is cloud-owned: the update must succeed server-side before
+    // the local cache is updated.
+    await CloudApiClient.syncProfileToCloud(session.accessToken, updatedProfile);
 
     session.user = updatedProfile;
     AccountStore.setActiveSession(session);
@@ -291,16 +236,6 @@ export class AccountManager {
       });
     }
 
-    if (!CloudApiClient.isCloudEnabled()) {
-      throw new VoxelError({
-        title: 'Cloud Service Unavailable',
-        message: 'Unable to change password while cloud service is unavailable.',
-        category: 'NETWORK',
-        severity: 'ERROR',
-        code: 'CLOUD_UNAVAILABLE'
-      });
-    }
-
     await CloudApiClient.updateCloudPassword(session.accessToken, payload.newPassword);
     return true;
   }
@@ -311,16 +246,8 @@ export class AccountManager {
 
     const userId = session.user.id;
 
-    if (!CloudApiClient.isCloudEnabled()) {
-      throw new VoxelError({
-        title: 'Account Deletion Failed',
-        message: 'Unable to delete account while cloud service is unavailable.',
-        category: 'NETWORK',
-        severity: 'ERROR',
-        code: 'CLOUD_UNAVAILABLE'
-      });
-    }
-
+    // The Cloud API performs the authoritative deletion (auth identity + cloud
+    // data). Local data is cleared only after the cloud deletion succeeds.
     await CloudApiClient.deleteCloudUserData(session.accessToken, userId);
     AccountStore.clearUserData(userId);
     AccountStore.setActiveSession(null);
@@ -328,8 +255,9 @@ export class AccountManager {
   }
 
   public static async listPublicProfiles(query?: string): Promise<PublicUserProfile[]> {
+    // Throws VoxelError/Error when the Cloud API is unavailable — callers
+    // surface a real unavailable state instead of an empty directory.
     const cloudProfiles = await CloudApiClient.fetchPublicProfilesFromCloud(query);
-    if (!cloudProfiles) return [];
 
     let publicList = cloudProfiles;
     if (query) {
@@ -343,19 +271,10 @@ export class AccountManager {
   }
 
   public static async getPublicProfile(idOrUsername: string): Promise<PublicUserProfile | null> {
-    const userProfile = await CloudApiClient.fetchUserFromCloudByUsername(idOrUsername);
-    if (!userProfile || !userProfile.isPublic) return null;
-
-    return {
-      id: userProfile.id,
-      username: userProfile.username,
-      avatar: userProfile.avatar,
-      bio: userProfile.bio,
-      createdAt: userProfile.createdAt,
-      publicPacksCount: 0,
-      publicSkinsCount: 0,
-      isCreator: false
-    };
+    // Returns the cloud-computed public profile verbatim (real pack/skin
+    // counts and creator status). Returns null only for a genuine 404;
+    // transient cloud failures throw so the UI shows an unavailable state.
+    return CloudApiClient.fetchPublicProfileFromCloud(idOrUsername);
   }
 
   public static async syncCloudData(): Promise<CloudSyncPayload> {
@@ -401,22 +320,18 @@ export class AccountManager {
       skins
     };
 
-    if (CloudApiClient.isCloudEnabled()) {
-      try {
-        await CloudApiClient.syncDataToCloud(session.accessToken, userId, payload);
-      } catch (err: any) {
-        payload.status = 'Sync Failed';
-        AccountStore.saveSyncData(userId, payload);
-        throw new VoxelError({
-          title: 'Cloud Synchronization Failed',
-          message: err.message || 'Failed to sync data with Voxel⁺ cloud servers.',
-          category: 'NETWORK',
-          severity: 'WARNING',
-          code: 'SYNC_FAILED'
-        });
-      }
-    } else {
-      payload.status = 'Offline';
+    try {
+      await CloudApiClient.syncDataToCloud(session.accessToken, userId, payload);
+    } catch (err: any) {
+      payload.status = 'Sync Failed';
+      AccountStore.saveSyncData(userId, payload);
+      throw new VoxelError({
+        title: 'Cloud Synchronization Failed',
+        message: err.message || 'Failed to sync data with Voxel⁺ cloud servers.',
+        category: 'NETWORK',
+        severity: 'WARNING',
+        code: 'SYNC_FAILED'
+      });
     }
 
     AccountStore.saveSyncData(userId, payload);
@@ -427,12 +342,17 @@ export class AccountManager {
     const session = await this.getCurrentSession();
     if (!session) return [];
 
-    if (CloudApiClient.isCloudEnabled()) {
-      const cloudLibrary = await CloudApiClient.fetchLibraryFromCloud(session.accessToken, session.user.id);
-      if (cloudLibrary) return cloudLibrary;
+    // Library data is cloud-authoritative. A failed fetch throws so the UI
+    // shows an unavailable state rather than silently presenting stale local
+    // cache as authoritative.
+    const cloudLibrary = await CloudApiClient.fetchLibraryFromCloud(session.accessToken, session.user.id);
+
+    // Refresh the local performance cache with authoritative cloud data.
+    for (const item of cloudLibrary) {
+      AccountStore.saveLibraryItem(session.user.id, item);
     }
 
-    return AccountStore.getLibrary(session.user.id);
+    return cloudLibrary;
   }
 
   public static async savePackToAccount(pack: Partial<UserPackItem>): Promise<UserPackItem> {
@@ -467,9 +387,9 @@ export class AccountManager {
       metadata: { author: item.authorUsername, version: item.version, isPublic: item.isPublic }
     };
 
-    if (CloudApiClient.isCloudEnabled()) {
-      await CloudApiClient.saveLibraryItemToCloud(session.accessToken, session.user.id, libraryItem);
-    }
+    // Cloud write is authoritative: a failed cloud save is a real failure,
+    // not a fake local success.
+    await CloudApiClient.saveLibraryItemToCloud(session.accessToken, session.user.id, libraryItem);
 
     AccountStore.savePack(session.user.id, item);
     AccountStore.saveLibraryItem(session.user.id, libraryItem);
@@ -508,9 +428,7 @@ export class AccountManager {
       metadata: { author: item.authorUsername, model: item.model, isPublic: item.isPublic }
     };
 
-    if (CloudApiClient.isCloudEnabled()) {
-      await CloudApiClient.saveLibraryItemToCloud(session.accessToken, session.user.id, libraryItem);
-    }
+    await CloudApiClient.saveLibraryItemToCloud(session.accessToken, session.user.id, libraryItem);
 
     AccountStore.saveSkin(session.user.id, item);
     AccountStore.saveLibraryItem(session.user.id, libraryItem);
@@ -540,10 +458,6 @@ export class AccountManager {
   public static async getUserCosmetics(): Promise<any[]> {
     const session = await this.getCurrentSession();
     if (!session) return [];
-    if (session.accessToken.startsWith('local_')) {
-      const selected = session.user.selectedCosmetic;
-      return selected ? [{ id: selected, cosmetic_id: selected, unlockedAt: session.user.createdAt }] : [];
-    }
     return CloudApiClient.fetchUserCosmetics(session.accessToken);
   }
 
@@ -558,22 +472,12 @@ export class AccountManager {
       });
     }
 
-    if (session.accessToken.startsWith('local_') || !(await CloudApiClient.checkCloudReachable())) {
-      session.user.selectedCosmetic = cosmeticId || undefined;
-      AccountStore.setActiveSession(session);
-      return true;
-    }
-
-    try {
-      const res = await CloudApiClient.selectCosmetic(session.accessToken, cosmeticId);
-      session.user.selectedCosmetic = cosmeticId || undefined;
-      AccountStore.setActiveSession(session);
-      return res;
-    } catch {
-      session.user.selectedCosmetic = cosmeticId || undefined;
-      AccountStore.setActiveSession(session);
-      return true;
-    }
+    // Cosmetic selection is validated server-side (ownership check). The
+    // local cache is updated only after the cloud write succeeds.
+    const res = await CloudApiClient.selectCosmetic(session.accessToken, cosmeticId);
+    session.user.selectedCosmetic = cosmeticId || undefined;
+    AccountStore.setActiveSession(session);
+    return res;
   }
 
   // ─── Achievements ───
@@ -607,50 +511,20 @@ export class AccountManager {
       });
     }
 
-    if (session.accessToken.startsWith('local_') || !(await CloudApiClient.checkCloudReachable())) {
-      const u8 = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
-      const b64 = `data:${mimeType};base64,${Buffer.from(u8).toString('base64')}`;
-      session.user.avatar = b64;
-      AccountStore.setActiveSession(session);
-      return { avatarUrl: b64 };
-    }
-
-    try {
-      const result = await CloudApiClient.uploadAvatar(session.accessToken, buffer, fileName, mimeType);
-      session.user.avatar = result.avatarUrl;
-      AccountStore.setActiveSession(session);
-      return result;
-    } catch {
-      const u8 = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
-      const b64 = `data:${mimeType};base64,${Buffer.from(u8).toString('base64')}`;
-      session.user.avatar = b64;
-      AccountStore.setActiveSession(session);
-      return { avatarUrl: b64 };
-    }
+    const result = await CloudApiClient.uploadAvatar(session.accessToken, buffer, fileName, mimeType);
+    session.user.avatar = result.avatarUrl;
+    AccountStore.setActiveSession(session);
+    return result;
   }
 
   public static async deleteAvatar(): Promise<boolean> {
     const session = await this.getCurrentSession();
     if (!session) return false;
 
-    if (session.accessToken.startsWith('local_') || !(await CloudApiClient.checkCloudReachable())) {
-      session.user.avatar = 'avatar_steve';
-      AccountStore.setActiveSession(session);
-      return true;
-    }
-
-    try {
-      const ok = await CloudApiClient.deleteAvatar(session.accessToken);
-      if (ok) {
-        session.user.avatar = 'avatar_steve';
-        AccountStore.setActiveSession(session);
-      }
-      return ok;
-    } catch {
-      session.user.avatar = 'avatar_steve';
-      AccountStore.setActiveSession(session);
-      return true;
-    }
+    await CloudApiClient.deleteAvatar(session.accessToken);
+    session.user.avatar = 'avatar_steve';
+    AccountStore.setActiveSession(session);
+    return true;
   }
 
   // ─── Owner Control Panel ───

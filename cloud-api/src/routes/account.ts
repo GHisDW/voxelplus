@@ -255,12 +255,9 @@ accountRouter.delete('/', authMiddleware, async (c) => {
       details: { userId }
     });
 
-    // 2. Delete cloud resources
-    await adminSupabase.from('voxel_cloud_sync').delete().eq('user_id', userId);
-    await adminSupabase.from('voxel_library').delete().eq('user_id', userId);
-    await adminSupabase.from('voxel_users').delete().eq('id', userId);
-
-    // 3. Delete Supabase Auth User identity
+    // 2. Delete the Supabase Auth identity FIRST. Data rows must never be
+    //    removed while the auth identity may still exist — a partial deletion
+    //    must be reported as a failure, not success.
     const { error: authDeleteError } = await adminSupabase.auth.admin.deleteUser(userId);
     if (authDeleteError) {
       if (queueRecord?.id) {
@@ -270,6 +267,30 @@ accountRouter.delete('/', authMiddleware, async (c) => {
           .eq('id', queueRecord.id);
       }
       return c.json({ error: `Auth identity deletion failed: ${authDeleteError.message}` }, 500);
+    }
+
+    // 3. Delete cloud-owned data rows and verify each delete succeeded.
+    for (const table of ['voxel_cloud_sync', 'voxel_library'] as const) {
+      const { error: delErr } = await adminSupabase.from(table).delete().eq('user_id', userId);
+      if (delErr) {
+        if (queueRecord?.id) {
+          await adminSupabase
+            .from('voxel_account_deletion_queue')
+            .update({ status: 'failed' })
+            .eq('id', queueRecord.id);
+        }
+        return c.json({ error: `Related-data deletion failed (${table}): ${delErr.message}` }, 500);
+      }
+    }
+    const { error: profileDelErr } = await adminSupabase.from('voxel_users').delete().eq('id', userId);
+    if (profileDelErr) {
+      if (queueRecord?.id) {
+        await adminSupabase
+          .from('voxel_account_deletion_queue')
+          .update({ status: 'failed' })
+          .eq('id', queueRecord.id);
+      }
+      return c.json({ error: `Related-data deletion failed (voxel_users): ${profileDelErr.message}` }, 500);
     }
 
     if (queueRecord?.id) {
