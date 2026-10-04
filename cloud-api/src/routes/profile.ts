@@ -28,7 +28,8 @@ profileRouter.get('/', authMiddleware, async (c) => {
   return c.json({
     id: data.id,
     username: data.username,
-    avatar: data.avatar || 'avatar_steve',
+    // Canonical avatar: uploaded avatar_url wins over the `avatar` preset.
+    avatar: data.avatar_url || data.avatar || 'avatar_steve',
     bio: data.bio || '',
     createdAt: data.created_at,
     updatedAt: data.updated_at,
@@ -73,7 +74,13 @@ profileRouter.put('/', authMiddleware, async (c) => {
   };
 
   if (username) profileUpdate.username = username.trim();
-  if (avatar !== undefined) profileUpdate.avatar = avatar;
+  if (avatar !== undefined) {
+    profileUpdate.avatar = avatar;
+    // Choosing a preset avatar makes it the canonical value again — clear
+    // the uploaded avatar override and remove its stored files so no stale
+    // URL remains.
+    profileUpdate.avatar_url = null;
+  }
   if (bio !== undefined) profileUpdate.bio = bio.trim();
   if (isPublic !== undefined) profileUpdate.is_public = isPublic;
 
@@ -88,6 +95,24 @@ profileRouter.put('/', authMiddleware, async (c) => {
     return c.json({ error: error.message }, 400);
   }
 
+  // After a preset switch, remove orphaned uploaded avatar files.
+  if (avatar !== undefined) {
+    const adminSupabase = getAdminSupabaseClient();
+    if (adminSupabase) {
+      try {
+        const { data: files } = await adminSupabase.storage.from('avatars').list(authUser.id);
+        if (files && files.length > 0) {
+          const { error: rmErr } = await adminSupabase.storage
+            .from('avatars')
+            .remove(files.map(f => `${authUser.id}/${f.name}`));
+          if (rmErr) console.warn('[CloudAPI Profile] Avatar file cleanup failed:', rmErr.message);
+        }
+      } catch (e: any) {
+        console.warn('[CloudAPI Profile] Avatar file cleanup failed:', e?.message);
+      }
+    }
+  }
+
   await logAuditEventServer({
     actor_id: authUser.id,
     actor_type: 'user',
@@ -99,7 +124,7 @@ profileRouter.put('/', authMiddleware, async (c) => {
   return c.json({
     id: data.id,
     username: data.username,
-    avatar: data.avatar,
+    avatar: data.avatar_url || data.avatar,
     bio: data.bio || '',
     createdAt: data.created_at,
     updatedAt: data.updated_at,

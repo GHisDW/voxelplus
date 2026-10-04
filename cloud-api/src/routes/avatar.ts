@@ -141,13 +141,22 @@ async function handleAvatarUpload(c: any) {
     }
   }
 
-  // Update profile with new avatar_url
+  // Update profile with new avatar_url — the canonical avatar value.
+  // A failure here would leave the file uploaded but unlinked; report it
+  // instead of pretending the upload succeeded.
   const userSupabase = getUserSupabaseClient(token);
-  if (userSupabase) {
-    await userSupabase
-      .from('voxel_users')
-      .update({ avatar_url: avatarUrl, updated_at: new Date().toISOString() })
-      .eq('id', authUser.id);
+  if (!userSupabase) {
+    return c.json({ error: 'Cloud service unconfigured.' }, 503);
+  }
+  const { error: avatarUpdateError } = await userSupabase
+    .from('voxel_users')
+    .update({ avatar_url: avatarUrl, updated_at: new Date().toISOString() })
+    .eq('id', authUser.id);
+
+  if (avatarUpdateError) {
+    // Roll back the uploaded file so no orphan remains.
+    await adminSupabase.storage.from('avatars').remove([storagePath]);
+    return c.json({ error: `Failed to attach avatar to profile: ${avatarUpdateError.message}` }, 500);
   }
 
   await logAuditEventServer({
@@ -171,23 +180,37 @@ avatarRouter.delete('/', authMiddleware, async (c) => {
   const adminSupabase = getAdminSupabaseClient();
   if (!adminSupabase) return c.json({ error: 'Storage service unconfigured.' }, 503);
 
-  // List user's avatar files
-  const { data: files } = await adminSupabase.storage
+  // List user's avatar files and remove them — errors are reported, not
+  // silently ignored.
+  const { data: files, error: listErr } = await adminSupabase.storage
     .from('avatars')
     .list(authUser.id);
 
-  if (files && files.length > 0) {
-    const paths = files.map(f => `${authUser.id}/${f.name}`);
-    await adminSupabase.storage.from('avatars').remove(paths);
+  if (listErr) {
+    return c.json({ error: `Avatar cleanup failed: ${listErr.message}` }, 500);
   }
 
-  // Clear avatar_url from profile
+  if (files && files.length > 0) {
+    const paths = files.map(f => `${authUser.id}/${f.name}`);
+    const { error: rmErr } = await adminSupabase.storage.from('avatars').remove(paths);
+    if (rmErr) {
+      return c.json({ error: `Avatar file deletion failed: ${rmErr.message}` }, 500);
+    }
+  }
+
+  // Clear avatar_url from profile — restores the preset `avatar` as the
+  // canonical value. A failure leaves a stale URL, so report it.
   const userSupabase = getUserSupabaseClient(token);
-  if (userSupabase) {
-    await userSupabase
-      .from('voxel_users')
-      .update({ avatar_url: null, updated_at: new Date().toISOString() })
-      .eq('id', authUser.id);
+  if (!userSupabase) {
+    return c.json({ error: 'Cloud service unconfigured.' }, 503);
+  }
+  const { error: clearErr } = await userSupabase
+    .from('voxel_users')
+    .update({ avatar_url: null, updated_at: new Date().toISOString() })
+    .eq('id', authUser.id);
+
+  if (clearErr) {
+    return c.json({ error: `Failed to clear avatar URL: ${clearErr.message}` }, 500);
   }
 
   await logAuditEventServer({

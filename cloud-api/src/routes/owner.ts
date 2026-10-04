@@ -2,6 +2,13 @@ import { Hono } from 'hono';
 import { authMiddleware, CloudApiEnv } from '../auth.js';
 import { getAdminSupabaseClient } from '../supabase.js';
 import { logAuditEventServer } from '../audit.js';
+import {
+  performAccountDeletion,
+  findLatestQueueRow,
+  updateQueueRow,
+  completedStepsForStatus,
+  failedStatusForStep
+} from '../deletion.js';
 
 export const ownerRouter = new Hono<CloudApiEnv>();
 
@@ -57,7 +64,7 @@ ownerRouter.get('/users', ownerAuthMiddleware, async (c) => {
 
   let dbQuery = adminSupabase
     .from('voxel_users')
-    .select('id, username, avatar, bio, is_public, is_creator, created_at, updated_at, selected_cosmetic, selected_title')
+    .select('id, username, avatar, avatar_url, bio, is_public, is_creator, created_at, updated_at, selected_cosmetic, selected_title')
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
 
@@ -319,26 +326,37 @@ ownerRouter.delete('/users/:userId', ownerAuthMiddleware, async (c) => {
     return c.json({ error: 'Only the owner can delete other owner/admin accounts.', code: 'FORBIDDEN' }, 403);
   }
 
-  // Delete the Supabase Auth identity FIRST — never report success while the
-  // auth identity still exists, and never destroy data rows for an account
-  // whose deletion ultimately failed.
-  const { error: authDeleteErr } = await adminSupabase.auth.admin.deleteUser(targetId);
-  if (authDeleteErr) {
-    return c.json({ error: `Auth identity deletion failed: ${authDeleteErr.message}` }, 500);
+  // Run the resumable deletion pipeline. Progress is persisted to the
+  // deletion queue per step; a retry (same request) resumes at the failed
+  // step and never reports success on a partial deletion.
+  let queueRow = await findLatestQueueRow(adminSupabase, targetId);
+  if (queueRow?.status === 'complete') {
+    return c.json({ success: true, deletedUserId: targetId, alreadyDeleted: true });
+  }
+  if (!queueRow) {
+    queueRow = await updateQueueRow(adminSupabase, undefined, targetId, 'processing');
   }
 
-  // Delete cloud-owned data rows, verifying each delete.
-  const { error: syncDelErr } = await adminSupabase.from('voxel_cloud_sync').delete().eq('user_id', targetId);
-  if (syncDelErr) {
-    return c.json({ error: `Related-data deletion failed (voxel_cloud_sync): ${syncDelErr.message}` }, 500);
+  const result = await performAccountDeletion(
+    adminSupabase,
+    targetId,
+    completedStepsForStatus(queueRow?.status)
+  );
+
+  if (!result.success) {
+    if (queueRow?.id) {
+      await updateQueueRow(adminSupabase, queueRow.id, targetId, failedStatusForStep(result.step));
+    }
+    return c.json({
+      error: `Account deletion incomplete at step "${result.step}": ${result.error}. The request can be retried.`,
+      code: 'DELETION_INCOMPLETE',
+      failedStep: result.step,
+      retryable: true
+    }, 500);
   }
-  const { error: libDelErr } = await adminSupabase.from('voxel_library').delete().eq('user_id', targetId);
-  if (libDelErr) {
-    return c.json({ error: `Related-data deletion failed (voxel_library): ${libDelErr.message}` }, 500);
-  }
-  const { error: userDelErr } = await adminSupabase.from('voxel_users').delete().eq('id', targetId);
-  if (userDelErr) {
-    return c.json({ error: `Related-data deletion failed (voxel_users): ${userDelErr.message}` }, 500);
+
+  if (queueRow?.id) {
+    await updateQueueRow(adminSupabase, queueRow.id, targetId, 'complete', new Date().toISOString());
   }
 
   // Audit only after the deletion fully succeeded.
@@ -415,32 +433,53 @@ ownerRouter.delete('/bulk', ownerAuthMiddleware, async (c) => {
     details: { count: allUsers.length }
   });
 
-  let deleted = 0;
-  const failedIds: string[] = [];
+  // Per-account complete deletion: every pipeline step is verified, and a
+  // failure records resumable queue state instead of silently skipping the
+  // account's remaining cleanup.
+  const deleted: string[] = [];
+  const failed: { id: string; step: string; error: string }[] = [];
   for (const u of allUsers) {
-    // Auth identity first; related rows afterwards. Failures are reported,
-    // not silently counted as deletions.
-    const { error: authErr } = await adminSupabase.auth.admin.deleteUser(u.id);
-    if (authErr) {
-      console.error('[OwnerPanel] Failed to delete auth user:', u.id, authErr.message);
-      failedIds.push(u.id);
+    let queueRow = await findLatestQueueRow(adminSupabase, u.id);
+    if (queueRow?.status === 'complete') {
+      deleted.push(u.id);
       continue;
     }
-    await adminSupabase.from('voxel_cloud_sync').delete().eq('user_id', u.id);
-    await adminSupabase.from('voxel_library').delete().eq('user_id', u.id);
-    await adminSupabase.from('voxel_users').delete().eq('id', u.id);
-    deleted++;
+    if (!queueRow) {
+      queueRow = await updateQueueRow(adminSupabase, undefined, u.id, 'processing');
+    }
+
+    const result = await performAccountDeletion(
+      adminSupabase,
+      u.id,
+      completedStepsForStatus(queueRow?.status)
+    );
+
+    if (result.success) {
+      if (queueRow?.id) {
+        await updateQueueRow(adminSupabase, queueRow.id, u.id, 'complete', new Date().toISOString());
+      }
+      deleted.push(u.id);
+    } else {
+      if (queueRow?.id) {
+        await updateQueueRow(adminSupabase, queueRow.id, u.id, failedStatusForStep(result.step));
+      }
+      console.error('[OwnerPanel] Deletion incomplete for', u.id, 'at step', result.step, ':', result.error);
+      failed.push({ id: u.id, step: result.step, error: result.error });
+    }
   }
 
-  if (failedIds.length > 0) {
+  if (failed.length > 0) {
     return c.json({
-      error: `Bulk deletion partially failed for ${failedIds.length} account(s).`,
-      deleted,
-      failedIds
+      error: `Bulk deletion partially completed: ${deleted.length} deleted, ${failed.length} incomplete.`,
+      deletedCount: deleted.length,
+      deletedIds: deleted,
+      failed,
+      // Accounts whose cleanup did not finish remain queued and retryable.
+      pendingCleanupIds: failed.map(f => f.id)
     }, 500);
   }
 
-  return c.json({ success: true, deleted });
+  return c.json({ success: true, deletedCount: deleted.length, deletedIds: deleted });
 });
 
 /**

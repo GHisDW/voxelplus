@@ -2,6 +2,15 @@ import { Hono } from 'hono';
 import { getPublicSupabaseClient, getAdminSupabaseClient, getUserSupabaseClient } from '../supabase.js';
 import { authMiddleware, CloudApiEnv } from '../auth.js';
 import { logAuditEventServer, checkIpCreationLimit } from '../audit.js';
+import {
+  createVoxelProfile,
+  compensateOrphanedSignup,
+  performAccountDeletion,
+  findLatestQueueRow,
+  updateQueueRow,
+  completedStepsForStatus,
+  failedStatusForStep
+} from '../deletion.js';
 
 export const accountRouter = new Hono<CloudApiEnv>();
 
@@ -92,8 +101,15 @@ accountRouter.post('/signup', async (c) => {
   const userId = data.user.id;
   const now = new Date().toISOString();
 
-  // 3. Create voxel_users profile
-  const { error: profileError } = await supabase.from('voxel_users').upsert({
+  // 3. Create voxel_users profile via the service-role client. If this
+  //    fails after Auth signup succeeded, the Auth identity must not be
+  //    left orphaned — compensate by deleting it so the username/email can
+  //    be retried cleanly.
+  const adminForProfile = getAdminSupabaseClient();
+  if (!adminForProfile) {
+    return c.json({ error: 'Cloud service unconfigured.' }, 503);
+  }
+  const { error: profileError } = await createVoxelProfile(adminForProfile, {
     id: userId,
     username,
     avatar: avatar || 'avatar_steve',
@@ -101,10 +117,25 @@ accountRouter.post('/signup', async (c) => {
     is_public: isPublic !== undefined ? isPublic : true,
     updated_at: now,
     created_at: now
-  }, { onConflict: 'id' });
+  });
 
   if (profileError) {
-    return c.json({ error: `Profile row creation failed: ${profileError.message}` }, 500);
+    console.error(`[CloudAPI Signup] Profile creation failed for ${userId}:`, profileError);
+    const cleanup = await compensateOrphanedSignup(adminForProfile, userId);
+    if (!cleanup.removed) {
+      // Compensation itself failed — report honestly; the auth identity is
+      // still present and visible to admins for manual cleanup.
+      console.error(`[CloudAPI Signup] Orphan cleanup FAILED for ${userId}:`, cleanup.error);
+      return c.json({
+        error: `Account creation failed and cleanup of the orphaned account also failed (${cleanup.error}). Please contact support.`,
+        code: 'ORPHANED_ACCOUNT',
+        orphanedUserId: userId
+      }, 500);
+    }
+    return c.json({
+      error: `Account creation failed (${profileError}). The incomplete account was rolled back — please try signing up again.`,
+      code: 'SIGNUP_ROLLED_BACK'
+    }, 500);
   }
 
   await logAuditEventServer({
@@ -167,7 +198,7 @@ accountRouter.post('/login', async (c) => {
   const profile = {
     id: userId,
     username: profileRow?.username || username,
-    avatar: profileRow?.avatar || 'avatar_steve',
+    avatar: profileRow?.avatar_url || profileRow?.avatar || 'avatar_steve',
     bio: profileRow?.bio || '',
     createdAt: profileRow?.created_at || new Date().toISOString(),
     updatedAt: profileRow?.updated_at || new Date().toISOString(),
@@ -232,18 +263,16 @@ accountRouter.delete('/', authMiddleware, async (c) => {
     return c.json({ error: 'Privileged admin client unconfigured.' }, 503);
   }
 
-  // 1. Log deletion job in queue
-  const { data: queueRecord, error: queueErr } = await adminSupabase
-    .from('voxel_account_deletion_queue')
-    .insert({
-      user_id: userId,
-      status: 'processing'
-    })
-    .select('id, status')
-    .single();
-
-  if (queueErr && queueErr.code !== '23505') {
-    console.warn('[CloudAPI Delete] Queue insert warning:', queueErr.message);
+  // Resume an in-progress deletion for this user when one exists; otherwise
+  // start a new queue job. Progress is recorded per step so a retry is safe
+  // and a repeat request after completion is idempotent.
+  let queueRow = await findLatestQueueRow(adminSupabase, userId);
+  if (!queueRow || queueRow.status === 'complete') {
+    if (queueRow?.status === 'complete') {
+      // Already fully deleted — verify nothing remains before reporting.
+      return c.json({ success: true, userId, alreadyDeleted: true });
+    }
+    queueRow = await updateQueueRow(adminSupabase, undefined, userId, 'processing');
   }
 
   try {
@@ -255,58 +284,30 @@ accountRouter.delete('/', authMiddleware, async (c) => {
       details: { userId }
     });
 
-    // 2. Delete the Supabase Auth identity FIRST. Data rows must never be
-    //    removed while the auth identity may still exist — a partial deletion
-    //    must be reported as a failure, not success.
-    const { error: authDeleteError } = await adminSupabase.auth.admin.deleteUser(userId);
-    if (authDeleteError) {
-      if (queueRecord?.id) {
-        await adminSupabase
-          .from('voxel_account_deletion_queue')
-          .update({ status: 'failed' })
-          .eq('id', queueRecord.id);
+    const completed = completedStepsForStatus(queueRow?.status);
+    const result = await performAccountDeletion(adminSupabase, userId, completed);
+
+    if (!result.success) {
+      // Record the exact failing step so cleanup is retryable/resumable.
+      if (queueRow?.id) {
+        await updateQueueRow(adminSupabase, queueRow.id, userId, failedStatusForStep(result.step));
       }
-      return c.json({ error: `Auth identity deletion failed: ${authDeleteError.message}` }, 500);
+      return c.json({
+        error: `Account deletion incomplete at step "${result.step}": ${result.error}. The request can be retried.`,
+        code: 'DELETION_INCOMPLETE',
+        failedStep: result.step,
+        retryable: true
+      }, 500);
     }
 
-    // 3. Delete cloud-owned data rows and verify each delete succeeded.
-    for (const table of ['voxel_cloud_sync', 'voxel_library'] as const) {
-      const { error: delErr } = await adminSupabase.from(table).delete().eq('user_id', userId);
-      if (delErr) {
-        if (queueRecord?.id) {
-          await adminSupabase
-            .from('voxel_account_deletion_queue')
-            .update({ status: 'failed' })
-            .eq('id', queueRecord.id);
-        }
-        return c.json({ error: `Related-data deletion failed (${table}): ${delErr.message}` }, 500);
-      }
-    }
-    const { error: profileDelErr } = await adminSupabase.from('voxel_users').delete().eq('id', userId);
-    if (profileDelErr) {
-      if (queueRecord?.id) {
-        await adminSupabase
-          .from('voxel_account_deletion_queue')
-          .update({ status: 'failed' })
-          .eq('id', queueRecord.id);
-      }
-      return c.json({ error: `Related-data deletion failed (voxel_users): ${profileDelErr.message}` }, 500);
-    }
-
-    if (queueRecord?.id) {
-      await adminSupabase
-        .from('voxel_account_deletion_queue')
-        .update({ status: 'complete', completed_at: new Date().toISOString() })
-        .eq('id', queueRecord.id);
+    if (queueRow?.id) {
+      await updateQueueRow(adminSupabase, queueRow.id, userId, 'complete', new Date().toISOString());
     }
 
     return c.json({ success: true, userId });
   } catch (err: any) {
-    if (queueRecord?.id) {
-      await adminSupabase
-        .from('voxel_account_deletion_queue')
-        .update({ status: 'failed' })
-        .eq('id', queueRecord.id);
+    if (queueRow?.id) {
+      await updateQueueRow(adminSupabase, queueRow.id, userId, 'failed');
     }
     return c.json({ error: err.message || 'Account deletion failed.' }, 500);
   }

@@ -15,6 +15,26 @@ export type CloudApiEnv = {
   };
 };
 
+/**
+ * Why TenantScale `validateSession()` is NOT used here:
+ *
+ * The TenantScale SDK's validateSession(jwt) validates the Supabase JWT AND
+ * resolves the caller's membership in a TenantScale tenant — it throws for
+ * any valid Supabase user that is not a member of the tenant (and is not a
+ * super_admin). Voxel+ is a single-tenant B2C product: normal players are
+ * Supabase Auth users, not TenantScale tenant members. Routing every request
+ * through validateSession would reject every legitimate player, while adding
+ * no security benefit — Voxel+ has exactly one implicit tenant.
+ *
+ * Supabase `auth.getUser(token)` is therefore the correct identity check:
+ * it cryptographically validates the JWT against the project and returns the
+ * authenticated user, and every downstream query still runs under RLS scoped
+ * to auth.uid(). TenantScale remains in use where it genuinely applies:
+ * audit logging and IP-based account-creation rate limiting (see audit.ts).
+ *
+ * The middleware fails closed: missing/malformed header, unconfigured client,
+ * invalid/expired token, or a thrown error all deny the request.
+ */
 export async function authMiddleware(c: Context<CloudApiEnv>, next: Next) {
   const authHeader = c.req.header('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {

@@ -8,6 +8,7 @@ type PublicProfileRow = {
   id: string;
   username: string;
   avatar: string;
+  avatar_url?: string | null;
   bio: string | null;
   created_at: string;
   is_creator?: boolean | null;
@@ -15,13 +16,14 @@ type PublicProfileRow = {
 
 /**
  * Builds PublicUserProfile DTOs for the given rows with REAL pack/skin counts
- * fetched from voxel_library. Public RLS on voxel_library only exposes rows
- * whose metadata.isPublic is true, so these counts are genuinely equivalent
- * to the SECURITY DEFINER RPC.
+ * fetched from voxel_library. Counts only rows whose metadata explicitly
+ * marks them public (metadata.isPublic = true) — the same semantics as the
+ * SECURITY DEFINER RPC — so private library items are never counted or
+ * exposed, even if RLS were misconfigured to be more permissive.
  * Throws when the library query fails — callers must surface an unavailable
  * state rather than fabricated zero counts.
  */
-async function withLibraryCounts(supabase: SupabaseClient, rows: PublicProfileRow[]) {
+export async function withLibraryCounts(supabase: SupabaseClient, rows: PublicProfileRow[]) {
   const counts = new Map<string, { packs: number; skins: number }>();
   for (const row of rows) counts.set(row.id, { packs: 0, skins: 0 });
 
@@ -30,7 +32,8 @@ async function withLibraryCounts(supabase: SupabaseClient, rows: PublicProfileRo
       .from('voxel_library')
       .select('user_id, type')
       .in('user_id', rows.map(r => r.id))
-      .in('type', ['pack', 'skin']);
+      .in('type', ['pack', 'skin'])
+      .eq('metadata->>isPublic', 'true');
 
     if (libErr) throw libErr;
 
@@ -47,7 +50,9 @@ async function withLibraryCounts(supabase: SupabaseClient, rows: PublicProfileRo
     return {
       id: row.id,
       username: row.username,
-      avatar: row.avatar,
+      // Canonical avatar: an uploaded avatar (avatar_url) takes precedence
+      // over the preset id stored in `avatar`.
+      avatar: row.avatar_url || row.avatar,
       bio: row.bio || '',
       createdAt: row.created_at,
       publicPacksCount: c.packs,
@@ -71,7 +76,7 @@ publicRouter.get('/profiles', async (c) => {
     let list = rpcData.map((row: any) => ({
       id: row.id,
       username: row.username,
-      avatar: row.avatar,
+      avatar: row.avatar_url || row.avatar,
       bio: row.bio || '',
       createdAt: row.created_at,
       publicPacksCount: Number(row.public_packs_count || 0),
@@ -89,7 +94,7 @@ publicRouter.get('/profiles', async (c) => {
   // RLS) plus real public library counts. No fabricated zero counts.
   const { data: users, error } = await supabase
     .from('voxel_users')
-    .select('id, username, avatar, bio, created_at, is_creator')
+    .select('id, username, avatar, avatar_url, bio, created_at, is_creator')
     .eq('is_public', true)
     .limit(50);
 
@@ -127,7 +132,7 @@ publicRouter.get('/profiles/:username', async (c) => {
       return c.json({
         id: match.id,
         username: match.username,
-        avatar: match.avatar,
+        avatar: match.avatar_url || match.avatar,
         bio: match.bio || '',
         createdAt: match.created_at,
         publicPacksCount: Number(match.public_packs_count || 0),
@@ -139,7 +144,7 @@ publicRouter.get('/profiles/:username', async (c) => {
 
   const { data: user, error } = await supabase
     .from('voxel_users')
-    .select('id, username, avatar, bio, created_at, is_public, is_creator')
+    .select('id, username, avatar, avatar_url, bio, created_at, is_public, is_creator')
     .ilike('username', username)
     .single();
 
