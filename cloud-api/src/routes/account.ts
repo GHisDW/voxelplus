@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { getPublicSupabaseClient, getAdminSupabaseClient } from '../supabase.js';
+import { getPublicSupabaseClient, getAdminSupabaseClient, getUserSupabaseClient } from '../supabase.js';
 import { authMiddleware, CloudApiEnv } from '../auth.js';
 import { logAuditEventServer } from '../audit.js';
 
@@ -159,6 +159,7 @@ accountRouter.post('/login', async (c) => {
 
 // Authenticated Password Change Endpoint
 accountRouter.post('/password', authMiddleware, async (c) => {
+  const token = c.get('authToken');
   const authUser = c.get('authUser');
   const body = await c.req.json();
   const { newPassword } = body;
@@ -167,7 +168,7 @@ accountRouter.post('/password', authMiddleware, async (c) => {
     return c.json({ error: 'New password must be at least 6 characters.' }, 400);
   }
 
-  const supabase = getPublicSupabaseClient();
+  const supabase = getUserSupabaseClient(token);
   if (!supabase) {
     return c.json({ error: 'Cloud service unconfigured.' }, 503);
   }
