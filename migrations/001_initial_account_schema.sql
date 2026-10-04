@@ -30,12 +30,22 @@ CREATE TABLE IF NOT EXISTS public.voxel_library (
   metadata JSONB DEFAULT '{}'::jsonb
 );
 
--- 4. Enable Row Level Security (RLS)
+-- 4. Voxel+ Account Deletion Queue (Idempotent Deletion Job Tracking)
+CREATE TABLE IF NOT EXISTS public.voxel_account_deletion_queue (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL,
+  requested_at TIMESTAMPTZ DEFAULT NOW(),
+  status TEXT NOT NULL DEFAULT 'pending',
+  completed_at TIMESTAMPTZ
+);
+
+-- 5. Enable Row Level Security (RLS)
 ALTER TABLE public.voxel_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.voxel_cloud_sync ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.voxel_library ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.voxel_account_deletion_queue ENABLE ROW LEVEL SECURITY;
 
--- 5. RLS Policies for voxel_users
+-- 6. RLS Policies for voxel_users
 CREATE POLICY "Public profiles are readable by anyone"
   ON public.voxel_users FOR SELECT
   USING (is_public = true OR auth.uid() = id);
@@ -52,12 +62,12 @@ CREATE POLICY "Users can delete their own profile"
   ON public.voxel_users FOR DELETE
   USING (auth.uid() = id);
 
--- 6. RLS Policies for voxel_cloud_sync
+-- 7. RLS Policies for voxel_cloud_sync
 CREATE POLICY "Users can access only their own cloud sync payload"
   ON public.voxel_cloud_sync FOR ALL
   USING (auth.uid() = user_id);
 
--- 7. RLS Policies for voxel_library
+-- 8. RLS Policies for voxel_library
 CREATE POLICY "Users can manage only their own library items"
   ON public.voxel_library FOR SELECT
   USING (auth.uid() = user_id OR (metadata->>'isPublic')::boolean = true);
@@ -74,7 +84,16 @@ CREATE POLICY "Users can delete their own library items"
   ON public.voxel_library FOR DELETE
   USING (auth.uid() = user_id);
 
--- 8. Secure PostgreSQL RPC Function for Public Creator Profile Counts
+-- 9. RLS Policies for voxel_account_deletion_queue
+CREATE POLICY "Users can request deletion for their own account"
+  ON public.voxel_account_deletion_queue FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can view deletion requests for their own account"
+  ON public.voxel_account_deletion_queue FOR SELECT
+  USING (auth.uid() = user_id);
+
+-- 10. Secure PostgreSQL RPC Function for Public Creator Profile Counts (SECURITY DEFINER with safe search_path)
 CREATE OR REPLACE FUNCTION public.get_public_user_profiles()
 RETURNS TABLE (
   id UUID,
@@ -84,7 +103,11 @@ RETURNS TABLE (
   created_at TIMESTAMPTZ,
   public_packs_count BIGINT,
   public_skins_count BIGINT
-) LANGUAGE sql SECURITY DEFINER AS $$
+)
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
   SELECT
     u.id,
     u.username,
@@ -99,3 +122,6 @@ RETURNS TABLE (
   GROUP BY u.id, u.username, u.avatar, u.bio, u.created_at
   LIMIT 50;
 $$;
+
+REVOKE EXECUTE ON FUNCTION public.get_public_user_profiles() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_public_user_profiles() TO anon, authenticated, service_role;
