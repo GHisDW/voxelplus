@@ -14,14 +14,6 @@ let mainWindow: BrowserWindow | null = null;
  * Wraps an IPC handler so that any thrown error is serialized into an
  * IPC-safe, structured payload instead of Electron's default raw
  * "Error invoking remote method 'channel': ..." exception text.
- *
- * The renderer receives a rejected promise carrying an Error whose message
- * embeds the structured payload as `...VOXEL_ERROR::{json}` — Electron only
- * forwards the error `message` across IPC (custom properties are stripped
- * and the channel name is prefixed), so the payload travels inside the
- * message; frontend/src/services/errors.ts parses it back into a
- * VoxelIpcError. Result values pass through untouched, so successful calls
- * behave exactly as before.
  */
 function wrapIpcHandler<TResult>(
   channel: string,
@@ -43,6 +35,22 @@ function registerIpcHandlers() {
     category: VoxelErrorCategory,
     handler: (...args: any[]) => Promise<TResult>
   ) => ipcMain.handle(channel, wrapIpcHandler(channel, category, handler));
+
+  // Account & Cloud Identity
+  handle('account:create', 'CONFIGURATION', async (_, payload) => CommandManager.createAccount(payload));
+  handle('account:login', 'CONFIGURATION', async (_, u, p) => CommandManager.loginAccount(u, p));
+  handle('account:logout', 'CONFIGURATION', async () => CommandManager.logoutAccount());
+  handle('account:getCurrentSession', 'CONFIGURATION', async () => CommandManager.getCurrentSession());
+  handle('account:getCurrentUser', 'CONFIGURATION', async () => CommandManager.getCurrentUser());
+  handle('account:updateProfile', 'CONFIGURATION', async (_, payload) => CommandManager.updateProfile(payload));
+  handle('account:changePassword', 'CONFIGURATION', async (_, payload) => CommandManager.changePassword(payload));
+  handle('account:delete', 'CONFIGURATION', async () => CommandManager.deleteAccount());
+  handle('account:listPublicProfiles', 'CONFIGURATION', async (_, q) => CommandManager.listPublicProfiles(q));
+  handle('account:getPublicProfile', 'CONFIGURATION', async (_, id) => CommandManager.getPublicProfile(id));
+  handle('cloud:sync', 'NETWORK', async () => CommandManager.syncCloudData());
+  handle('cloud:getLibrary', 'CONFIGURATION', async () => CommandManager.getLibrary());
+  handle('cloud:savePack', 'CONFIGURATION', async (_, pack) => CommandManager.savePackToAccount(pack));
+  handle('cloud:saveSkin', 'CONFIGURATION', async (_, skin) => CommandManager.saveSkinToAccount(skin));
 
   // Settings
   handle('settings:get', 'CONFIGURATION', async () => CommandManager.getAppSettings());
@@ -168,7 +176,6 @@ function createWindow() {
   });
 }
 
-
 app.whenReady().then(() => {
   PathManager.initialize();
   registerIpcHandlers();
@@ -186,4 +193,3 @@ app.on('window-all-closed', () => {
     app.quit();
   }
 });
-

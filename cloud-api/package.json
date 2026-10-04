@@ -1,0 +1,23 @@
+{
+  "name": "@voxelplus/cloud-api",
+  "version": "1.0.0",
+  "description": "Voxel+ Cloud API Trusted Server-Side Microservice",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "test": "node --test test/cloudApi.test.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.8",
+    "@supabase/supabase-js": "^2.49.1",
+    "@tenantscale/sdk": "^0.4.1",
+    "hono": "^4.7.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  }
+}

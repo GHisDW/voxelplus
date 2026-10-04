@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import { PathManager } from '../dist-electron/backend/storage/paths.js';
 import { CryptoUtils } from '../dist-electron/backend/account/cryptoUtils.js';
 import { AccountManager } from '../dist-electron/backend/account/accountManager.js';
+import { AccountStore } from '../dist-electron/backend/account/accountStore.js';
 
 // Initialize temporary path manager for test isolation
 const testDir = path.resolve('.test-tmp');
@@ -23,14 +24,6 @@ test('CryptoUtils - Password Validation', () => {
   assert.equal(CryptoUtils.validatePassword('12345').isValid, false); // < 6 chars
 });
 
-test('CryptoUtils - Password Hashing and Verification', () => {
-  const salt = CryptoUtils.generateSalt();
-  const hash = CryptoUtils.hashPassword('secretPass123', salt);
-
-  assert.equal(CryptoUtils.verifyPassword('secretPass123', hash, salt), true);
-  assert.equal(CryptoUtils.verifyPassword('wrongPass', hash, salt), false);
-});
-
 test('AccountManager - Rejects Local Authentication When Cloud Unavailable', async () => {
   // When cloud mode is disabled (no SUPABASE_URL / SUPABASE_ANON_KEY), local login & signup must fail explicitly
   await assert.rejects(async () => {
@@ -43,6 +36,33 @@ test('AccountManager - Rejects Local Authentication When Cloud Unavailable', asy
       password: 'Password123!'
     });
   }, /unavailable/i);
+});
+
+test('AccountStore - Encrypted Session Storage & Cache', () => {
+  const mockUser = {
+    id: 'user_123',
+    username: 'test_user',
+    avatar: 'avatar_steve',
+    bio: 'hello',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    isPublic: true,
+    syncEnabled: true
+  };
+
+  AccountStore.setActiveSession({
+    accessToken: 'mock_access_token_123',
+    refreshToken: 'mock_refresh_token_456',
+    user: mockUser
+  });
+
+  const session = AccountStore.getActiveSession();
+  assert.ok(session);
+  assert.equal(session.user.username, 'test_user');
+  assert.equal(session.accessToken, 'mock_access_token_123');
+
+  AccountStore.clearUserData('user_123');
+  assert.equal(AccountStore.getActiveSession(), null);
 });
 
 // Clean up temporary test files

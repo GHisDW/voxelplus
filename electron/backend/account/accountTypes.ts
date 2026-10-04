@@ -21,10 +21,11 @@ export interface PublicUserProfile {
 }
 
 export interface AccountSession {
-  token: string;
+  accessToken: string;
+  refreshToken: string;
   user: UserProfile;
-  expiresAt: string;
-  createdAt: string;
+  expiresAt?: number;
+  tokenType?: string;
 }
 
 export interface UserLibraryItem {

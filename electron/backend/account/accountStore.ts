@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { safeStorage } from 'electron';
 import { PathManager } from '../storage/paths';
 import {
   AccountSession,
@@ -12,7 +13,8 @@ import {
 
 interface AccountStoreData {
   cachedProfile: UserProfile | null;
-  activeSession: AccountSession | null;
+  encryptedSessionTokens: string | null;
+  rawSessionFallback: { accessToken: string; refreshToken: string } | null;
   libraries: Record<string, UserLibraryItem[]>;
   packs: Record<string, UserPackItem[]>;
   skins: Record<string, UserSkinItem[]>;
@@ -40,7 +42,8 @@ export class AccountStore {
     if (!fs.existsSync(filePath)) {
       const initial: AccountStoreData = {
         cachedProfile: null,
-        activeSession: null,
+        encryptedSessionTokens: null,
+        rawSessionFallback: null,
         libraries: {},
         packs: {},
         skins: {},
@@ -56,7 +59,8 @@ export class AccountStore {
       const parsed = JSON.parse(raw);
       const data: AccountStoreData = {
         cachedProfile: parsed.cachedProfile || null,
-        activeSession: parsed.activeSession || null,
+        encryptedSessionTokens: parsed.encryptedSessionTokens || null,
+        rawSessionFallback: parsed.rawSessionFallback || null,
         libraries: parsed.libraries || {},
         packs: parsed.packs || {},
         skins: parsed.skins || {},
@@ -67,7 +71,8 @@ export class AccountStore {
     } catch {
       const fallback: AccountStoreData = {
         cachedProfile: null,
-        activeSession: null,
+        encryptedSessionTokens: null,
+        rawSessionFallback: null,
         libraries: {},
         packs: {},
         skins: {},
@@ -96,39 +101,81 @@ export class AccountStore {
     this.saveData(data);
   }
 
+  public static getActiveSession(): AccountSession | null {
+    const data = this.loadData();
+    if (!data.cachedProfile) return null;
+
+    let accessToken = '';
+    let refreshToken = '';
+
+    if (data.encryptedSessionTokens && safeStorage && safeStorage.isEncryptionAvailable()) {
+      try {
+        const decrypted = safeStorage.decryptString(Buffer.from(data.encryptedSessionTokens, 'base64'));
+        const tokens = JSON.parse(decrypted);
+        accessToken = tokens.accessToken || '';
+        refreshToken = tokens.refreshToken || '';
+      } catch (e) {
+        console.warn('[AccountStore] Failed to decrypt session tokens via safeStorage:', e);
+      }
+    }
+
+    if (!accessToken && data.rawSessionFallback) {
+      accessToken = data.rawSessionFallback.accessToken || '';
+      refreshToken = data.rawSessionFallback.refreshToken || '';
+    }
+
+    if (!accessToken) return null;
+
+    return {
+      accessToken,
+      refreshToken,
+      user: data.cachedProfile
+    };
+  }
+
+  public static setActiveSession(session: AccountSession | null): void {
+    const data = this.loadData();
+    if (!session) {
+      data.cachedProfile = null;
+      data.encryptedSessionTokens = null;
+      data.rawSessionFallback = null;
+      this.saveData(data);
+      return;
+    }
+
+    data.cachedProfile = session.user;
+    const tokenObj = { accessToken: session.accessToken, refreshToken: session.refreshToken };
+    const serialized = JSON.stringify(tokenObj);
+
+    if (safeStorage && safeStorage.isEncryptionAvailable()) {
+      try {
+        const encryptedBuf = safeStorage.encryptString(serialized);
+        data.encryptedSessionTokens = encryptedBuf.toString('base64');
+        data.rawSessionFallback = null;
+      } catch (e) {
+        console.warn('[AccountStore] safeStorage encryption error, saving unencrypted fallback:', e);
+        data.encryptedSessionTokens = null;
+        data.rawSessionFallback = tokenObj;
+      }
+    } else {
+      data.encryptedSessionTokens = null;
+      data.rawSessionFallback = tokenObj;
+    }
+
+    this.saveData(data);
+  }
+
   public static clearUserData(userId: string): void {
     const data = this.loadData();
     if (data.cachedProfile && data.cachedProfile.id === userId) {
       data.cachedProfile = null;
-    }
-    if (data.activeSession && data.activeSession.user.id === userId) {
-      data.activeSession = null;
+      data.encryptedSessionTokens = null;
+      data.rawSessionFallback = null;
     }
     delete data.libraries[userId];
     delete data.packs[userId];
     delete data.skins[userId];
     delete data.syncData[userId];
-    this.saveData(data);
-  }
-
-  public static getActiveSession(): AccountSession | null {
-    const data = this.loadData();
-    if (!data.activeSession) return null;
-
-    if (new Date(data.activeSession.expiresAt).getTime() < Date.now()) {
-      data.activeSession = null;
-      this.saveData(data);
-      return null;
-    }
-    return data.activeSession;
-  }
-
-  public static setActiveSession(session: AccountSession | null): void {
-    const data = this.loadData();
-    data.activeSession = session;
-    if (session) {
-      data.cachedProfile = session.user;
-    }
     this.saveData(data);
   }
 
