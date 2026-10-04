@@ -5,10 +5,21 @@ import { logAuditEventServer } from '../audit.js';
 
 export const syncRouter = new Hono<CloudApiEnv>();
 
+// Maximum payload size limit: 500 KB
+const MAX_SYNC_PAYLOAD_BYTES = 500 * 1024;
+
 syncRouter.post('/', authMiddleware, async (c) => {
   const token = c.get('authToken');
   const authUser = c.get('authUser');
   const body = await c.req.json();
+
+  const serialized = JSON.stringify(body);
+  if (Buffer.byteLength(serialized, 'utf8') > MAX_SYNC_PAYLOAD_BYTES) {
+    return c.json({
+      error: 'Cloud sync payload exceeds maximum size limit of 500 KB. Worlds and raw binary files cannot be uploaded.',
+      code: 'PAYLOAD_TOO_LARGE'
+    }, 413);
+  }
 
   const userSupabase = getUserSupabaseClient(token);
   if (!userSupabase) {

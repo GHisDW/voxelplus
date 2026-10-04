@@ -20,6 +20,7 @@ accountRouter.post('/signup', async (c) => {
     return c.json({ error: 'Cloud service unconfigured.' }, 503);
   }
 
+  // 1. Sign up user via Supabase Auth
   const { data, error } = await supabase.auth.signUp({
     email: internalEmail,
     password,
@@ -32,10 +33,33 @@ accountRouter.post('/signup', async (c) => {
     return c.json({ error: error?.message || 'Cloud signup failed.' }, 400);
   }
 
+  let sessionData = data.session;
+
+  // 2. If email confirmation is enabled on Supabase project, sign in immediately with admin privileges or auto-login
+  if (!sessionData) {
+    const adminSupabase = getAdminSupabaseClient();
+    if (adminSupabase) {
+      // Auto-confirm user email for seamless username/password UX
+      await adminSupabase.auth.admin.updateUserById(data.user.id, { email_confirm: true });
+    }
+    const signInRes = await supabase.auth.signInWithPassword({
+      email: internalEmail,
+      password
+    });
+    sessionData = signInRes.data.session;
+  }
+
+  if (!sessionData || !sessionData.access_token) {
+    return c.json({
+      error: 'Account created, but an authenticated session could not be established. Please log in with your credentials.',
+      code: 'SESSION_ESTABLISHMENT_FAILED'
+    }, 400);
+  }
+
   const userId = data.user.id;
   const now = new Date().toISOString();
 
-  // Create voxel_users profile
+  // 3. Create voxel_users profile
   const { error: profileError } = await supabase.from('voxel_users').upsert({
     id: userId,
     username,
@@ -60,8 +84,8 @@ accountRouter.post('/signup', async (c) => {
 
   return c.json({
     userId,
-    accessToken: data.session?.access_token || '',
-    refreshToken: data.session?.refresh_token || '',
+    accessToken: sessionData.access_token,
+    refreshToken: sessionData.refresh_token,
     profile: {
       id: userId,
       username,

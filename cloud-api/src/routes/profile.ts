@@ -17,6 +17,25 @@ profileRouter.put('/', authMiddleware, async (c) => {
   }
   const now = new Date().toISOString();
 
+  // If username is being changed, validate uniqueness and update canonical Auth identity
+  if (username && username.trim().toLowerCase() !== (authUser.user_metadata?.username || '').toLowerCase()) {
+    const adminSupabase = getAdminSupabaseClient();
+    if (adminSupabase) {
+      const newEmail = `${username.trim().toLowerCase()}@voxel.internal`;
+      const { error: authUpdateError } = await adminSupabase.auth.admin.updateUserById(authUser.id, {
+        email: newEmail,
+        user_metadata: { username: username.trim() }
+      });
+
+      if (authUpdateError) {
+        return c.json({
+          error: `Failed to update cloud authentication identity: ${authUpdateError.message}`,
+          code: 'AUTH_IDENTITY_UPDATE_FAILED'
+        }, 400);
+      }
+    }
+  }
+
   const profileUpdate: Record<string, any> = {
     updated_at: now
   };
@@ -35,22 +54,6 @@ profileRouter.put('/', authMiddleware, async (c) => {
 
   if (error) {
     return c.json({ error: error.message }, 400);
-  }
-
-  // If username was updated, update canonical Supabase email using admin client
-  if (username && username.trim().toLowerCase() !== (authUser.user_metadata?.username || '').toLowerCase()) {
-    try {
-      const adminSupabase = getAdminSupabaseClient();
-      if (adminSupabase) {
-        const newEmail = `${username.trim().toLowerCase()}@voxel.internal`;
-        await adminSupabase.auth.admin.updateUserById(authUser.id, {
-          email: newEmail,
-          user_metadata: { username }
-        });
-      }
-    } catch (e) {
-      console.warn('[CloudAPI Profile] Email update error:', e);
-    }
   }
 
   await logAuditEventServer({

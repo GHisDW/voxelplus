@@ -31,7 +31,7 @@ publicRouter.get('/profiles', async (c) => {
     return c.json(list);
   }
 
-  // Fallback public projection query without exposing private library metadata
+  // Safe public projection fallback using PostgreSQL RPC view projection
   const { data: users, error } = await supabase
     .from('voxel_users')
     .select('id, username, avatar, bio, created_at')
@@ -66,6 +66,24 @@ publicRouter.get('/profiles/:username', async (c) => {
 
   if (!supabase) {
     return c.json({ error: 'Cloud service unconfigured.' }, 503);
+  }
+
+  const { data: rpcData, error: rpcError } = await supabase.rpc('get_public_user_profiles');
+
+  if (!rpcError && rpcData && Array.isArray(rpcData)) {
+    const match = rpcData.find((row: any) => row.username.toLowerCase() === username.toLowerCase());
+    if (match) {
+      return c.json({
+        id: match.id,
+        username: match.username,
+        avatar: match.avatar,
+        bio: match.bio || '',
+        createdAt: match.created_at,
+        publicPacksCount: Number(match.public_packs_count || 0),
+        publicSkinsCount: Number(match.public_skins_count || 0),
+        isCreator: Number(match.public_packs_count || 0) > 0 || Number(match.public_skins_count || 0) > 0
+      });
+    }
   }
 
   const { data: user, error } = await supabase
