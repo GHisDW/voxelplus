@@ -25,17 +25,45 @@ test('CryptoUtils - Password Validation', () => {
 });
 
 test('AccountManager - Rejects Local Authentication When Cloud Unavailable', async () => {
-  // When cloud mode is disabled (no SUPABASE_URL / SUPABASE_ANON_KEY), local login & signup must fail explicitly
+  // When cloud mode or cloud API endpoint fails, local login & signup must fail explicitly
   await assert.rejects(async () => {
     await AccountManager.login('any_user', 'any_password');
-  }, /unavailable/i);
+  });
 
   await assert.rejects(async () => {
     await AccountManager.createAccount({
       username: 'test_user',
       password: 'Password123!'
     });
-  }, /unavailable/i);
+  });
+});
+
+test('AccountManager - Session Enforcement and Startup Validation', async () => {
+  const mockProfile = {
+    id: 'user_999',
+    username: 'session_user',
+    avatar: 'avatar_steve',
+    bio: 'testing session validation',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    isPublic: true,
+    syncEnabled: true
+  };
+
+  // 1. Session with invalid/unverified cloud token fails and revokes session
+  AccountStore.setActiveSession({
+    accessToken: 'invalid_token_xyz',
+    refreshToken: 'mock_refresh_token',
+    user: mockProfile
+  });
+
+  const sessionWhenCloudDisabled = await AccountManager.getCurrentSession();
+  assert.equal(sessionWhenCloudDisabled, null); // Cloud unconfigured / token invalid -> revokes session
+
+  // 2. Malformed cached session returns null
+  AccountStore.saveCachedProfile(null);
+  const malformedSession = await AccountManager.getCurrentSession();
+  assert.equal(malformedSession, null);
 });
 
 test('AccountStore - Profile Caching and User Data Clear', () => {

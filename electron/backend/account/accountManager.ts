@@ -150,17 +150,30 @@ export class AccountManager {
     return true;
   }
 
+  /**
+   * Retrieves the active session only after validating the cached session token with the cloud server.
+   * If expired, invalid, revoked, or cloud is unavailable, revokes session and returns null.
+   */
   public static async getCurrentSession(): Promise<AccountSession | null> {
     const session = AccountStore.getActiveSession();
-    if (!session) return null;
+    if (!session || !session.accessToken) return null;
 
     if (!CloudApiClient.isCloudEnabled()) {
-      console.warn('[AccountManager] Cloud unavailable. Revoking local session cache.');
+      console.warn('[AccountManager] Cloud service unavailable. Session unverified.');
       AccountStore.setActiveSession(null);
       return null;
     }
 
-    return session;
+    try {
+      const verifiedProfile = await CloudApiClient.validateCloudToken(session.accessToken);
+      session.user = verifiedProfile;
+      AccountStore.setActiveSession(session);
+      return session;
+    } catch (err: any) {
+      console.warn('[AccountManager] Cloud session validation failed. Revoking session:', err?.message || err);
+      AccountStore.setActiveSession(null);
+      return null;
+    }
   }
 
   public static async getCurrentUser(): Promise<UserProfile | null> {

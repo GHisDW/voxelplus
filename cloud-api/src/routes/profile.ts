@@ -5,6 +5,38 @@ import { logAuditEventServer } from '../audit.js';
 
 export const profileRouter = new Hono<CloudApiEnv>();
 
+// Authenticated Get Current Profile Endpoint
+profileRouter.get('/', authMiddleware, async (c) => {
+  const token = c.get('authToken');
+  const authUser = c.get('authUser');
+  const userSupabase = getUserSupabaseClient(token);
+
+  if (!userSupabase) {
+    return c.json({ error: 'Cloud service unconfigured.' }, 503);
+  }
+
+  const { data, error } = await userSupabase
+    .from('voxel_users')
+    .select('*')
+    .eq('id', authUser.id)
+    .single();
+
+  if (error || !data) {
+    return c.json({ error: 'Profile not found.' }, 404);
+  }
+
+  return c.json({
+    id: data.id,
+    username: data.username,
+    avatar: data.avatar || 'avatar_steve',
+    bio: data.bio || '',
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+    isPublic: data.is_public,
+    syncEnabled: true
+  });
+});
+
 profileRouter.put('/', authMiddleware, async (c) => {
   const token = c.get('authToken');
   const authUser = c.get('authUser');

@@ -39,7 +39,6 @@ accountRouter.post('/signup', async (c) => {
   if (!sessionData) {
     const adminSupabase = getAdminSupabaseClient();
     if (adminSupabase) {
-      // Auto-confirm user email for seamless username/password UX
       await adminSupabase.auth.admin.updateUserById(data.user.id, { email_confirm: true });
     }
     const signInRes = await supabase.auth.signInWithPassword({
@@ -96,6 +95,65 @@ accountRouter.post('/signup', async (c) => {
       isPublic: isPublic !== undefined ? isPublic : true,
       syncEnabled: true
     }
+  });
+});
+
+// Unauthenticated Login Endpoint
+accountRouter.post('/login', async (c) => {
+  const body = await c.req.json();
+  const { username, password } = body;
+
+  if (!username || !password) {
+    return c.json({ error: 'Username and password are required.' }, 400);
+  }
+
+  const internalEmail = `${username.trim().toLowerCase()}@voxel.internal`;
+  const supabase = getPublicSupabaseClient();
+  if (!supabase) {
+    return c.json({ error: 'Cloud service unconfigured.' }, 503);
+  }
+
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: internalEmail,
+    password
+  });
+
+  if (error || !data.user || !data.session) {
+    return c.json({ error: error?.message || 'Invalid username or password.' }, 401);
+  }
+
+  const userId = data.user.id;
+
+  const { data: profileRow } = await supabase
+    .from('voxel_users')
+    .select('*')
+    .eq('id', userId)
+    .single();
+
+  const profile = {
+    id: userId,
+    username: profileRow?.username || username,
+    avatar: profileRow?.avatar || 'avatar_steve',
+    bio: profileRow?.bio || '',
+    createdAt: profileRow?.created_at || new Date().toISOString(),
+    updatedAt: profileRow?.updated_at || new Date().toISOString(),
+    isPublic: profileRow?.is_public !== undefined ? profileRow.is_public : true,
+    syncEnabled: true
+  };
+
+  await logAuditEventServer({
+    actor_id: userId,
+    actor_type: 'user',
+    action: 'account.login',
+    resource: 'voxel_users',
+    details: { username }
+  });
+
+  return c.json({
+    userId,
+    accessToken: data.session.access_token,
+    refreshToken: data.session.refresh_token,
+    profile
   });
 });
 
