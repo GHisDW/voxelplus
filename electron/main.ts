@@ -36,17 +36,17 @@ function registerIpcHandlers() {
     handler: (...args: any[]) => Promise<TResult>
   ) => ipcMain.handle(channel, wrapIpcHandler(channel, category, handler));
 
-  // Account & Cloud Identity
+  // Account & Cloud Identity (Matching preload.ts channel names exactly)
   handle('account:create', 'CONFIGURATION', async (_, payload) => CommandManager.createAccount(payload));
   handle('account:login', 'CONFIGURATION', async (_, u, p) => CommandManager.loginAccount(u, p));
   handle('account:logout', 'CONFIGURATION', async () => CommandManager.logoutAccount());
-  handle('account:getCurrentSession', 'CONFIGURATION', async () => CommandManager.getCurrentSession());
-  handle('account:getCurrentUser', 'CONFIGURATION', async () => CommandManager.getCurrentUser());
+  handle('account:getSession', 'CONFIGURATION', async () => CommandManager.getCurrentSession());
+  handle('account:getUser', 'CONFIGURATION', async () => CommandManager.getCurrentUser());
   handle('account:updateProfile', 'CONFIGURATION', async (_, payload) => CommandManager.updateProfile(payload));
   handle('account:changePassword', 'CONFIGURATION', async (_, payload) => CommandManager.changePassword(payload));
   handle('account:delete', 'CONFIGURATION', async () => CommandManager.deleteAccount());
-  handle('account:listPublicProfiles', 'CONFIGURATION', async (_, q) => CommandManager.listPublicProfiles(q));
-  handle('account:getPublicProfile', 'CONFIGURATION', async (_, id) => CommandManager.getPublicProfile(id));
+  handle('account:listPublic', 'CONFIGURATION', async (_, q) => CommandManager.listPublicProfiles(q));
+  handle('account:getPublic', 'CONFIGURATION', async (_, id) => CommandManager.getPublicProfile(id));
   handle('cloud:sync', 'NETWORK', async () => CommandManager.syncCloudData());
   handle('cloud:getLibrary', 'CONFIGURATION', async () => CommandManager.getLibrary());
   handle('cloud:savePack', 'CONFIGURATION', async (_, pack) => CommandManager.savePackToAccount(pack));
@@ -142,10 +142,8 @@ function createWindow() {
     }
   });
 
-  // Remove default menu for clean launcher look
   mainWindow.setMenuBarVisibility(false);
 
-  // Hook event streamers to send live events to renderer
   LogStreamer.onLog((entry) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('event:log', entry);
@@ -164,7 +162,6 @@ function createWindow() {
     }
   });
 
-  // Load URL
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
   } else {

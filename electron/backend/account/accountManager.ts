@@ -207,7 +207,7 @@ export class AccountManager {
     };
 
     if (CloudApiClient.isCloudEnabled()) {
-      await CloudApiClient.syncProfileToCloud(updatedProfile);
+      await CloudApiClient.syncProfileToCloud(session.accessToken, updatedProfile);
     }
 
     session.user = updatedProfile;
@@ -249,7 +249,7 @@ export class AccountManager {
       });
     }
 
-    await CloudApiClient.updateCloudPassword(payload.newPassword);
+    await CloudApiClient.updateCloudPassword(session.accessToken, payload.newPassword);
     return true;
   }
 
@@ -269,14 +269,14 @@ export class AccountManager {
       });
     }
 
-    await CloudApiClient.deleteCloudUserData(userId);
+    await CloudApiClient.deleteCloudUserData(session.accessToken, userId);
     AccountStore.clearUserData(userId);
     AccountStore.setActiveSession(null);
     return true;
   }
 
   public static async listPublicProfiles(query?: string): Promise<PublicUserProfile[]> {
-    const cloudProfiles = await CloudApiClient.fetchPublicProfilesFromCloud();
+    const cloudProfiles = await CloudApiClient.fetchPublicProfilesFromCloud(query);
     if (!cloudProfiles) return [];
 
     let publicList = cloudProfiles;
@@ -351,7 +351,7 @@ export class AccountManager {
 
     if (CloudApiClient.isCloudEnabled()) {
       try {
-        await CloudApiClient.syncDataToCloud(userId, payload);
+        await CloudApiClient.syncDataToCloud(session.accessToken, userId, payload);
       } catch (err: any) {
         payload.status = 'Sync Failed';
         AccountStore.saveSyncData(userId, payload);
@@ -376,7 +376,7 @@ export class AccountManager {
     if (!session) return [];
 
     if (CloudApiClient.isCloudEnabled()) {
-      const cloudLibrary = await CloudApiClient.fetchLibraryFromCloud(session.user.id);
+      const cloudLibrary = await CloudApiClient.fetchLibraryFromCloud(session.accessToken, session.user.id);
       if (cloudLibrary) return cloudLibrary;
     }
 
@@ -416,7 +416,7 @@ export class AccountManager {
     };
 
     if (CloudApiClient.isCloudEnabled()) {
-      await CloudApiClient.saveLibraryItemToCloud(session.user.id, libraryItem);
+      await CloudApiClient.saveLibraryItemToCloud(session.accessToken, session.user.id, libraryItem);
     }
 
     AccountStore.savePack(session.user.id, item);
@@ -457,7 +457,7 @@ export class AccountManager {
     };
 
     if (CloudApiClient.isCloudEnabled()) {
-      await CloudApiClient.saveLibraryItemToCloud(session.user.id, libraryItem);
+      await CloudApiClient.saveLibraryItemToCloud(session.accessToken, session.user.id, libraryItem);
     }
 
     AccountStore.saveSkin(session.user.id, item);

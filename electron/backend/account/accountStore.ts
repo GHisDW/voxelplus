@@ -14,7 +14,6 @@ import {
 interface AccountStoreData {
   cachedProfile: UserProfile | null;
   encryptedSessionTokens: string | null;
-  rawSessionFallback: { accessToken: string; refreshToken: string } | null;
   libraries: Record<string, UserLibraryItem[]>;
   packs: Record<string, UserPackItem[]>;
   skins: Record<string, UserSkinItem[]>;
@@ -43,7 +42,6 @@ export class AccountStore {
       const initial: AccountStoreData = {
         cachedProfile: null,
         encryptedSessionTokens: null,
-        rawSessionFallback: null,
         libraries: {},
         packs: {},
         skins: {},
@@ -60,7 +58,6 @@ export class AccountStore {
       const data: AccountStoreData = {
         cachedProfile: parsed.cachedProfile || null,
         encryptedSessionTokens: parsed.encryptedSessionTokens || null,
-        rawSessionFallback: parsed.rawSessionFallback || null,
         libraries: parsed.libraries || {},
         packs: parsed.packs || {},
         skins: parsed.skins || {},
@@ -72,7 +69,6 @@ export class AccountStore {
       const fallback: AccountStoreData = {
         cachedProfile: null,
         encryptedSessionTokens: null,
-        rawSessionFallback: null,
         libraries: {},
         packs: {},
         skins: {},
@@ -119,11 +115,6 @@ export class AccountStore {
       }
     }
 
-    if (!accessToken && data.rawSessionFallback) {
-      accessToken = data.rawSessionFallback.accessToken || '';
-      refreshToken = data.rawSessionFallback.refreshToken || '';
-    }
-
     if (!accessToken) return null;
 
     return {
@@ -138,7 +129,6 @@ export class AccountStore {
     if (!session) {
       data.cachedProfile = null;
       data.encryptedSessionTokens = null;
-      data.rawSessionFallback = null;
       this.saveData(data);
       return;
     }
@@ -151,15 +141,13 @@ export class AccountStore {
       try {
         const encryptedBuf = safeStorage.encryptString(serialized);
         data.encryptedSessionTokens = encryptedBuf.toString('base64');
-        data.rawSessionFallback = null;
       } catch (e) {
-        console.warn('[AccountStore] safeStorage encryption error, saving unencrypted fallback:', e);
+        console.warn('[AccountStore] safeStorage encryption error, tokens not persisted:', e);
         data.encryptedSessionTokens = null;
-        data.rawSessionFallback = tokenObj;
       }
     } else {
+      console.warn('[AccountStore] safeStorage encryption unavailable, session tokens not persisted in plaintext.');
       data.encryptedSessionTokens = null;
-      data.rawSessionFallback = tokenObj;
     }
 
     this.saveData(data);
@@ -170,7 +158,6 @@ export class AccountStore {
     if (data.cachedProfile && data.cachedProfile.id === userId) {
       data.cachedProfile = null;
       data.encryptedSessionTokens = null;
-      data.rawSessionFallback = null;
     }
     delete data.libraries[userId];
     delete data.packs[userId];

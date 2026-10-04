@@ -1,15 +1,11 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { AccountSession, CloudSyncPayload, PublicUserProfile, UserLibraryItem, UserPackItem, UserSkinItem, UserProfile } from './accountTypes';
+import { AccountSession, CloudSyncPayload, PublicUserProfile, UserLibraryItem, UserProfile } from './accountTypes';
 
 export class CloudApiClient {
   private static supabase: SupabaseClient | null = null;
   private static isInitialized = false;
   private static apiBaseUrl = process.env.VOXELPLUS_CLOUD_API_URL || 'http://localhost:3001';
 
-  /**
-   * Initializes unprivileged Supabase Client in Electron desktop application using SUPABASE_ANON_KEY.
-   * Security Boundary: Desktop client executables NEVER handle or bundle privileged administrative credentials.
-   */
   public static initialize(): boolean {
     if (this.isInitialized) return !!this.supabase;
 
@@ -22,15 +18,13 @@ export class CloudApiClient {
           auth: { persistSession: false }
         });
         this.isInitialized = true;
-        console.log('[CloudApiClient] Initialized unprivileged Supabase client.');
         return true;
       } catch (err) {
-        console.warn('[CloudApiClient] Failed to initialize cloud client:', err);
+        console.warn('[CloudApiClient] Failed to initialize Supabase client:', err);
         this.isInitialized = true;
         return false;
       }
     } else {
-      console.log('[CloudApiClient] No public cloud configuration present. Operating in offline/unconfigured mode.');
       this.isInitialized = true;
       return false;
     }
@@ -46,7 +40,7 @@ export class CloudApiClient {
   }
 
   /**
-   * Registers a new Voxel+ account via Supabase Auth.
+   * Registers a new Voxel+ account via Cloud API endpoint or direct Supabase Auth.
    */
   public static async signUpWithCloud(
     username: string,
@@ -56,6 +50,25 @@ export class CloudApiClient {
     isPublic: boolean = true
   ): Promise<AccountSession | null> {
     if (!this.isCloudEnabled() || !this.supabase) return null;
+
+    try {
+      const res = await fetch(`${this.apiBaseUrl}/api/account/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password, avatar, bio, isPublic })
+      });
+
+      if (res.ok) {
+        const data = (await res.json()) as any;
+        return {
+          accessToken: data.accessToken,
+          refreshToken: data.refreshToken,
+          user: data.profile
+        };
+      }
+    } catch {
+      // Fallback to client-side Supabase signup if local Cloud API dev server is not running
+    }
 
     const internalEmail = this.toInternalEmail(username);
     const { data, error } = await this.supabase.auth.signUp({
@@ -160,8 +173,24 @@ export class CloudApiClient {
     }
   }
 
-  public static async updateCloudPassword(newPassword: string): Promise<boolean> {
-    if (!this.isCloudEnabled() || !this.supabase) return false;
+  public static async updateCloudPassword(accessToken: string, newPassword: string): Promise<boolean> {
+    if (!this.isCloudEnabled()) return false;
+
+    try {
+      const res = await fetch(`${this.apiBaseUrl}/api/account/password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({ newPassword })
+      });
+      if (res.ok) return true;
+    } catch {
+      // Fallback
+    }
+
+    if (!this.supabase) return false;
     const { error } = await this.supabase.auth.updateUser({ password: newPassword });
     if (error) {
       throw new Error(error.message);
@@ -169,8 +198,30 @@ export class CloudApiClient {
     return true;
   }
 
-  public static async syncProfileToCloud(profile: UserProfile): Promise<boolean> {
-    if (!this.isCloudEnabled() || !this.supabase) return false;
+  public static async syncProfileToCloud(accessToken: string, profile: UserProfile): Promise<boolean> {
+    if (!this.isCloudEnabled()) return false;
+
+    try {
+      const res = await fetch(`${this.apiBaseUrl}/api/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({
+          username: profile.username,
+          avatar: profile.avatar,
+          bio: profile.bio,
+          isPublic: profile.isPublic,
+          syncEnabled: profile.syncEnabled
+        })
+      });
+      if (res.ok) return true;
+    } catch {
+      // Fallback
+    }
+
+    if (!this.supabase) return false;
     const { error } = await this.supabase
       .from('voxel_users')
       .upsert({
@@ -188,8 +239,24 @@ export class CloudApiClient {
     return true;
   }
 
-  public static async syncDataToCloud(userId: string, payload: CloudSyncPayload): Promise<boolean> {
-    if (!this.isCloudEnabled() || !this.supabase) return false;
+  public static async syncDataToCloud(accessToken: string, userId: string, payload: CloudSyncPayload): Promise<boolean> {
+    if (!this.isCloudEnabled()) return false;
+
+    try {
+      const res = await fetch(`${this.apiBaseUrl}/api/sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) return true;
+    } catch {
+      // Fallback
+    }
+
+    if (!this.supabase) return false;
     const { error } = await this.supabase
       .from('voxel_cloud_sync')
       .upsert({
@@ -204,9 +271,24 @@ export class CloudApiClient {
     return true;
   }
 
-  public static async saveLibraryItemToCloud(userId: string, item: UserLibraryItem): Promise<boolean> {
-    if (!this.isCloudEnabled() || !this.supabase) return false;
+  public static async saveLibraryItemToCloud(accessToken: string, userId: string, item: UserLibraryItem): Promise<boolean> {
+    if (!this.isCloudEnabled()) return false;
 
+    try {
+      const res = await fetch(`${this.apiBaseUrl}/api/library`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify(item)
+      });
+      if (res.ok) return true;
+    } catch {
+      // Fallback
+    }
+
+    if (!this.supabase) return false;
     const { error } = await this.supabase
       .from('voxel_library')
       .upsert({
@@ -225,9 +307,21 @@ export class CloudApiClient {
     return true;
   }
 
-  public static async fetchLibraryFromCloud(userId: string): Promise<UserLibraryItem[] | null> {
-    if (!this.isCloudEnabled() || !this.supabase) return null;
+  public static async fetchLibraryFromCloud(accessToken: string, userId: string): Promise<UserLibraryItem[] | null> {
+    if (!this.isCloudEnabled()) return null;
 
+    try {
+      const res = await fetch(`${this.apiBaseUrl}/api/library`, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      if (res.ok) {
+        return (await res.json()) as UserLibraryItem[];
+      }
+    } catch {
+      // Fallback
+    }
+
+    if (!this.supabase) return null;
     const { data, error } = await this.supabase
       .from('voxel_library')
       .select('*')
@@ -246,8 +340,18 @@ export class CloudApiClient {
   }
 
   public static async fetchUserFromCloudByUsername(username: string): Promise<UserProfile | null> {
-    if (!this.isCloudEnabled() || !this.supabase) return null;
+    if (!this.isCloudEnabled()) return null;
 
+    try {
+      const res = await fetch(`${this.apiBaseUrl}/api/public/profiles/${encodeURIComponent(username)}`);
+      if (res.ok) {
+        return (await res.json()) as UserProfile;
+      }
+    } catch {
+      // Fallback
+    }
+
+    if (!this.supabase) return null;
     const { data, error } = await this.supabase
       .from('voxel_users')
       .select('id, username, avatar, bio, is_public, created_at, updated_at')
@@ -268,9 +372,20 @@ export class CloudApiClient {
     };
   }
 
-  public static async fetchPublicProfilesFromCloud(): Promise<PublicUserProfile[] | null> {
-    if (!this.isCloudEnabled() || !this.supabase) return null;
+  public static async fetchPublicProfilesFromCloud(query?: string): Promise<PublicUserProfile[] | null> {
+    if (!this.isCloudEnabled()) return null;
 
+    try {
+      const url = query ? `${this.apiBaseUrl}/api/public/profiles?q=${encodeURIComponent(query)}` : `${this.apiBaseUrl}/api/public/profiles`;
+      const res = await fetch(url);
+      if (res.ok) {
+        return (await res.json()) as PublicUserProfile[];
+      }
+    } catch {
+      // Fallback
+    }
+
+    if (!this.supabase) return null;
     const { data: rpcData, error: rpcError } = await this.supabase.rpc('get_public_user_profiles');
 
     if (!rpcError && rpcData && Array.isArray(rpcData)) {
@@ -306,9 +421,23 @@ export class CloudApiClient {
     }));
   }
 
-  public static async deleteCloudUserData(userId: string): Promise<boolean> {
-    if (!this.isCloudEnabled() || !this.supabase) return false;
+  public static async deleteCloudUserData(accessToken: string, userId: string): Promise<boolean> {
+    if (!this.isCloudEnabled()) return false;
 
+    try {
+      const res = await fetch(`${this.apiBaseUrl}/api/account`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      if (res.ok) {
+        await this.signOutCloud();
+        return true;
+      }
+    } catch {
+      // Fallback
+    }
+
+    if (!this.supabase) return false;
     const { error: err1 } = await this.supabase.from('voxel_cloud_sync').delete().eq('user_id', userId);
     const { error: err2 } = await this.supabase.from('voxel_library').delete().eq('user_id', userId);
     const { error: err3 } = await this.supabase.from('voxel_users').delete().eq('id', userId);

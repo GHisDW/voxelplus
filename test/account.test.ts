@@ -38,7 +38,7 @@ test('AccountManager - Rejects Local Authentication When Cloud Unavailable', asy
   }, /unavailable/i);
 });
 
-test('AccountStore - Encrypted Session Storage & Cache', () => {
+test('AccountStore - Profile Caching and User Data Clear', () => {
   const mockUser = {
     id: 'user_123',
     username: 'test_user',
@@ -50,19 +50,13 @@ test('AccountStore - Encrypted Session Storage & Cache', () => {
     syncEnabled: true
   };
 
-  AccountStore.setActiveSession({
-    accessToken: 'mock_access_token_123',
-    refreshToken: 'mock_refresh_token_456',
-    user: mockUser
-  });
-
-  const session = AccountStore.getActiveSession();
-  assert.ok(session);
-  assert.equal(session.user.username, 'test_user');
-  assert.equal(session.accessToken, 'mock_access_token_123');
+  AccountStore.saveCachedProfile(mockUser);
+  const cached = AccountStore.getCachedProfile();
+  assert.ok(cached);
+  assert.equal(cached.username, 'test_user');
 
   AccountStore.clearUserData('user_123');
-  assert.equal(AccountStore.getActiveSession(), null);
+  assert.equal(AccountStore.getCachedProfile(), null);
 });
 
 // Clean up temporary test files
