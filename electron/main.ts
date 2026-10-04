@@ -52,6 +52,33 @@ function registerIpcHandlers() {
   handle('cloud:savePack', 'CONFIGURATION', async (_, pack) => CommandManager.savePackToAccount(pack));
   handle('cloud:saveSkin', 'CONFIGURATION', async (_, skin) => CommandManager.saveSkinToAccount(skin));
 
+  // Cosmetics
+  handle('cosmetics:catalog', 'CONFIGURATION', async () => CommandManager.listCosmeticsCatalog());
+  handle('cosmetics:getUser', 'CONFIGURATION', async () => CommandManager.getUserCosmetics());
+  handle('cosmetics:select', 'CONFIGURATION', async (_, cosmeticId) => CommandManager.selectCosmetic(cosmeticId));
+
+  // Achievements
+  handle('achievements:catalog', 'CONFIGURATION', async () => CommandManager.listAchievementsCatalog());
+  handle('achievements:getUser', 'CONFIGURATION', async () => CommandManager.getUserAchievements());
+  handle('achievements:event', 'CONFIGURATION', async (_, eventType, metadata) => CommandManager.reportAchievementEvent(eventType, metadata));
+
+  // Avatar
+  handle('avatar:upload', 'FILESYSTEM', async (_, buffer, fileName, mimeType) => CommandManager.uploadAvatar(buffer, fileName, mimeType));
+  handle('avatar:delete', 'FILESYSTEM', async () => CommandManager.deleteAvatar());
+
+  // Owner Control Panel
+  handle('owner:check', 'CONFIGURATION', async () => CommandManager.checkOwnerStatus());
+  handle('owner:getUsers', 'CONFIGURATION', async (_, q, limit, offset) => CommandManager.getOwnerUsers(q, limit, offset));
+  handle('owner:getUserDetails', 'CONFIGURATION', async (_, userId) => CommandManager.getOwnerUserDetails(userId));
+  handle('owner:grantTitle', 'CONFIGURATION', async (_, userId, titleId) => CommandManager.grantTitle(userId, titleId));
+  handle('owner:revokeTitle', 'CONFIGURATION', async (_, userId, titleId) => CommandManager.revokeTitle(userId, titleId));
+  handle('owner:grantBadge', 'CONFIGURATION', async (_, userId, badgeId) => CommandManager.grantBadge(userId, badgeId));
+  handle('owner:revokeBadge', 'CONFIGURATION', async (_, userId, badgeId) => CommandManager.revokeBadge(userId, badgeId));
+  handle('owner:setCreator', 'CONFIGURATION', async (_, userId, isCreator) => CommandManager.setCreatorStatus(userId, isCreator));
+  handle('owner:deleteUser', 'CONFIGURATION', async (_, userId, confirm) => CommandManager.ownerDeleteUser(userId, confirm));
+  handle('owner:bulkDelete', 'CONFIGURATION', async (_, confirm) => CommandManager.ownerBulkDelete(confirm));
+  handle('owner:getAuditLog', 'CONFIGURATION', async (_, limit, offset) => CommandManager.getOwnerAuditLog(limit, offset));
+
   // Settings
   handle('settings:get', 'CONFIGURATION', async () => CommandManager.getAppSettings());
   handle('settings:set', 'CONFIGURATION', async (_, settings) => CommandManager.setAppSettings(settings));

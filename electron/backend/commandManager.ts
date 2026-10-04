@@ -93,6 +93,86 @@ export class CommandManager {
     return AccountManager.saveSkinToAccount(skin);
   }
 
+  // Cosmetics
+  public static async listCosmeticsCatalog() {
+    return AccountManager.listCosmeticsCatalog();
+  }
+
+  public static async getUserCosmetics() {
+    return AccountManager.getUserCosmetics();
+  }
+
+  public static async selectCosmetic(cosmeticId: string | null) {
+    return AccountManager.selectCosmetic(cosmeticId);
+  }
+
+  // Achievements
+  public static async listAchievementsCatalog() {
+    return AccountManager.listAchievementsCatalog();
+  }
+
+  public static async getUserAchievements() {
+    return AccountManager.getUserAchievements();
+  }
+
+  public static async reportAchievementEvent(eventType: string, metadata?: any) {
+    return AccountManager.reportAchievementEvent(eventType, metadata);
+  }
+
+  // Avatar
+  public static async uploadAvatar(buffer: ArrayBuffer | Uint8Array, fileName: string, mimeType: string) {
+    return AccountManager.uploadAvatar(buffer, fileName, mimeType);
+  }
+
+  public static async deleteAvatar() {
+    return AccountManager.deleteAvatar();
+  }
+
+  // Owner Control Panel
+  public static async checkOwnerStatus() {
+    return AccountManager.checkOwnerStatus();
+  }
+
+  public static async getOwnerUsers(query?: string, limit?: number, offset?: number) {
+    return AccountManager.getOwnerUsers(query, limit, offset);
+  }
+
+  public static async getOwnerUserDetails(userId: string) {
+    return AccountManager.getOwnerUserDetails(userId);
+  }
+
+  public static async grantTitle(userId: string, titleId: string) {
+    return AccountManager.grantTitle(userId, titleId);
+  }
+
+  public static async revokeTitle(userId: string, titleId: string) {
+    return AccountManager.revokeTitle(userId, titleId);
+  }
+
+  public static async grantBadge(userId: string, badgeId: string) {
+    return AccountManager.grantBadge(userId, badgeId);
+  }
+
+  public static async revokeBadge(userId: string, badgeId: string) {
+    return AccountManager.revokeBadge(userId, badgeId);
+  }
+
+  public static async setCreatorStatus(userId: string, isCreator: boolean) {
+    return AccountManager.setCreatorStatus(userId, isCreator);
+  }
+
+  public static async ownerDeleteUser(userId: string, confirmPhrase: string) {
+    return AccountManager.ownerDeleteUser(userId, confirmPhrase);
+  }
+
+  public static async ownerBulkDelete(confirmPhrase: string) {
+    return AccountManager.ownerBulkDelete(confirmPhrase);
+  }
+
+  public static async getOwnerAuditLog(limit?: number, offset?: number) {
+    return AccountManager.getOwnerAuditLog(limit, offset);
+  }
+
   // Settings
   public static async getAppSettings(): Promise<AppSettings> {
     return ConfigStore.getSettings();

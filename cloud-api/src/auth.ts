@@ -11,6 +11,7 @@ export type CloudApiEnv = {
   Variables: {
     authToken: string;
     authUser: AuthenticatedUser;
+    ownerRole?: string;
   };
 };
 

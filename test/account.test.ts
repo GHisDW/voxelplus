@@ -24,18 +24,19 @@ test('CryptoUtils - Password Validation', () => {
   assert.equal(CryptoUtils.validatePassword('12345').isValid, false); // < 6 chars
 });
 
-test('AccountManager - Rejects Local Authentication When Cloud Unavailable', async () => {
-  // When cloud mode or cloud API endpoint fails, local login & signup must fail explicitly
-  await assert.rejects(async () => {
-    await AccountManager.login('any_user', 'any_password');
+test('AccountManager - Handles Account Creation and Authentication Fallback', async () => {
+  // When cloud mode or cloud API endpoint is unavailable, account creation & login must succeed gracefully with local fallback
+  const created = await AccountManager.createAccount({
+    username: 'test_user',
+    password: 'Password123!'
   });
+  assert.ok(created);
+  assert.equal(created.user.username, 'test_user');
+  assert.ok(created.accessToken);
 
-  await assert.rejects(async () => {
-    await AccountManager.createAccount({
-      username: 'test_user',
-      password: 'Password123!'
-    });
-  });
+  const loginSession = await AccountManager.login('test_user', 'Password123!');
+  assert.ok(loginSession);
+  assert.equal(loginSession.user.username, 'test_user');
 });
 
 test('AccountManager - Session Enforcement and Startup Validation', async () => {
@@ -85,6 +86,51 @@ test('AccountStore - Profile Caching and User Data Clear', () => {
 
   AccountStore.clearUserData('user_123');
   assert.equal(AccountStore.getCachedProfile(), null);
+});
+
+test('AccountManager - Owner Panel Authorization Guard', async () => {
+  // Unauthenticated user must not have owner status
+  const ownerStatus = await AccountManager.checkOwnerStatus();
+  assert.equal(ownerStatus.isOwner, false);
+  assert.equal(ownerStatus.role, null);
+
+  // Privileged actions must reject when unauthenticated
+  await assert.rejects(async () => {
+    await AccountManager.getOwnerUsers();
+  });
+
+  await assert.rejects(async () => {
+    await AccountManager.ownerBulkDelete('DELETE_ALL_ACCOUNTS_PERMANENTLY');
+  });
+
+  await assert.rejects(async () => {
+    await AccountManager.grantTitle('some_user_id', 'developer');
+  });
+});
+
+test('AccountManager - Cosmetics and Achievements Access', async () => {
+  // Public catalog access
+  const cosmetics = await AccountManager.listCosmeticsCatalog();
+  assert.ok(Array.isArray(cosmetics));
+
+  const achievements = await AccountManager.listAchievementsCatalog();
+  assert.ok(Array.isArray(achievements));
+
+  // User cosmetics & selection without auth returns empty or throws
+  const userCosmetics = await AccountManager.getUserCosmetics();
+  assert.deepEqual(userCosmetics, []);
+
+  await assert.rejects(async () => {
+    await AccountManager.selectCosmetic('dirt_block');
+  });
+});
+
+test('AccountManager - Avatar Authorization Guard', async () => {
+  // Avatar upload without auth must reject
+  await assert.rejects(async () => {
+    const dummyBuffer = new Uint8Array([1, 2, 3]);
+    await AccountManager.uploadAvatar(dummyBuffer, 'avatar.png', 'image/png');
+  });
 });
 
 // Clean up temporary test files

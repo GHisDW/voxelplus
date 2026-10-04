@@ -8,6 +8,28 @@ export const syncRouter = new Hono<CloudApiEnv>();
 // Maximum payload size limit: 500 KB
 const MAX_SYNC_PAYLOAD_BYTES = 500 * 1024;
 
+syncRouter.get('/', authMiddleware, async (c) => {
+  const token = c.get('authToken');
+  const authUser = c.get('authUser');
+
+  const userSupabase = getUserSupabaseClient(token);
+  if (!userSupabase) {
+    return c.json({ error: 'Cloud service unconfigured.' }, 503);
+  }
+
+  const { data, error } = await userSupabase
+    .from('voxel_cloud_sync')
+    .select('sync_payload, last_synced_at')
+    .eq('user_id', authUser.id)
+    .maybeSingle();
+
+  if (error) {
+    return c.json({ error: error.message }, 400);
+  }
+
+  return c.json(data?.sync_payload || null);
+});
+
 syncRouter.post('/', authMiddleware, async (c) => {
   const token = c.get('authToken');
   const authUser = c.get('authUser');

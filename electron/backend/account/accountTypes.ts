@@ -7,6 +7,13 @@ export interface UserProfile {
   updatedAt: string;
   isPublic: boolean;
   syncEnabled: boolean;
+  title?: string | null;
+  badges?: string[];
+  cosmetics?: string[];
+  selectedCosmetic?: string | null;
+  achievements?: string[];
+  isCreator?: boolean;
+  isOwner?: boolean;
 }
 
 export interface PublicUserProfile {

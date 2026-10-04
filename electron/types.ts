@@ -1,5 +1,107 @@
 export type ThemeMode = 'dark' | 'light' | 'system';
 
+// ─── Account / Cloud Identity (re-exported from accountTypes for frontend use) ─
+
+export interface VoxelUserProfile {
+  id: string;
+  username: string;
+  avatar: string;          // URL or preset id (e.g. "avatar_steve")
+  bio: string;
+  createdAt: string;
+  updatedAt: string;
+  isPublic: boolean;
+  syncEnabled: boolean;
+  // Extended fields (populated by cloud API on full profile fetch)
+  title?: string | null;
+  badges?: string[];
+  cosmetics?: string[];
+  selectedCosmetic?: string | null;
+  achievements?: string[];
+  isCreator?: boolean;
+  isOwner?: boolean;
+}
+
+export interface VoxelPublicUserProfile {
+  id: string;
+  username: string;
+  avatar: string;
+  bio: string;
+  createdAt: string;
+  publicPacksCount: number;
+  publicSkinsCount: number;
+  isCreator: boolean;
+  title?: string | null;
+  badges?: string[];
+  selectedCosmetic?: string | null;
+  featuredAchievement?: string | null;
+}
+
+export interface VoxelAccountSession {
+  accessToken: string;
+  refreshToken: string;
+  user: VoxelUserProfile;
+  expiresAt?: number;
+  tokenType?: string;
+}
+
+export interface VoxelCloudSyncPayload {
+  lastSyncedAt: string;
+  status?: 'Synced' | 'Sync Failed' | 'Offline' | 'Unauthenticated';
+  settings?: Record<string, any>;
+  instances?: Array<{
+    id: string;
+    name: string;
+    minecraftVersion: string;
+    loaderType: string;
+    loaderVersion: string;
+    lastPlayedAt: string | null;
+  }>;
+  library?: any[];
+  packs?: any[];
+  skins?: any[];
+}
+
+export interface VoxelCosmetic {
+  id: string;
+  name: string;
+  type: 'avatar_frame' | 'profile_icon' | 'title_icon' | 'badge_icon' | 'achievement_icon' | 'featured';
+  icon: string;           // emoji or URL
+  rarity: 'common' | 'rare' | 'epic' | 'legendary';
+  description: string;
+  unlockCondition: string;
+  achievementId?: string | null;
+  enabled: boolean;
+  createdAt: string;
+}
+
+export interface VoxelAchievement {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  requirement: string;
+  reward: string;         // cosmetic id or description
+  rarity: 'common' | 'rare' | 'epic' | 'legendary';
+  hidden: boolean;
+  unlockedAt?: string | null;
+}
+
+export interface VoxelTitle {
+  id: string;
+  name: string;
+  description: string;
+  color?: string;
+  grantedAt?: string;
+}
+
+export interface VoxelBadge {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  grantedAt?: string;
+}
+
 /** Standardized error categories used across all Voxel+ subsystems. */
 export type VoxelErrorCategory =
   | 'JAVA'

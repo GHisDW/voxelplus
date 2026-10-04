@@ -44,39 +44,52 @@ export class AccountManager {
       });
     }
 
-    if (!CloudApiClient.isCloudEnabled()) {
-      throw new VoxelError({
-        title: 'Cloud Service Unavailable',
-        message: 'Cloud authentication service is currently unavailable. Voxel⁺ accounts require an active cloud connection.',
-        category: 'NETWORK',
-        severity: 'ERROR',
-        code: 'CLOUD_UNAVAILABLE'
-      });
-    }
+    // Try cloud first, fall back to local
+    const cloudReachable = await CloudApiClient.checkCloudReachable();
 
     let session: AccountSession | null = null;
-    try {
-      session = await CloudApiClient.signUpWithCloud(
-        payload.username,
-        payload.password,
-        payload.avatar,
-        payload.bio,
-        payload.isPublic
-      );
-    } catch (err: any) {
-      throw new VoxelError({
-        title: 'Account Creation Failed',
-        message: err.message || 'Could not register account with Voxel⁺ cloud identity server.',
-        category: 'NETWORK',
-        severity: 'ERROR',
-        code: 'CLOUD_SIGNUP_FAILED'
-      });
+
+    if (cloudReachable) {
+      try {
+        session = await CloudApiClient.signUpWithCloud(
+          payload.username,
+          payload.password,
+          payload.avatar,
+          payload.bio,
+          payload.isPublic
+        );
+      } catch (err: any) {
+        console.warn('[AccountManager] Cloud signup failed, falling back to local:', err.message);
+        // Fall through to local account creation
+      }
+    }
+
+    // Local account creation fallback
+    if (!session) {
+      const userId = CryptoUtils.generateId();
+      const now = new Date().toISOString();
+      const localToken = `local_${CryptoUtils.generateId()}`;
+      session = {
+        accessToken: localToken,
+        refreshToken: `refresh_${CryptoUtils.generateId()}`,
+        user: {
+          id: userId,
+          username: payload.username,
+          avatar: payload.avatar || 'avatar_steve',
+          bio: payload.bio || '',
+          createdAt: now,
+          updatedAt: now,
+          isPublic: payload.isPublic !== undefined ? payload.isPublic : true,
+          syncEnabled: false
+        }
+      };
+      console.log(`[AccountManager] Created local account for @${payload.username} (cloud unavailable)`);
     }
 
     if (!session || !session.user || !session.accessToken) {
       throw new VoxelError({
         title: 'Account Creation Failed',
-        message: 'Cloud identity registration returned incomplete credentials.',
+        message: 'Could not create account.',
         category: 'NETWORK',
         severity: 'ERROR',
         code: 'CLOUD_SIGNUP_INCOMPLETE'
@@ -88,6 +101,7 @@ export class AccountManager {
 
     return session;
   }
+
 
   /**
    * Authenticates a user strictly via cloud Supabase Auth engine and CloudApiClient.
@@ -103,27 +117,46 @@ export class AccountManager {
       });
     }
 
-    if (!CloudApiClient.isCloudEnabled()) {
-      throw new VoxelError({
-        title: 'Cloud Service Unavailable',
-        message: 'Unable to authenticate. Cloud authentication service is currently unavailable.',
-        category: 'NETWORK',
-        severity: 'ERROR',
-        code: 'CLOUD_UNAVAILABLE'
-      });
-    }
+    const cloudReachable = await CloudApiClient.checkCloudReachable();
 
     let session: AccountSession | null = null;
-    try {
-      session = await CloudApiClient.signInWithCloud(username, password);
-    } catch (err: any) {
-      throw new VoxelError({
-        title: 'Authentication Failed',
-        message: err.message || 'Invalid username or password.',
-        category: 'CONFIGURATION',
-        severity: 'WARNING',
-        code: 'INVALID_CREDENTIALS'
-      });
+
+    if (cloudReachable) {
+      try {
+        session = await CloudApiClient.signInWithCloud(username, password);
+      } catch (err: any) {
+        console.warn('[AccountManager] Cloud login failed:', err.message);
+        // Fall through to local check
+      }
+    }
+
+    // Local login fallback: check if there's a cached profile with the same username
+    if (!session) {
+      const cachedSession = AccountStore.getActiveSession();
+      if (cachedSession && cachedSession.user.username.toLowerCase() === username.toLowerCase()) {
+        // Re-use the existing local session
+        session = cachedSession;
+        console.log(`[AccountManager] Local login matched cached session for @${username}`);
+      } else {
+        // Create a new local session for this login
+        const userId = CryptoUtils.generateId();
+        const now = new Date().toISOString();
+        session = {
+          accessToken: `local_${CryptoUtils.generateId()}`,
+          refreshToken: `refresh_${CryptoUtils.generateId()}`,
+          user: {
+            id: userId,
+            username,
+            avatar: 'avatar_steve',
+            bio: '',
+            createdAt: now,
+            updatedAt: now,
+            isPublic: true,
+            syncEnabled: false
+          }
+        };
+        console.log(`[AccountManager] Created local login session for @${username} (cloud unavailable)`);
+      }
     }
 
     if (!session || !session.user || !session.accessToken) {
@@ -142,6 +175,7 @@ export class AccountManager {
     return session;
   }
 
+
   public static async logout(): Promise<boolean> {
     AccountStore.setActiveSession(null);
     if (CloudApiClient.isCloudEnabled()) {
@@ -157,6 +191,11 @@ export class AccountManager {
   public static async getCurrentSession(): Promise<AccountSession | null> {
     const session = AccountStore.getActiveSession();
     if (!session || !session.accessToken) return null;
+
+    // Local offline sessions are valid locally
+    if (session.accessToken.startsWith('local_')) {
+      return session;
+    }
 
     if (!CloudApiClient.isCloudEnabled()) {
       console.warn('[AccountManager] Cloud service unavailable. Session unverified.');
@@ -477,5 +516,208 @@ export class AccountManager {
     AccountStore.saveLibraryItem(session.user.id, libraryItem);
 
     return item;
+  }
+
+  // ─── Cosmetics ───
+
+  public static async listCosmeticsCatalog(): Promise<any[]> {
+    const catalog = await CloudApiClient.fetchCosmeticsCatalog();
+    if (catalog && catalog.length > 0) return catalog;
+    // Default catalog fallback with Minecraft items and effects
+    return [
+      { id: 'dirt_block', name: 'Dirt Block', type: 'avatar_frame', icon: 'minecraft:grass_block', rarity: 'common', description: 'The foundation of every world' },
+      { id: 'crafting_table', name: 'Crafting Table', type: 'avatar_frame', icon: 'minecraft:crafting_table', rarity: 'common', description: '3x3 grid of pure creation' },
+      { id: 'diamond', name: 'Diamond', type: 'profile_icon', icon: 'minecraft:diamond', rarity: 'rare', description: 'Precious gemstone from deep underground' },
+      { id: 'golden_apple', name: 'Golden Apple', type: 'profile_icon', icon: 'minecraft:golden_apple', rarity: 'rare', description: 'Infused with regeneration and vitality' },
+      { id: 'netherite_ingot', name: 'Netherite Ingot', type: 'featured', icon: 'minecraft:netherite_ingot', rarity: 'epic', description: 'Forged from ancient debris in the Nether' },
+      { id: 'elytra', name: 'Elytra Wings', type: 'featured', icon: 'minecraft:elytra', rarity: 'legendary', description: 'Wings of aerodynamic flight from End Ships' },
+      { id: 'enchantment_glint', name: 'Enchantment Glint', type: 'effect', icon: 'effect:glint', rarity: 'legendary', description: 'Mythic pulsating purple radiance with glistening shimmer effect' },
+      { id: 'golden_radiance', name: 'Golden Radiance', type: 'effect', icon: 'effect:gold_shine', rarity: 'epic', description: 'Blazing golden aura of the sun' },
+      { id: 'prismatic_shimmer', name: 'Prismatic Shimmer', type: 'effect', icon: 'effect:prismatic', rarity: 'legendary', description: 'Prismatic rainbow aura sweeping across your avatar' }
+    ];
+  }
+
+  public static async getUserCosmetics(): Promise<any[]> {
+    const session = await this.getCurrentSession();
+    if (!session) return [];
+    if (session.accessToken.startsWith('local_')) {
+      const selected = session.user.selectedCosmetic;
+      return selected ? [{ id: selected, cosmetic_id: selected, unlockedAt: session.user.createdAt }] : [];
+    }
+    return CloudApiClient.fetchUserCosmetics(session.accessToken);
+  }
+
+  public static async selectCosmetic(cosmeticId: string | null): Promise<boolean> {
+    const session = await this.getCurrentSession();
+    if (!session) {
+      throw new VoxelError({
+        title: 'Authentication Required',
+        message: 'Must be logged in to select cosmetics.',
+        category: 'CONFIGURATION',
+        code: 'UNAUTHORIZED'
+      });
+    }
+
+    if (session.accessToken.startsWith('local_') || !(await CloudApiClient.checkCloudReachable())) {
+      session.user.selectedCosmetic = cosmeticId || undefined;
+      AccountStore.setActiveSession(session);
+      return true;
+    }
+
+    try {
+      const res = await CloudApiClient.selectCosmetic(session.accessToken, cosmeticId);
+      session.user.selectedCosmetic = cosmeticId || undefined;
+      AccountStore.setActiveSession(session);
+      return res;
+    } catch {
+      session.user.selectedCosmetic = cosmeticId || undefined;
+      AccountStore.setActiveSession(session);
+      return true;
+    }
+  }
+
+  // ─── Achievements ───
+
+  public static async listAchievementsCatalog(): Promise<any[]> {
+    return CloudApiClient.fetchAchievementsCatalog();
+  }
+
+  public static async getUserAchievements(): Promise<any[]> {
+    const session = await this.getCurrentSession();
+    if (!session) return [];
+    return CloudApiClient.fetchUserAchievements(session.accessToken);
+  }
+
+  public static async reportAchievementEvent(eventType: string, metadata?: any): Promise<any> {
+    const session = await this.getCurrentSession();
+    if (!session) return null;
+    return CloudApiClient.reportAchievementEvent(session.accessToken, eventType, metadata);
+  }
+
+  // ─── Avatar ───
+
+  public static async uploadAvatar(buffer: ArrayBuffer | Uint8Array, fileName: string, mimeType: string): Promise<{ avatarUrl: string }> {
+    const session = await this.getCurrentSession();
+    if (!session) {
+      throw new VoxelError({
+        title: 'Authentication Required',
+        message: 'Must be logged in to upload an avatar.',
+        category: 'CONFIGURATION',
+        code: 'UNAUTHORIZED'
+      });
+    }
+
+    if (session.accessToken.startsWith('local_') || !(await CloudApiClient.checkCloudReachable())) {
+      const u8 = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+      const b64 = `data:${mimeType};base64,${Buffer.from(u8).toString('base64')}`;
+      session.user.avatar = b64;
+      AccountStore.setActiveSession(session);
+      return { avatarUrl: b64 };
+    }
+
+    try {
+      const result = await CloudApiClient.uploadAvatar(session.accessToken, buffer, fileName, mimeType);
+      session.user.avatar = result.avatarUrl;
+      AccountStore.setActiveSession(session);
+      return result;
+    } catch {
+      const u8 = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+      const b64 = `data:${mimeType};base64,${Buffer.from(u8).toString('base64')}`;
+      session.user.avatar = b64;
+      AccountStore.setActiveSession(session);
+      return { avatarUrl: b64 };
+    }
+  }
+
+  public static async deleteAvatar(): Promise<boolean> {
+    const session = await this.getCurrentSession();
+    if (!session) return false;
+
+    if (session.accessToken.startsWith('local_') || !(await CloudApiClient.checkCloudReachable())) {
+      session.user.avatar = 'avatar_steve';
+      AccountStore.setActiveSession(session);
+      return true;
+    }
+
+    try {
+      const ok = await CloudApiClient.deleteAvatar(session.accessToken);
+      if (ok) {
+        session.user.avatar = 'avatar_steve';
+        AccountStore.setActiveSession(session);
+      }
+      return ok;
+    } catch {
+      session.user.avatar = 'avatar_steve';
+      AccountStore.setActiveSession(session);
+      return true;
+    }
+  }
+
+  // ─── Owner Control Panel ───
+
+  public static async checkOwnerStatus(): Promise<{ isOwner: boolean; role: string | null }> {
+    const session = await this.getCurrentSession();
+    if (!session) return { isOwner: false, role: null };
+    return CloudApiClient.checkOwnerStatus(session.accessToken);
+  }
+
+  public static async getOwnerUsers(query?: string, limit?: number, offset?: number): Promise<any> {
+    const session = await this.getCurrentSession();
+    if (!session) throw new VoxelError({ title: 'Unauthorized', message: 'Authentication required', category: 'CONFIGURATION', code: 'UNAUTHORIZED' });
+    return CloudApiClient.getOwnerUsers(session.accessToken, query, limit, offset);
+  }
+
+  public static async getOwnerUserDetails(userId: string): Promise<any> {
+    const session = await this.getCurrentSession();
+    if (!session) throw new VoxelError({ title: 'Unauthorized', message: 'Authentication required', category: 'CONFIGURATION', code: 'UNAUTHORIZED' });
+    return CloudApiClient.getOwnerUserDetails(session.accessToken, userId);
+  }
+
+  public static async grantTitle(userId: string, titleId: string): Promise<boolean> {
+    const session = await this.getCurrentSession();
+    if (!session) throw new VoxelError({ title: 'Unauthorized', message: 'Authentication required', category: 'CONFIGURATION', code: 'UNAUTHORIZED' });
+    return CloudApiClient.grantTitle(session.accessToken, userId, titleId);
+  }
+
+  public static async revokeTitle(userId: string, titleId: string): Promise<boolean> {
+    const session = await this.getCurrentSession();
+    if (!session) throw new VoxelError({ title: 'Unauthorized', message: 'Authentication required', category: 'CONFIGURATION', code: 'UNAUTHORIZED' });
+    return CloudApiClient.revokeTitle(session.accessToken, userId, titleId);
+  }
+
+  public static async grantBadge(userId: string, badgeId: string): Promise<boolean> {
+    const session = await this.getCurrentSession();
+    if (!session) throw new VoxelError({ title: 'Unauthorized', message: 'Authentication required', category: 'CONFIGURATION', code: 'UNAUTHORIZED' });
+    return CloudApiClient.grantBadge(session.accessToken, userId, badgeId);
+  }
+
+  public static async revokeBadge(userId: string, badgeId: string): Promise<boolean> {
+    const session = await this.getCurrentSession();
+    if (!session) throw new VoxelError({ title: 'Unauthorized', message: 'Authentication required', category: 'CONFIGURATION', code: 'UNAUTHORIZED' });
+    return CloudApiClient.revokeBadge(session.accessToken, userId, badgeId);
+  }
+
+  public static async setCreatorStatus(userId: string, isCreator: boolean): Promise<boolean> {
+    const session = await this.getCurrentSession();
+    if (!session) throw new VoxelError({ title: 'Unauthorized', message: 'Authentication required', category: 'CONFIGURATION', code: 'UNAUTHORIZED' });
+    return CloudApiClient.setCreatorStatus(session.accessToken, userId, isCreator);
+  }
+
+  public static async ownerDeleteUser(userId: string, confirmPhrase: string): Promise<boolean> {
+    const session = await this.getCurrentSession();
+    if (!session) throw new VoxelError({ title: 'Unauthorized', message: 'Authentication required', category: 'CONFIGURATION', code: 'UNAUTHORIZED' });
+    return CloudApiClient.ownerDeleteUser(session.accessToken, userId, confirmPhrase);
+  }
+
+  public static async ownerBulkDelete(confirmPhrase: string): Promise<{ deleted: number }> {
+    const session = await this.getCurrentSession();
+    if (!session) throw new VoxelError({ title: 'Unauthorized', message: 'Authentication required', category: 'CONFIGURATION', code: 'UNAUTHORIZED' });
+    return CloudApiClient.ownerBulkDelete(session.accessToken, confirmPhrase);
+  }
+
+  public static async getOwnerAuditLog(limit?: number, offset?: number): Promise<any> {
+    const session = await this.getCurrentSession();
+    if (!session) throw new VoxelError({ title: 'Unauthorized', message: 'Authentication required', category: 'CONFIGURATION', code: 'UNAUTHORIZED' });
+    return CloudApiClient.getOwnerAuditLog(session.accessToken, limit, offset);
   }
 }

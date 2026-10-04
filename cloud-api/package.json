@@ -2,6 +2,7 @@
   "name": "@voxelplus/cloud-api",
   "version": "1.0.0",
   "description": "Voxel+ Cloud API Trusted Server-Side Microservice",
+  "type": "module",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",

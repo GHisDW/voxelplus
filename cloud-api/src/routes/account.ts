@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { getPublicSupabaseClient, getAdminSupabaseClient, getUserSupabaseClient } from '../supabase.js';
 import { authMiddleware, CloudApiEnv } from '../auth.js';
-import { logAuditEventServer } from '../audit.js';
+import { logAuditEventServer, checkIpCreationLimit } from '../audit.js';
 
 export const accountRouter = new Hono<CloudApiEnv>();
 
@@ -14,10 +14,44 @@ accountRouter.post('/signup', async (c) => {
     return c.json({ error: 'Username and password are required.' }, 400);
   }
 
+  // Username format validation
+  if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
+    return c.json({ error: 'Username must be 3-20 characters, letters, numbers, or underscores only.' }, 400);
+  }
+
+  if (typeof password !== 'string' || password.length < 6) {
+    return c.json({ error: 'Password must be at least 6 characters.' }, 400);
+  }
+
+  // TenantScale: IP-based account creation rate limit (max 5 per hour per IP)
+  const clientIp =
+    c.req.header('x-forwarded-for') ||
+    c.req.header('cf-connecting-ip') ||
+    c.req.header('x-real-ip') ||
+    '127.0.0.1';
+  const ipGuard = checkIpCreationLimit(clientIp);
+  if (ipGuard.blocked) {
+    return c.json({
+      error: 'Too many account creation attempts from this IP address. Please try again later.',
+      code: 'IP_RATE_LIMIT_EXCEEDED'
+    }, 429);
+  }
+
   const internalEmail = `${username.trim().toLowerCase()}@voxel.internal`;
   const supabase = getPublicSupabaseClient();
   if (!supabase) {
     return c.json({ error: 'Cloud service unconfigured.' }, 503);
+  }
+
+  // Check username uniqueness before signup
+  const { data: existingUser } = await supabase
+    .from('voxel_users')
+    .select('username')
+    .ilike('username', username.trim())
+    .maybeSingle();
+
+  if (existingUser) {
+    return c.json({ error: `Username "${username}" is already taken. Please choose a different username.` }, 409);
   }
 
   // 1. Sign up user via Supabase Auth

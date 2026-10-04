@@ -38,6 +38,35 @@ const api = {
   savePackToAccount: (pack: any) => ipcRenderer.invoke('cloud:savePack', pack),
   saveSkinToAccount: (skin: any) => ipcRenderer.invoke('cloud:saveSkin', skin),
 
+  // Cosmetics
+  listCosmeticsCatalog: () => ipcRenderer.invoke('cosmetics:catalog'),
+  getUserCosmetics: () => ipcRenderer.invoke('cosmetics:getUser'),
+  selectCosmetic: (cosmeticId: string | null) => ipcRenderer.invoke('cosmetics:select', cosmeticId),
+
+  // Achievements
+  listAchievementsCatalog: () => ipcRenderer.invoke('achievements:catalog'),
+  getUserAchievements: () => ipcRenderer.invoke('achievements:getUser'),
+  reportAchievementEvent: (eventType: string, metadata?: any) => ipcRenderer.invoke('achievements:event', eventType, metadata),
+
+  // Avatar
+  uploadAvatar: (buffer: ArrayBuffer | Uint8Array, fileName: string, mimeType: string) =>
+    ipcRenderer.invoke('avatar:upload', buffer, fileName, mimeType),
+  deleteAvatar: () => ipcRenderer.invoke('avatar:delete'),
+
+  // Owner Control Panel
+  checkOwnerStatus: () => ipcRenderer.invoke('owner:check'),
+  getOwnerUsers: (query?: string, limit?: number, offset?: number) =>
+    ipcRenderer.invoke('owner:getUsers', query, limit, offset),
+  getOwnerUserDetails: (userId: string) => ipcRenderer.invoke('owner:getUserDetails', userId),
+  grantTitle: (userId: string, titleId: string) => ipcRenderer.invoke('owner:grantTitle', userId, titleId),
+  revokeTitle: (userId: string, titleId: string) => ipcRenderer.invoke('owner:revokeTitle', userId, titleId),
+  grantBadge: (userId: string, badgeId: string) => ipcRenderer.invoke('owner:grantBadge', userId, badgeId),
+  revokeBadge: (userId: string, badgeId: string) => ipcRenderer.invoke('owner:revokeBadge', userId, badgeId),
+  setCreatorStatus: (userId: string, isCreator: boolean) => ipcRenderer.invoke('owner:setCreator', userId, isCreator),
+  ownerDeleteUser: (userId: string, confirmPhrase: string) => ipcRenderer.invoke('owner:deleteUser', userId, confirmPhrase),
+  ownerBulkDelete: (confirmPhrase: string) => ipcRenderer.invoke('owner:bulkDelete', confirmPhrase),
+  getOwnerAuditLog: (limit?: number, offset?: number) => ipcRenderer.invoke('owner:getAuditLog', limit, offset),
+
   // Settings
   getAppSettings: (): Promise<AppSettings> => ipcRenderer.invoke('settings:get'),
   setAppSettings: (settings: Partial<AppSettings>): Promise<AppSettings> => ipcRenderer.invoke('settings:set', settings),

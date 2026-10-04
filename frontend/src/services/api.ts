@@ -44,6 +44,35 @@ export const api = {
   savePackToAccount: (pack: any): Promise<any> => getApi().savePackToAccount(pack),
   saveSkinToAccount: (skin: any): Promise<any> => getApi().saveSkinToAccount(skin),
 
+  // Cosmetics
+  listCosmeticsCatalog: (): Promise<any[]> => getApi().listCosmeticsCatalog(),
+  getUserCosmetics: (): Promise<any[]> => getApi().getUserCosmetics(),
+  selectCosmetic: (cosmeticId: string | null): Promise<boolean> => getApi().selectCosmetic(cosmeticId),
+
+  // Achievements
+  listAchievementsCatalog: (): Promise<any[]> => getApi().listAchievementsCatalog(),
+  getUserAchievements: (): Promise<any[]> => getApi().getUserAchievements(),
+  reportAchievementEvent: (eventType: string, metadata?: any): Promise<any> => getApi().reportAchievementEvent(eventType, metadata),
+
+  // Avatar
+  uploadAvatar: (buffer: ArrayBuffer | Uint8Array, fileName: string, mimeType: string): Promise<{ avatarUrl: string }> =>
+    getApi().uploadAvatar(buffer, fileName, mimeType),
+  deleteAvatar: (): Promise<boolean> => getApi().deleteAvatar(),
+
+  // Owner Control Panel
+  checkOwnerStatus: (): Promise<{ isOwner: boolean; role: string | null }> => getApi().checkOwnerStatus(),
+  getOwnerUsers: (query?: string, limit?: number, offset?: number): Promise<any> =>
+    getApi().getOwnerUsers(query, limit, offset),
+  getOwnerUserDetails: (userId: string): Promise<any> => getApi().getOwnerUserDetails(userId),
+  grantTitle: (userId: string, titleId: string): Promise<boolean> => getApi().grantTitle(userId, titleId),
+  revokeTitle: (userId: string, titleId: string): Promise<boolean> => getApi().revokeTitle(userId, titleId),
+  grantBadge: (userId: string, badgeId: string): Promise<boolean> => getApi().grantBadge(userId, badgeId),
+  revokeBadge: (userId: string, badgeId: string): Promise<boolean> => getApi().revokeBadge(userId, badgeId),
+  setCreatorStatus: (userId: string, isCreator: boolean): Promise<boolean> => getApi().setCreatorStatus(userId, isCreator),
+  ownerDeleteUser: (userId: string, confirmPhrase: string): Promise<boolean> => getApi().ownerDeleteUser(userId, confirmPhrase),
+  ownerBulkDelete: (confirmPhrase: string): Promise<{ deleted: number }> => getApi().ownerBulkDelete(confirmPhrase),
+  getOwnerAuditLog: (limit?: number, offset?: number): Promise<any> => getApi().getOwnerAuditLog(limit, offset),
+
   // Settings
   getAppSettings: (): Promise<AppSettings> => getApi().getAppSettings(),
   setAppSettings: (settings: Partial<AppSettings>): Promise<AppSettings> => getApi().setAppSettings(settings),

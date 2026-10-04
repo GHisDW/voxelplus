@@ -97,34 +97,54 @@ export class AccountStore {
     this.saveData(data);
   }
 
+  private static inMemorySession: AccountSession | null = null;
+
   public static getActiveSession(): AccountSession | null {
+    if (this.inMemorySession) {
+      return this.inMemorySession;
+    }
+
     const data = this.loadData();
     if (!data.cachedProfile) return null;
 
     let accessToken = '';
     let refreshToken = '';
 
-    if (data.encryptedSessionTokens && safeStorage && safeStorage.isEncryptionAvailable()) {
-      try {
-        const decrypted = safeStorage.decryptString(Buffer.from(data.encryptedSessionTokens, 'base64'));
-        const tokens = JSON.parse(decrypted);
-        accessToken = tokens.accessToken || '';
-        refreshToken = tokens.refreshToken || '';
-      } catch (e) {
-        console.warn('[AccountStore] Failed to decrypt session tokens via safeStorage:', e);
+    if (data.encryptedSessionTokens) {
+      if (safeStorage && safeStorage.isEncryptionAvailable()) {
+        try {
+          const decrypted = safeStorage.decryptString(Buffer.from(data.encryptedSessionTokens, 'base64'));
+          const tokens = JSON.parse(decrypted);
+          accessToken = tokens.accessToken || '';
+          refreshToken = tokens.refreshToken || '';
+        } catch (e) {
+          console.warn('[AccountStore] Failed to decrypt session tokens via safeStorage:', e);
+        }
+      } else if (data.encryptedSessionTokens.startsWith('plain:')) {
+        try {
+          const raw = Buffer.from(data.encryptedSessionTokens.slice(6), 'base64').toString('utf-8');
+          const tokens = JSON.parse(raw);
+          accessToken = tokens.accessToken || '';
+          refreshToken = tokens.refreshToken || '';
+        } catch (e) {
+          console.warn('[AccountStore] Failed to decode fallback session tokens:', e);
+        }
       }
     }
 
     if (!accessToken) return null;
 
-    return {
+    const session: AccountSession = {
       accessToken,
       refreshToken,
       user: data.cachedProfile
     };
+    this.inMemorySession = session;
+    return session;
   }
 
   public static setActiveSession(session: AccountSession | null): void {
+    this.inMemorySession = session;
     const data = this.loadData();
     if (!session) {
       data.cachedProfile = null;
@@ -142,18 +162,19 @@ export class AccountStore {
         const encryptedBuf = safeStorage.encryptString(serialized);
         data.encryptedSessionTokens = encryptedBuf.toString('base64');
       } catch (e) {
-        console.warn('[AccountStore] safeStorage encryption error, tokens not persisted:', e);
-        data.encryptedSessionTokens = null;
+        console.warn('[AccountStore] safeStorage encryption error, falling back:', e);
+        data.encryptedSessionTokens = 'plain:' + Buffer.from(serialized).toString('base64');
       }
     } else {
-      console.warn('[AccountStore] safeStorage encryption unavailable, session tokens not persisted in plaintext.');
-      data.encryptedSessionTokens = null;
+      // Fallback base64-encoded storage when safeStorage is unavailable
+      data.encryptedSessionTokens = 'plain:' + Buffer.from(serialized).toString('base64');
     }
 
     this.saveData(data);
   }
 
   public static clearUserData(userId: string): void {
+    this.inMemorySession = null;
     const data = this.loadData();
     if (data.cachedProfile && data.cachedProfile.id === userId) {
       data.cachedProfile = null;

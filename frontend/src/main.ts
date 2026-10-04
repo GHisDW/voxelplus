@@ -2,6 +2,7 @@ import { PageId, Sidebar } from './components/Sidebar';
 import { Header, HeaderFilters } from './components/Header';
 import { InstancesPage } from './pages/InstancesPage';
 import { ContentPage } from './pages/ContentPage';
+import { ShopPage } from './pages/ShopPage';
 import { SkinsPage } from './pages/SkinsPage';
 import { LogsPage } from './pages/LogsPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -9,6 +10,7 @@ import { OnboardingPage } from './pages/OnboardingPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { DirectoryPage } from './pages/DirectoryPage';
 import { LibraryPage } from './pages/LibraryPage';
+import { OwnerPage } from './pages/OwnerPage';
 import { CreateInstanceModal } from './components/CreateInstanceModal';
 import { ThemeService } from './services/themeService';
 import { api } from './services/api';
@@ -20,13 +22,14 @@ class VoxelApp {
   private sidebar!: Sidebar;
   private header!: Header;
   private instancesPage!: InstancesPage;
-  private contentPage!: ContentPage;
+  private shopPage!: ShopPage;
   private skinsPage!: SkinsPage;
   private logsPage!: LogsPage;
   private settingsPage!: SettingsPage;
   private profilePage!: ProfilePage;
   private directoryPage!: DirectoryPage;
   private libraryPage!: LibraryPage;
+  private ownerPage!: OwnerPage;
 
   public async init(): Promise<void> {
     await ThemeService.initialize();
@@ -66,8 +69,8 @@ class VoxelApp {
 
     // Initialize pages
     this.instancesPage = new InstancesPage({
-      onOpenModrinthForInstance: (inst: InstanceMetadata) => {
-        this.contentPage = new ContentPage(inst);
+      onOpenModrinthForInstance: (_inst: InstanceMetadata) => {
+        this.shopPage = new ShopPage();
         this.navigateTo('shop');
       },
       onViewLogs: (instanceId: string) => {
@@ -75,7 +78,7 @@ class VoxelApp {
         this.navigateTo('logs');
       }
     });
-    this.contentPage = new ContentPage();
+    this.shopPage = new ShopPage();
     this.skinsPage = new SkinsPage();
     this.logsPage = new LogsPage();
     this.settingsPage = new SettingsPage({
@@ -86,6 +89,7 @@ class VoxelApp {
     });
     this.directoryPage = new DirectoryPage();
     this.libraryPage = new LibraryPage();
+    this.ownerPage = new OwnerPage();
 
     // Initialize layout
     this.sidebar = new Sidebar({
@@ -145,13 +149,15 @@ class VoxelApp {
     if (this.activePage === 'instances') {
       pageContainer.appendChild(await this.instancesPage.render());
     } else if (this.activePage === 'shop') {
-      pageContainer.appendChild(await this.contentPage.render());
+      pageContainer.appendChild(await this.shopPage.render());
     } else if (this.activePage === 'library') {
       pageContainer.appendChild(await this.libraryPage.render());
     } else if (this.activePage === 'directory') {
       pageContainer.appendChild(await this.directoryPage.render());
     } else if (this.activePage === 'profile') {
       pageContainer.appendChild(await this.profilePage.render());
+    } else if (this.activePage === 'owner') {
+      pageContainer.appendChild(await this.ownerPage.render());
     } else if (this.activePage === 'logs') {
       pageContainer.appendChild(await this.logsPage.render());
     } else if (this.activePage === 'settings') {

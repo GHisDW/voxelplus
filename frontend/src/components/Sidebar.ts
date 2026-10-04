@@ -4,6 +4,7 @@ export type PageId =
   | 'shop'
   | 'directory'
   | 'profile'
+  | 'owner'
   | 'logs'
   | 'settings';
 
@@ -73,6 +74,11 @@ export class Sidebar {
         <button class="nav-item ${this.activePage === 'profile' ? 'active' : ''}" data-page="profile" style="${this.navItemStyle(this.activePage === 'profile')}">
           <span style="font-size: 1.1rem;">👤</span>
           <span>Profile</span>
+        </button>
+
+        <button class="nav-item ${this.activePage === 'owner' ? 'active' : ''}" data-page="owner" style="${this.navItemStyle(this.activePage === 'owner')}">
+          <span style="font-size: 1.1rem;">⚡</span>
+          <span>Owner Panel</span>
         </button>
 
         <button class="nav-item ${this.activePage === 'logs' ? 'active' : ''}" data-page="logs" style="${this.navItemStyle(this.activePage === 'logs')}">
