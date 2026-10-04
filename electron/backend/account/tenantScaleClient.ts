@@ -1,6 +1,6 @@
 import { TenantScale } from '@tenantscale/sdk';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { CloudSyncPayload, PublicUserProfile, UserLibraryItem, UserPackItem, UserSkinItem, UserProfile } from './accountTypes';
+import { CloudSyncPayload, PublicUserProfile, UserLibraryItem, UserProfile } from './accountTypes';
 
 export interface ValidatedTenantContext {
   user_id: string;
@@ -186,7 +186,10 @@ export class TenantScaleClient {
     const accessToken = data.session?.access_token || '';
 
     if (accessToken) {
-      await this.validateSession(accessToken);
+      const tenantContext = await this.validateSession(accessToken);
+      if (!tenantContext) {
+        throw new Error('TenantScale session validation failed during registration. Valid tenant context is required.');
+      }
     }
 
     await this.logAuditEvent({
@@ -202,7 +205,7 @@ export class TenantScaleClient {
 
   /**
    * Authenticates an existing Voxel+ account against Supabase Auth engine.
-   * Validates resulting session token via TenantScale SDK.
+   * Validates resulting session token via TenantScale SDK (FAILS CLOSED if TenantScale context is invalid).
    */
   public static async signInWithCloud(
     username: string,
@@ -223,8 +226,12 @@ export class TenantScaleClient {
     const userId = data.user.id;
     const accessToken = data.session.access_token;
 
+    // Validate TenantScale session context - FAILS CLOSED if invalid
     const tenantContext = await this.validateSession(accessToken);
-    const tenantId = tenantContext?.tenant_id || null;
+    if (!tenantContext) {
+      throw new Error('TenantScale session validation failed. Access denied.');
+    }
+    const tenantId = tenantContext.tenant_id;
 
     const { data: profileRow, error: fetchErr } = await this.supabase
       .from('voxel_users')
@@ -439,12 +446,12 @@ export class TenantScaleClient {
     if (error || !users) return null;
 
     const userIds = users.map((u) => u.id);
-    let libraryItems: Array<{ user_id: string; type: string }> = [];
+    let libraryItems: Array<{ user_id: string; type: string; metadata: any }> = [];
 
     if (userIds.length > 0) {
       const { data: items } = await this.supabase
         .from('voxel_library')
-        .select('user_id, type')
+        .select('user_id, type, metadata')
         .in('user_id', userIds);
       if (items) {
         libraryItems = items;
@@ -455,8 +462,10 @@ export class TenantScaleClient {
     const skinCounts: Record<string, number> = {};
 
     for (const item of libraryItems) {
-      if (item.type === 'pack') packCounts[item.user_id] = (packCounts[item.user_id] || 0) + 1;
-      if (item.type === 'skin') skinCounts[item.user_id] = (skinCounts[item.user_id] || 0) + 1;
+      if (item.metadata?.isPublic === true) {
+        if (item.type === 'pack') packCounts[item.user_id] = (packCounts[item.user_id] || 0) + 1;
+        if (item.type === 'skin') skinCounts[item.user_id] = (skinCounts[item.user_id] || 0) + 1;
+      }
     }
 
     return users.map((u) => {
@@ -490,7 +499,6 @@ export class TenantScaleClient {
     const { error: err2 } = await this.supabase.from('voxel_library').delete().eq('user_id', userId);
     const { error: err3 } = await this.supabase.from('voxel_users').delete().eq('id', userId);
 
-    // Perform auth user deletion call (succeeds via database ON DELETE CASCADE or server API)
     await this.signOutCloud();
 
     if (err1 || err2 || err3) {
