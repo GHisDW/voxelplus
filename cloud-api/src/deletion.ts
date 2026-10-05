@@ -156,13 +156,13 @@ export interface DeletionQueueRow {
 
 /**
  * Finds the most recent deletion-queue row for a user (any status).
- * Returns null when the table/query is unavailable — callers treat that as
- * "no resumable state" and continue without durable tracking.
+ * Returns { error } when the queue cannot be read — a destructive deletion
+ * must NOT proceed without verifiable tracking state.
  */
 export async function findLatestQueueRow(
   adminSupabase: SupabaseClient,
   userId: string
-): Promise<DeletionQueueRow | null> {
+): Promise<{ row: DeletionQueueRow | null; error: string | null }> {
   const { data, error } = await adminSupabase
     .from('voxel_account_deletion_queue')
     .select('id, status')
@@ -170,31 +170,107 @@ export async function findLatestQueueRow(
     .order('requested_at', { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (error || !data) return null;
-  return data as DeletionQueueRow;
+  if (error) return { row: null, error: error.message };
+  return { row: (data as DeletionQueueRow | null) ?? null, error: null };
 }
 
+/**
+ * Persists queue state: updates an existing row by id, or inserts a new
+ * job row when rowId is undefined. Returns { error } when the write failed —
+ * deletion progress is only resumable when this returns a row.
+ */
 export async function updateQueueRow(
   adminSupabase: SupabaseClient,
   rowId: string | undefined,
   userId: string,
   status: string,
   completedAt?: string
-): Promise<DeletionQueueRow | null> {
+): Promise<{ row: DeletionQueueRow | null; error: string | null }> {
   if (rowId) {
     const update: Record<string, any> = { status };
     if (completedAt) update.completed_at = completedAt;
-    await adminSupabase
+    const { error } = await adminSupabase
       .from('voxel_account_deletion_queue')
       .update(update)
       .eq('id', rowId);
-    return { id: rowId, status };
+    if (error) return { row: null, error: error.message };
+    return { row: { id: rowId, status }, error: null };
   }
   const { data, error } = await adminSupabase
     .from('voxel_account_deletion_queue')
     .insert({ user_id: userId, status })
     .select('id, status')
     .single();
-  if (error || !data) return null;
-  return data as DeletionQueueRow;
+  if (error) return { row: null, error: error.message };
+  return { row: (data as DeletionQueueRow | null) ?? null, error: null };
+}
+
+/**
+ * Outcome of a fully queue-tracked deletion attempt. Routes map these to
+ * responses; nothing is ever reported as deleted unless the queue state
+ * confirms completion.
+ */
+export type TrackedDeletionOutcome =
+  | { kind: 'success' }
+  | { kind: 'already_complete' }
+  | { kind: 'incomplete'; step: DeletionStep; error: string }
+  | { kind: 'queue_unavailable'; error: string }
+  | { kind: 'unpersisted'; step?: DeletionStep; error: string };
+
+/**
+ * Queue-tracked account deletion. The pipeline only runs when durable
+ * tracking state exists: an unreadable queue or an unwritable job row
+ * aborts BEFORE any destructive step. A status update that fails is
+ * surfaced ('unpersisted') and never reported as a completed deletion.
+ * Retries resume from the persisted step (idempotent).
+ */
+export async function runTrackedDeletion(
+  adminSupabase: SupabaseClient,
+  userId: string
+): Promise<TrackedDeletionOutcome> {
+  const found = await findLatestQueueRow(adminSupabase, userId);
+  if (found.error) {
+    return { kind: 'queue_unavailable', error: `Deletion state unreadable: ${found.error}` };
+  }
+
+  let row = found.row;
+  if (row?.status === 'complete') {
+    return { kind: 'already_complete' };
+  }
+  if (!row) {
+    const created = await updateQueueRow(adminSupabase, undefined, userId, 'processing');
+    if (created.error || !created.row) {
+      return {
+        kind: 'queue_unavailable',
+        error: `Deletion state could not be persisted: ${created.error || 'insert returned no row'}`
+      };
+    }
+    row = created.row;
+  }
+
+  const completed = completedStepsForStatus(row.status);
+  const result = await performAccountDeletion(adminSupabase, userId, completed);
+
+  if (!result.success) {
+    const upd = await updateQueueRow(adminSupabase, row.id, userId, failedStatusForStep(result.step));
+    if (upd.error) {
+      return {
+        kind: 'unpersisted',
+        step: result.step,
+        error: `${result.error}; additionally, the deletion state update failed: ${upd.error}`
+      };
+    }
+    return { kind: 'incomplete', step: result.step, error: result.error };
+  }
+
+  const upd = await updateQueueRow(adminSupabase, row.id, userId, 'complete', new Date().toISOString());
+  if (upd.error) {
+    // Deletion steps ran but the completion state was not persisted —
+    // report honestly instead of claiming a tracked, completed deletion.
+    return {
+      kind: 'unpersisted',
+      error: `Deletion steps completed but the completion state could not be persisted: ${upd.error}`
+    };
+  }
+  return { kind: 'success' };
 }

@@ -2,15 +2,8 @@ import { Hono } from 'hono';
 import { getPublicSupabaseClient, getAdminSupabaseClient, getUserSupabaseClient } from '../supabase.js';
 import { authMiddleware, CloudApiEnv } from '../auth.js';
 import { logAuditEventServer, checkIpCreationLimit } from '../audit.js';
-import {
-  createVoxelProfile,
-  compensateOrphanedSignup,
-  performAccountDeletion,
-  findLatestQueueRow,
-  updateQueueRow,
-  completedStepsForStatus,
-  failedStatusForStep
-} from '../deletion.js';
+import { runTrackedDeletion } from '../deletion.js';
+import { performSignup } from '../signup.js';
 
 export const accountRouter = new Hono<CloudApiEnv>();
 
@@ -52,6 +45,14 @@ accountRouter.post('/signup', async (c) => {
     return c.json({ error: 'Cloud service unconfigured.' }, 503);
   }
 
+  // The service-role client is REQUIRED before any Auth user is created:
+  // it is needed for both the voxel_users profile row and orphan
+  // compensation. Refusing the signup up front guarantees no Auth identity
+  // can ever be created that we cannot complete or roll back — there is no
+  // code path where "auth signup succeeded + admin client unavailable"
+  // leaves an orphaned account.
+  const adminSupabase = getAdminSupabaseClient();
+
   // Check username uniqueness before signup
   const { data: existingUser } = await supabase
     .from('voxel_users')
@@ -63,80 +64,45 @@ accountRouter.post('/signup', async (c) => {
     return c.json({ error: `Username "${username}" is already taken. Please choose a different username.` }, 409);
   }
 
-  // 1. Sign up user via Supabase Auth
-  const { data, error } = await supabase.auth.signUp({
-    email: internalEmail,
+  // 1–3. Auth signup → profile creation (service-role) → session. See
+  // performSignup for the ordering guarantees — an Auth identity is only
+  // ever created when the admin client needed to complete or roll back is
+  // already available.
+  const outcome = await performSignup(supabase, adminSupabase, {
+    internalEmail,
     password,
-    options: {
-      data: { username, avatar, bio, isPublic }
-    }
-  });
-
-  if (error || !data.user) {
-    return c.json({ error: error?.message || 'Cloud signup failed.' }, 400);
-  }
-
-  let sessionData = data.session;
-
-  // 2. If email confirmation is enabled on Supabase project, sign in immediately with admin privileges or auto-login
-  if (!sessionData) {
-    const adminSupabase = getAdminSupabaseClient();
-    if (adminSupabase) {
-      await adminSupabase.auth.admin.updateUserById(data.user.id, { email_confirm: true });
-    }
-    const signInRes = await supabase.auth.signInWithPassword({
-      email: internalEmail,
-      password
-    });
-    sessionData = signInRes.data.session;
-  }
-
-  if (!sessionData || !sessionData.access_token) {
-    return c.json({
-      error: 'Account created, but an authenticated session could not be established. Please log in with your credentials.',
-      code: 'SESSION_ESTABLISHMENT_FAILED'
-    }, 400);
-  }
-
-  const userId = data.user.id;
-  const now = new Date().toISOString();
-
-  // 3. Create voxel_users profile via the service-role client. If this
-  //    fails after Auth signup succeeded, the Auth identity must not be
-  //    left orphaned — compensate by deleting it so the username/email can
-  //    be retried cleanly.
-  const adminForProfile = getAdminSupabaseClient();
-  if (!adminForProfile) {
-    return c.json({ error: 'Cloud service unconfigured.' }, 503);
-  }
-  const { error: profileError } = await createVoxelProfile(adminForProfile, {
-    id: userId,
     username,
-    avatar: avatar || 'avatar_steve',
-    bio: bio || '',
-    is_public: isPublic !== undefined ? isPublic : true,
-    updated_at: now,
-    created_at: now
+    avatar,
+    bio,
+    isPublic
   });
 
-  if (profileError) {
-    console.error(`[CloudAPI Signup] Profile creation failed for ${userId}:`, profileError);
-    const cleanup = await compensateOrphanedSignup(adminForProfile, userId);
-    if (!cleanup.removed) {
-      // Compensation itself failed — report honestly; the auth identity is
-      // still present and visible to admins for manual cleanup.
-      console.error(`[CloudAPI Signup] Orphan cleanup FAILED for ${userId}:`, cleanup.error);
+  switch (outcome.kind) {
+    case 'admin_unavailable':
+      return c.json({ error: 'Cloud service unconfigured.' }, 503);
+    case 'signup_failed':
+      return c.json({ error: outcome.error }, 400);
+    case 'orphaned':
+      console.error(`[CloudAPI Signup] Orphan cleanup FAILED for ${outcome.userId}:`, outcome.error);
       return c.json({
-        error: `Account creation failed and cleanup of the orphaned account also failed (${cleanup.error}). Please contact support.`,
+        error: `Account creation failed and cleanup of the orphaned account also failed (${outcome.error}). Please contact support.`,
         code: 'ORPHANED_ACCOUNT',
-        orphanedUserId: userId
+        orphanedUserId: outcome.userId
       }, 500);
-    }
-    return c.json({
-      error: `Account creation failed (${profileError}). The incomplete account was rolled back — please try signing up again.`,
-      code: 'SIGNUP_ROLLED_BACK'
-    }, 500);
+    case 'rolled_back':
+      return c.json({
+        error: `Account creation failed (${outcome.error}). The incomplete account was rolled back — please try signing up again.`,
+        code: 'SIGNUP_ROLLED_BACK'
+      }, 500);
+    case 'session_failed':
+      return c.json({
+        error: 'Account created, but an authenticated session could not be established. Please log in with your credentials.',
+        code: 'SESSION_ESTABLISHMENT_FAILED'
+      }, 400);
   }
+
+  const { userId } = outcome;
+  const now = outcome.createdAt;
 
   await logAuditEventServer({
     actor_id: userId,
@@ -148,8 +114,8 @@ accountRouter.post('/signup', async (c) => {
 
   return c.json({
     userId,
-    accessToken: sessionData.access_token,
-    refreshToken: sessionData.refresh_token,
+    accessToken: outcome.accessToken,
+    refreshToken: outcome.refreshToken,
     profile: {
       id: userId,
       username,
@@ -263,19 +229,38 @@ accountRouter.delete('/', authMiddleware, async (c) => {
     return c.json({ error: 'Privileged admin client unconfigured.' }, 503);
   }
 
-  // Resume an in-progress deletion for this user when one exists; otherwise
-  // start a new queue job. Progress is recorded per step so a retry is safe
-  // and a repeat request after completion is idempotent.
-  let queueRow = await findLatestQueueRow(adminSupabase, userId);
-  if (!queueRow || queueRow.status === 'complete') {
-    if (queueRow?.status === 'complete') {
-      // Already fully deleted — verify nothing remains before reporting.
-      return c.json({ success: true, userId, alreadyDeleted: true });
-    }
-    queueRow = await updateQueueRow(adminSupabase, undefined, userId, 'processing');
-  }
-
+  // Tracked, resumable deletion. If durable deletion state cannot be read
+  // or written, no destructive step runs — the request fails closed.
   try {
+    const outcome = await runTrackedDeletion(adminSupabase, userId);
+
+    switch (outcome.kind) {
+      case 'already_complete':
+        return c.json({ success: true, userId, alreadyDeleted: true });
+      case 'queue_unavailable':
+        return c.json({ error: outcome.error, code: 'DELETION_STATE_UNAVAILABLE' }, 503);
+      case 'unpersisted':
+        return c.json({
+          error: outcome.error,
+          code: 'DELETION_STATE_UNPERSISTED',
+          retryable: true
+        }, 500);
+      case 'incomplete':
+        await logAuditEventServer({
+          actor_id: userId,
+          actor_type: 'user',
+          action: 'account.delete',
+          resource: 'voxel_users',
+          details: { userId, failedStep: outcome.step }
+        });
+        return c.json({
+          error: `Account deletion incomplete at step "${outcome.step}": ${outcome.error}. The request can be retried.`,
+          code: 'DELETION_INCOMPLETE',
+          failedStep: outcome.step,
+          retryable: true
+        }, 500);
+    }
+
     await logAuditEventServer({
       actor_id: userId,
       actor_type: 'user',
@@ -284,31 +269,8 @@ accountRouter.delete('/', authMiddleware, async (c) => {
       details: { userId }
     });
 
-    const completed = completedStepsForStatus(queueRow?.status);
-    const result = await performAccountDeletion(adminSupabase, userId, completed);
-
-    if (!result.success) {
-      // Record the exact failing step so cleanup is retryable/resumable.
-      if (queueRow?.id) {
-        await updateQueueRow(adminSupabase, queueRow.id, userId, failedStatusForStep(result.step));
-      }
-      return c.json({
-        error: `Account deletion incomplete at step "${result.step}": ${result.error}. The request can be retried.`,
-        code: 'DELETION_INCOMPLETE',
-        failedStep: result.step,
-        retryable: true
-      }, 500);
-    }
-
-    if (queueRow?.id) {
-      await updateQueueRow(adminSupabase, queueRow.id, userId, 'complete', new Date().toISOString());
-    }
-
     return c.json({ success: true, userId });
   } catch (err: any) {
-    if (queueRow?.id) {
-      await updateQueueRow(adminSupabase, queueRow.id, userId, 'failed');
-    }
     return c.json({ error: err.message || 'Account deletion failed.' }, 500);
   }
 });

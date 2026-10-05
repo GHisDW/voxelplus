@@ -2,13 +2,7 @@ import { Hono } from 'hono';
 import { authMiddleware, CloudApiEnv } from '../auth.js';
 import { getAdminSupabaseClient } from '../supabase.js';
 import { logAuditEventServer } from '../audit.js';
-import {
-  performAccountDeletion,
-  findLatestQueueRow,
-  updateQueueRow,
-  completedStepsForStatus,
-  failedStatusForStep
-} from '../deletion.js';
+import { runTrackedDeletion } from '../deletion.js';
 
 export const ownerRouter = new Hono<CloudApiEnv>();
 
@@ -326,37 +320,27 @@ ownerRouter.delete('/users/:userId', ownerAuthMiddleware, async (c) => {
     return c.json({ error: 'Only the owner can delete other owner/admin accounts.', code: 'FORBIDDEN' }, 403);
   }
 
-  // Run the resumable deletion pipeline. Progress is persisted to the
-  // deletion queue per step; a retry (same request) resumes at the failed
-  // step and never reports success on a partial deletion.
-  let queueRow = await findLatestQueueRow(adminSupabase, targetId);
-  if (queueRow?.status === 'complete') {
-    return c.json({ success: true, deletedUserId: targetId, alreadyDeleted: true });
-  }
-  if (!queueRow) {
-    queueRow = await updateQueueRow(adminSupabase, undefined, targetId, 'processing');
-  }
+  // Tracked, resumable deletion: no destructive step runs unless queue
+  // state is durable; failures surface with their resume position.
+  const outcome = await runTrackedDeletion(adminSupabase, targetId);
 
-  const result = await performAccountDeletion(
-    adminSupabase,
-    targetId,
-    completedStepsForStatus(queueRow?.status)
-  );
-
-  if (!result.success) {
-    if (queueRow?.id) {
-      await updateQueueRow(adminSupabase, queueRow.id, targetId, failedStatusForStep(result.step));
-    }
+  if (outcome.kind === 'queue_unavailable' || outcome.kind === 'unpersisted') {
     return c.json({
-      error: `Account deletion incomplete at step "${result.step}": ${result.error}. The request can be retried.`,
+      error: outcome.error,
+      code: outcome.kind === 'queue_unavailable' ? 'DELETION_STATE_UNAVAILABLE' : 'DELETION_STATE_UNPERSISTED',
+      retryable: true
+    }, outcome.kind === 'queue_unavailable' ? 503 : 500);
+  }
+  if (outcome.kind === 'incomplete') {
+    return c.json({
+      error: `Account deletion incomplete at step "${outcome.step}": ${outcome.error}. The request can be retried.`,
       code: 'DELETION_INCOMPLETE',
-      failedStep: result.step,
+      failedStep: outcome.step,
       retryable: true
     }, 500);
   }
-
-  if (queueRow?.id) {
-    await updateQueueRow(adminSupabase, queueRow.id, targetId, 'complete', new Date().toISOString());
+  if (outcome.kind === 'already_complete') {
+    return c.json({ success: true, deletedUserId: targetId, alreadyDeleted: true });
   }
 
   // Audit only after the deletion fully succeeded.
@@ -433,38 +417,24 @@ ownerRouter.delete('/bulk', ownerAuthMiddleware, async (c) => {
     details: { count: allUsers.length }
   });
 
-  // Per-account complete deletion: every pipeline step is verified, and a
+  // Per-account tracked deletion: every pipeline step is verified, and a
   // failure records resumable queue state instead of silently skipping the
-  // account's remaining cleanup.
+  // account's remaining cleanup. Accounts whose queue state cannot be
+  // persisted are reported as failed without running destructive steps.
   const deleted: string[] = [];
-  const failed: { id: string; step: string; error: string }[] = [];
+  const failed: { id: string; step?: string; error: string }[] = [];
   for (const u of allUsers) {
-    let queueRow = await findLatestQueueRow(adminSupabase, u.id);
-    if (queueRow?.status === 'complete') {
-      deleted.push(u.id);
-      continue;
-    }
-    if (!queueRow) {
-      queueRow = await updateQueueRow(adminSupabase, undefined, u.id, 'processing');
-    }
+    const outcome = await runTrackedDeletion(adminSupabase, u.id);
 
-    const result = await performAccountDeletion(
-      adminSupabase,
-      u.id,
-      completedStepsForStatus(queueRow?.status)
-    );
-
-    if (result.success) {
-      if (queueRow?.id) {
-        await updateQueueRow(adminSupabase, queueRow.id, u.id, 'complete', new Date().toISOString());
-      }
+    if (outcome.kind === 'success' || outcome.kind === 'already_complete') {
       deleted.push(u.id);
     } else {
-      if (queueRow?.id) {
-        await updateQueueRow(adminSupabase, queueRow.id, u.id, failedStatusForStep(result.step));
-      }
-      console.error('[OwnerPanel] Deletion incomplete for', u.id, 'at step', result.step, ':', result.error);
-      failed.push({ id: u.id, step: result.step, error: result.error });
+      console.error('[OwnerPanel] Deletion incomplete for', u.id, ':', outcome.error);
+      failed.push({
+        id: u.id,
+        step: 'step' in outcome ? outcome.step : outcome.kind,
+        error: outcome.error
+      });
     }
   }
 
