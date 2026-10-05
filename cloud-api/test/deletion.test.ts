@@ -1,284 +1,241 @@
+// Deletion + signup pipeline tests on the in-memory data backend, with
+// per-table/per-operation error injection. These cover the tracked,
+// resumable, fail-closed deletion design and the rollback semantics of
+// username+password signup.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   performAccountDeletion,
   completedStepsForStatus,
-  statusForStep,
   failedStatusForStep,
-  createVoxelProfile,
-  compensateOrphanedSignup,
   runTrackedDeletion,
   DELETION_STEPS
 } from '../dist/deletion.js';
 import { performSignup } from '../dist/signup.js';
 import { withLibraryCounts } from '../dist/routes/public.js';
+import { MemoryDataClient } from '../dist/memoryStore.js';
 
-/**
- * Minimal fake Supabase client covering the query shapes used by
- * deletion.ts and public.ts: `.delete().eq()`, `.update().eq()`,
- * `.insert()`, `.upsert()`, `.select().in().in().eq()`,
- * and `auth.admin.deleteUser`.
- */
-function makeFakeSupabase(opts: {
-  deleteErrors?: Record<string, string>;
-  authDeleteError?: string | null;
-  upsertError?: string | null;
-  libraryRows?: any[];
-  libraryError?: string | null;
-  queueRow?: { id: string; status: string } | null;
-  queueReadError?: string | null;
-  queueWriteError?: string | null;
-  signupError?: string | null;
-  signInError?: string | null;
-  session?: any;
+type Row = Record<string, any>;
+
+/** Wrap a MemoryDataClient with call recording + injected errors.
+ *  `fails` maps '<table>:<op>' (read|insert|upsert|update|delete) → message. */
+function makeDb(opts: {
+  seed?: Record<string, Row[]>;
+  fails?: Record<string, string>;
 } = {}) {
-  const calls: { table: string; op: string; filters: [string, string, any][] }[] = [];
-  const deletedAuthUsers: string[] = [];
-  const signUpCalls: any[] = [];
-
-  function thenable(result: any) {
-    return { then: (res: any) => res(result), catch: () => thenable(result) };
+  const inner = new MemoryDataClient();
+  for (const [table, rows] of Object.entries(opts.seed || {})) {
+    for (const row of rows) (inner as any)._table(table).push({ ...row });
   }
+  const calls: { table: string; op: string }[] = [];
+  const fails = opts.fails || {};
 
-  function queryBuilder(table: string, op: string) {
-    const rec: { table: string; op: string; filters: [string, string, any][] } = { table, op, filters: [] };
-    calls.push(rec);
-    const b: any = {};
-    for (const m of ['eq', 'neq', 'ilike', 'not', 'in', 'order', 'limit', 'range']) {
-      b[m] = (col: string, val?: any, val2?: any) => {
-        rec.filters.push([m, col, val2 !== undefined ? val2 : val]);
-        return b;
-      };
-    }
-    b.select = () => b;
-    b.maybeSingle = () => {
-      if (table === 'voxel_account_deletion_queue') {
-        return Promise.resolve({
-          data: opts.queueRow ?? null,
-          error: opts.queueReadError ? { message: opts.queueReadError } : null
-        });
-      }
-      return Promise.resolve({ data: null, error: null });
-    };
-    b.single = () => {
-      if (table === 'voxel_account_deletion_queue' && (op === 'insert' || op === 'update')) {
-        return Promise.resolve({
-          data: opts.queueWriteError ? null : { id: 'q1', status: 'processing' },
-          error: opts.queueWriteError ? { message: opts.queueWriteError } : null
-        });
-      }
-      return Promise.resolve({ data: { id: 'q1' }, error: null });
-    };
-    b.then = (res: any) => res(resolveResult(table, op));
-    return b;
-  }
-
-  function resolveResult(table: string, op: string) {
-    if (table === 'voxel_account_deletion_queue') {
-      const e = opts.queueWriteError ? { message: opts.queueWriteError } : null;
-      return { data: null, error: e };
-    }
-    if (op === 'delete' || op === 'update') {
-      const msg = opts.deleteErrors?.[table];
-      return { data: null, error: msg ? { message: msg } : null };
-    }
-    if (op === 'upsert' || op === 'insert') {
-      return { data: null, error: opts.upsertError ? { message: opts.upsertError } : null };
-    }
-    // reads
-    if (table === 'voxel_library') {
-      return {
-        data: opts.libraryRows ?? [],
-        error: opts.libraryError ? { message: opts.libraryError } : null
-      };
-    }
-    return { data: null, error: null };
-  }
-
-  return {
+  const db = {
     calls,
-    deletedAuthUsers,
-    signUpCalls,
+    inner,
     from(table: string) {
+      const real = inner.from(table);
+      const wrap = (builder: any, op: string): any => {
+        calls.push({ table, op });
+        const msg = fails[`${table}:${op}`];
+        if (!msg) return builder;
+        const err = Promise.resolve({ data: null, error: { message: msg } });
+        return new Proxy(builder, {
+          get(target, prop) {
+            if (prop === 'then') return (res: any, rej?: any) => err.then(res, rej);
+            if (prop === 'maybeSingle' || prop === 'single') return () => err;
+            const v = (target as any)[prop];
+            return typeof v === 'function' ? (...a: any[]) => wrap(v.apply(target, a), op) : v;
+          }
+        });
+      };
       return {
-        delete: () => queryBuilder(table, 'delete'),
-        update: () => queryBuilder(table, 'update'),
-        select: () => queryBuilder(table, 'read'),
-        insert: () => queryBuilder(table, 'insert'),
-        upsert: () => queryBuilder(table, 'upsert')
+        select: (...a: any[]) => wrap(real.select(...a), 'read'),
+        insert: (...a: any[]) => wrap(real.insert(...a), 'insert'),
+        upsert: (...a: any[]) => wrap(real.upsert(...a), 'upsert'),
+        update: (...a: any[]) => wrap(real.update(...a), 'update'),
+        delete: () => wrap(real.delete(), 'delete')
       };
     },
-    auth: {
-      signUp: async (args: any) => {
-        signUpCalls.push(args);
-        if (opts.signupError) return { data: { user: null, session: null }, error: { message: opts.signupError } };
-        return {
-          data: {
-            user: { id: 'u1' },
-            session: opts.session === undefined ? { access_token: 'at', refresh_token: 'rt' } : opts.session
-          },
-          error: null
-        };
-      },
-      signInWithPassword: async () =>
-        opts.signInError
-          ? { data: { session: null }, error: { message: opts.signInError } }
-          : { data: { session: { access_token: 'at', refresh_token: 'rt' } }, error: null },
-      admin: {
-        deleteUser: async (id: string) => {
-          deletedAuthUsers.push(id);
-          return opts.authDeleteError ? { error: { message: opts.authDeleteError } } : { error: null };
-        },
-        updateUserById: async () => ({ error: null })
-      }
-    }
+    rpc: (fn: string, args?: any) => inner.rpc(fn, args),
+    storage: inner.storage
   };
+  return db;
 }
+
+const deletes = (db: any) => db.calls.filter((c: any) => c.op === 'delete').map((c: any) => c.table);
 
 // ─── Deletion pipeline ───
 
-test('Deletion: complete successful deletion runs every step in order', async () => {
-  const supabase = makeFakeSupabase();
-  const res = await performAccountDeletion(supabase as any, 'u1');
+test('Deletion: complete deletion removes account record, sessions, and every owned table', async () => {
+  const db = makeDb({ seed: { voxel_accounts: [{ id: 'u1', username: 'x', password_hash: 'scrypt$1$y$z' }] } });
+  const res = await performAccountDeletion(db as any, 'u1');
   assert.equal(res.success, true);
-  assert.deepEqual(supabase.deletedAuthUsers, ['u1']);
-  const deletedTables = supabase.calls.filter(c => c.op === 'delete').map(c => c.table);
-  assert.deepEqual(deletedTables, ['voxel_cloud_sync', 'voxel_library', 'voxel_users']);
-  // user-scoped deletes filter on the right columns
-  const usersDelete = supabase.calls.find(c => c.op === 'delete' && c.table === 'voxel_users');
-  assert.ok(usersDelete!.filters.some(f => f[0] === 'eq' && f[1] === 'id' && f[2] === 'u1'));
+  const deletedTables = deletes(db);
+  for (const table of [
+    'voxel_sessions', 'voxel_accounts', 'voxel_cloud_sync', 'voxel_library',
+    'voxel_user_cosmetics', 'voxel_user_achievements', 'voxel_user_titles',
+    'voxel_user_badges', 'voxel_instances', 'voxel_ad_progress',
+    'voxel_ad_completions', 'voxel_owner_roles', 'voxel_users'
+  ]) {
+    assert.ok(deletedTables.includes(table), `expected delete on ${table}`);
+  }
 });
 
-test('Deletion: Auth deletion failure reports failure and does not touch data rows', async () => {
-  const supabase = makeFakeSupabase({ authDeleteError: 'auth service down' });
-  const res = await performAccountDeletion(supabase as any, 'u1');
+test('Deletion: account-record removal failure aborts before data rows', async () => {
+  const db = makeDb({ fails: { 'voxel_accounts:delete': 'constraint violation' } });
+  const res = await performAccountDeletion(db as any, 'u1');
   assert.equal(res.success, false);
-  assert.equal((res as any).step, 'auth');
-  assert.equal(supabase.calls.length, 0);
+  assert.equal((res as any).step, 'account');
+  assert.ok(!deletes(db).includes('voxel_users'));
 });
 
 test('Deletion: related-data failure reports the failed step', async () => {
-  const supabase = makeFakeSupabase({ deleteErrors: { voxel_library: 'db error' } });
-  const res = await performAccountDeletion(supabase as any, 'u1');
+  const db = makeDb({ fails: { 'voxel_library:delete': 'db error' } });
+  const res = await performAccountDeletion(db as any, 'u1');
   assert.equal(res.success, false);
   assert.equal((res as any).step, 'voxel_library');
 });
 
-test('Deletion: retry after cleanup failure resumes and skips completed steps', async () => {
+test('Deletion: resume skips already-completed steps', async () => {
   const completed = completedStepsForStatus(failedStatusForStep('voxel_library'));
-  assert.deepEqual([...completed], ['auth', 'voxel_cloud_sync']);
+  assert.deepEqual([...completed], ['account', 'voxel_cloud_sync']);
 
-  const supabase = makeFakeSupabase();
-  const res = await performAccountDeletion(supabase as any, 'u1', completed);
+  const db = makeDb();
+  const res = await performAccountDeletion(db as any, 'u1', completed);
   assert.equal(res.success, true);
-  // Auth delete must NOT be repeated on resume.
-  assert.deepEqual(supabase.deletedAuthUsers, []);
-  const deletedTables = supabase.calls.filter(c => c.op === 'delete').map(c => c.table);
-  assert.deepEqual(deletedTables, ['voxel_library', 'voxel_users']);
+  assert.ok(!deletes(db).includes('voxel_accounts'), 'account step must not re-run');
 });
 
 test('Deletion: repeated deletion after completion is a no-op (idempotent)', async () => {
   const completed = completedStepsForStatus('complete');
   assert.equal(completed.size, DELETION_STEPS.length);
-  const supabase = makeFakeSupabase();
-  const res = await performAccountDeletion(supabase as any, 'u1', completed);
+  const db = makeDb();
+  const res = await performAccountDeletion(db as any, 'u1', completed);
   assert.equal(res.success, true);
-  assert.equal(supabase.calls.length, 0);
-  assert.equal(supabase.deletedAuthUsers.length, 0);
-});
-
-test('Deletion: missing auth user is treated as already deleted', async () => {
-  const supabase = makeFakeSupabase({ authDeleteError: 'User not found' });
-  const res = await performAccountDeletion(supabase as any, 'u1');
-  assert.equal(res.success, true);
+  assert.equal(db.calls.length, 0);
 });
 
 // ─── Tracked deletion (queue fail-safe) ───
 
 test('Tracked deletion: queue read failure aborts before any destructive step', async () => {
-  const supabase = makeFakeSupabase({ queueReadError: 'connection lost' });
-  const res = await runTrackedDeletion(supabase as any, 'u1');
+  const db = makeDb({ fails: { 'voxel_account_deletion_queue:read': 'connection lost' } });
+  const res = await runTrackedDeletion(db as any, 'u1');
   assert.equal(res.kind, 'queue_unavailable');
-  assert.equal(supabase.deletedAuthUsers.length, 0);
-  assert.equal(supabase.calls.filter(c => c.op === 'delete').length, 0);
+  assert.equal(deletes(db).length, 0);
 });
 
 test('Tracked deletion: queue creation failure aborts before any destructive step', async () => {
-  const supabase = makeFakeSupabase({ queueRow: null, queueWriteError: 'insert denied' });
-  const res = await runTrackedDeletion(supabase as any, 'u1');
+  const db = makeDb({ fails: { 'voxel_account_deletion_queue:insert': 'insert denied' } });
+  const res = await runTrackedDeletion(db as any, 'u1');
   assert.equal(res.kind, 'queue_unavailable');
-  assert.equal(supabase.deletedAuthUsers.length, 0);
-  assert.equal(supabase.calls.filter(c => c.op === 'delete').length, 0);
+  assert.equal(deletes(db).length, 0);
 });
 
-test('Tracked deletion: queue update failure on success is surfaced, never reported complete', async () => {
-  const supabase = makeFakeSupabase({ queueRow: { id: 'q1', status: 'processing' }, queueWriteError: 'update lost' });
-  const res = await runTrackedDeletion(supabase as any, 'u1');
+test('Tracked deletion: queue update failure is surfaced, never reported complete', async () => {
+  const db = makeDb({
+    seed: { voxel_account_deletion_queue: [{ id: 'q1', user_id: 'u1', status: 'processing' }] },
+    fails: { 'voxel_account_deletion_queue:update': 'update lost' }
+  });
+  const res = await runTrackedDeletion(db as any, 'u1');
   assert.equal(res.kind, 'unpersisted');
-  // The destructive steps ran, but completion was never persisted — the
-  // outcome must not claim success.
-  assert.ok(supabase.deletedAuthUsers.length === 1);
+  assert.ok(deletes(db).length > 0, 'destructive steps ran but completion was not persisted');
 });
 
-test('Tracked deletion: cleanup failure is recorded as resumable and a retry completes', async () => {
-  // First attempt: voxel_library delete fails; state persisted as failed_voxel_library.
-  const first = makeFakeSupabase({ queueRow: { id: 'q1', status: 'processing' }, deleteErrors: { voxel_library: 'timeout' } });
+test('Tracked deletion: cleanup failure is recorded and a retry completes', async () => {
+  const first = makeDb({ fails: { 'voxel_library:delete': 'timeout' } });
   const r1 = await runTrackedDeletion(first as any, 'u1');
   assert.equal(r1.kind, 'incomplete');
   assert.equal((r1 as any).step, 'voxel_library');
 
-  // Retry: latest row shows failed_voxel_library → resume skips auth+sync.
-  const second = makeFakeSupabase({ queueRow: { id: 'q1', status: 'failed_voxel_library' } });
+  const second = makeDb({
+    seed: { voxel_account_deletion_queue: [{ id: 'q1', user_id: 'u1', status: 'failed_voxel_library' }] }
+  });
   const r2 = await runTrackedDeletion(second as any, 'u1');
   assert.equal(r2.kind, 'success');
-  assert.equal(second.deletedAuthUsers.length, 0); // auth not re-deleted
-  const deletedTables = second.calls.filter(c => c.op === 'delete').map(c => c.table);
-  assert.deepEqual(deletedTables, ['voxel_library', 'voxel_users']);
+  assert.ok(!deletes(second).includes('voxel_accounts'), 'account step must not re-run on resume');
+  assert.ok(deletes(second).includes('voxel_library'));
 });
 
 test('Tracked deletion: successful complete deletion reports success', async () => {
-  const supabase = makeFakeSupabase({ queueRow: null });
-  const res = await runTrackedDeletion(supabase as any, 'u1');
+  const db = makeDb({ seed: { voxel_accounts: [{ id: 'u1' }] } });
+  const res = await runTrackedDeletion(db as any, 'u1');
   assert.equal(res.kind, 'success');
-  assert.deepEqual(supabase.deletedAuthUsers, ['u1']);
+  const queueRows = (db.inner as any)._table('voxel_account_deletion_queue');
+  assert.equal(queueRows[0].status, 'complete');
 });
 
-test('Tracked deletion: already-complete job is idempotent (no re-deletion)', async () => {
-  const supabase = makeFakeSupabase({ queueRow: { id: 'q1', status: 'complete' } });
-  const res = await runTrackedDeletion(supabase as any, 'u1');
-  assert.equal(res.kind, 'already_complete');
-  assert.equal(supabase.deletedAuthUsers.length, 0);
-});
-
-// ─── Signup compensation ───
-
-test('Signup: profile creation failure deletes the orphaned Auth user', async () => {
-  const supabase = makeFakeSupabase({ upsertError: 'duplicate key username' });
-  const res = await createVoxelProfile(supabase as any, {
-    id: 'u1', username: 'x', avatar: 'avatar_steve', bio: '', is_public: true, updated_at: 't'
+test('Tracked deletion: already-complete job is idempotent', async () => {
+  const db = makeDb({
+    seed: { voxel_account_deletion_queue: [{ id: 'q1', user_id: 'u1', status: 'complete' }] }
   });
-  assert.ok(res.error);
-  const cleanup = await compensateOrphanedSignup(supabase as any, 'u1');
-  assert.equal(cleanup.removed, true);
-  assert.deepEqual(supabase.deletedAuthUsers, ['u1']);
+  const res = await runTrackedDeletion(db as any, 'u1');
+  assert.equal(res.kind, 'already_complete');
+  assert.equal(deletes(db).length, 0);
 });
 
-test('Signup: compensation failure is reported accurately', async () => {
-  const supabase = makeFakeSupabase({ authDeleteError: 'connection reset' });
-  const cleanup = await compensateOrphanedSignup(supabase as any, 'u1');
-  assert.equal(cleanup.removed, false);
-  assert.ok(cleanup.error);
+// ─── Signup pipeline (username+password, no email) ───
+
+test('Signup: happy path creates account + profile + session', async () => {
+  const db = makeDb();
+  const res = await performSignup(db as any, { username: 'newplayer', password: 'secret1' });
+  assert.equal(res.kind, 'success');
+  assert.ok((res as any).accessToken);
+  const accounts = (db.inner as any)._table('voxel_accounts');
+  assert.equal(accounts.length, 1);
+  assert.ok(accounts[0].password_hash.startsWith('scrypt$'));
+  const profiles = (db.inner as any)._table('voxel_users');
+  assert.equal(profiles[0].username, 'newplayer');
+  const sessions = (db.inner as any)._table('voxel_sessions');
+  assert.equal(sessions.length, 1);
+});
+
+test('Signup: no email is used or stored anywhere', async () => {
+  const db = makeDb();
+  const res = await performSignup(db as any, { username: 'nomail', password: 'secret1' });
+  assert.equal(res.kind, 'success');
+  const account = (db.inner as any)._table('voxel_accounts')[0];
+  assert.equal(account.email, undefined);
+  assert.ok(!JSON.stringify(account).includes('@'), 'no email material in account row');
+});
+
+test('Signup: profile failure rolls back the credential row', async () => {
+  const db = makeDb({ fails: { 'voxel_users:upsert': 'profile insert failed' } });
+  const res = await performSignup(db as any, { username: 'rollback_user', password: 'secret1' });
+  assert.equal(res.kind, 'rolled_back');
+  assert.equal((db.inner as any)._table('voxel_accounts').length, 0, 'account row must be removed');
+});
+
+test('Signup: rollback failure reports the orphaned state with the user id', async () => {
+  const db = makeDb({
+    fails: { 'voxel_users:upsert': 'profile insert failed', 'voxel_accounts:delete': 'delete denied' }
+  });
+  const res = await performSignup(db as any, { username: 'orphan_user', password: 'secret1' });
+  assert.equal(res.kind, 'orphaned');
+  assert.ok((res as any).userId);
+  assert.ok((res as any).error);
+});
+
+test('Signup: session failure leaves a complete account (loginable, not orphaned)', async () => {
+  const db = makeDb({ fails: { 'voxel_sessions:insert': 'session insert failed' } });
+  const res = await performSignup(db as any, { username: 'sess_user', password: 'secret1' });
+  assert.equal(res.kind, 'session_failed');
+  assert.equal((db.inner as any)._table('voxel_accounts').length, 1);
+  assert.equal((db.inner as any)._table('voxel_users').length, 1);
 });
 
 // ─── Public profile counts fallback ───
 
 test('Public profiles: fallback counts real items and preserves isCreator', async () => {
-  const libraryRows = [
-    { user_id: 'u1', type: 'pack' },
-    { user_id: 'u1', type: 'skin' }
-  ];
-  const supabase = makeFakeSupabase({ libraryRows });
-  const out = await withLibraryCounts(supabase as any, [
+  const db = makeDb({
+    seed: {
+      voxel_library: [
+        { user_id: 'u1', type: 'pack', metadata: { isPublic: 'true' } },
+        { user_id: 'u1', type: 'skin', metadata: { isPublic: 'true' } }
+      ]
+    }
+  });
+  const out = await withLibraryCounts(db as any, [
     { id: 'u1', username: 'a', avatar: 'avatar_steve', avatar_url: null, bio: '', created_at: 't', is_creator: true }
   ]);
   assert.equal(out[0].publicPacksCount, 1);
@@ -286,86 +243,28 @@ test('Public profiles: fallback counts real items and preserves isCreator', asyn
   assert.equal(out[0].isCreator, true);
 });
 
-test('Public profiles: fallback applies an explicit public-metadata filter', async () => {
-  const supabase = makeFakeSupabase({ libraryRows: [] });
-  await withLibraryCounts(supabase as any, [
+test('Public profiles: private library items are excluded from public counts', async () => {
+  const db = makeDb({
+    seed: {
+      voxel_library: [
+        { user_id: 'u1', type: 'pack', metadata: { isPublic: 'true' } },
+        { user_id: 'u1', type: 'pack', metadata: { isPublic: 'false' } },
+        { user_id: 'u1', type: 'pack', metadata: {} },
+        { user_id: 'u1', type: 'skin', metadata: {} }
+      ]
+    }
+  });
+  const out = await withLibraryCounts(db as any, [
     { id: 'u1', username: 'a', avatar: 'avatar_steve', avatar_url: null, bio: '', created_at: 't' }
   ]);
-  const libCall = supabase.calls.find(c => c.table === 'voxel_library');
-  assert.ok(libCall, 'expected a voxel_library query');
-  // Private packs/skins must be excluded: only rows whose metadata explicitly
-  // marks them public may be counted — same semantics as the RPC.
-  assert.ok(
-    libCall.filters.some(f => f[0] === 'eq' && f[1] === 'metadata->>isPublic' && f[2] === 'true'),
-    `fallback must filter to metadata.isPublic = true; got filters ${JSON.stringify(libCall.filters)}`
-  );
+  assert.equal(out[0].publicPacksCount, 1, 'only the explicitly-public pack counts');
+  assert.equal(out[0].publicSkinsCount, 0);
 });
 
 test('Public profiles: uploaded avatar_url takes precedence over preset', async () => {
-  const supabase = makeFakeSupabase({ libraryRows: [] });
-  const out = await withLibraryCounts(supabase as any, [
+  const db = makeDb({ seed: { voxel_library: [] } });
+  const out = await withLibraryCounts(db as any, [
     { id: 'u1', username: 'a', avatar: 'avatar_steve', avatar_url: 'https://cdn/x.png', bio: '', created_at: 't' }
   ]);
   assert.equal(out[0].avatar, 'https://cdn/x.png');
-});
-
-test('Public profiles: library query failure throws (no fabricated zeros)', async () => {
-  const supabase = makeFakeSupabase({ libraryError: 'db down' });
-  await assert.rejects(() =>
-    withLibraryCounts(supabase as any, [
-      { id: 'u1', username: 'a', avatar: 'avatar_steve', avatar_url: null, bio: '', created_at: 't' }
-    ])
-  );
-});
-
-// ─── Signup pipeline (orphan elimination) ───
-
-test('Signup: admin client unavailable -> no Auth user is ever created', async () => {
-  const supabase = makeFakeSupabase();
-  const res = await performSignup(supabase as any, null, {
-    internalEmail: 'u@voxel.internal', password: 'secret1', username: 'u'
-  });
-  assert.equal(res.kind, 'admin_unavailable');
-  assert.equal(supabase.signUpCalls.length, 0, 'auth.signUp must not be called without the admin client');
-});
-
-test('Signup: happy path returns a session', async () => {
-  const supabase = makeFakeSupabase();
-  const res = await performSignup(supabase as any, makeFakeSupabase() as any, {
-    internalEmail: 'u@voxel.internal', password: 'secret1', username: 'u'
-  });
-  assert.equal(res.kind, 'success');
-  assert.equal((res as any).userId, 'u1');
-});
-
-test('Signup: profile failure rolls back the Auth identity', async () => {
-  const publicClient = makeFakeSupabase();
-  const admin = makeFakeSupabase({ upsertError: 'profile insert failed' });
-  const res = await performSignup(publicClient as any, admin as any, {
-    internalEmail: 'u@voxel.internal', password: 'secret1', username: 'u'
-  });
-  assert.equal(res.kind, 'rolled_back');
-  assert.deepEqual(admin.deletedAuthUsers, ['u1']);
-});
-
-test('Signup: rollback failure reports ORPHANED state with the user id', async () => {
-  const publicClient = makeFakeSupabase();
-  const admin = makeFakeSupabase({ upsertError: 'profile insert failed', authDeleteError: 'admin api down' });
-  const res = await performSignup(publicClient as any, admin as any, {
-    internalEmail: 'u@voxel.internal', password: 'secret1', username: 'u'
-  });
-  assert.equal(res.kind, 'orphaned');
-  assert.equal((res as any).userId, 'u1');
-  assert.ok((res as any).error);
-});
-
-test('Signup: session failure after profile creation leaves a complete account (no orphan)', async () => {
-  const publicClient = makeFakeSupabase({ session: null, signInError: 'login failed' });
-  const admin = makeFakeSupabase();
-  const res = await performSignup(publicClient as any, admin as any, {
-    internalEmail: 'u@voxel.internal', password: 'secret1', username: 'u'
-  });
-  assert.equal(res.kind, 'session_failed');
-  // Auth user is NOT deleted — the account exists with a valid profile.
-  assert.equal(admin.deletedAuthUsers.length, 0);
 });

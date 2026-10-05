@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { authMiddleware, CloudApiEnv } from '../auth.js';
-import { getUserSupabaseClient, getAdminSupabaseClient } from '../supabase.js';
+import { getDataClient } from '../store.js';
 import { logAuditEventServer } from '../audit.js';
 import { evaluateAchievements } from '../achievementEngine.js';
 
@@ -8,15 +8,14 @@ export const profileRouter = new Hono<CloudApiEnv>();
 
 // Authenticated Get Current Profile Endpoint
 profileRouter.get('/', authMiddleware, async (c) => {
-  const token = c.get('authToken');
   const authUser = c.get('authUser');
-  const userSupabase = getUserSupabaseClient(token);
+  const db = getDataClient();
 
-  if (!userSupabase) {
-    return c.json({ error: 'Cloud service unconfigured.' }, 503);
+  if (!db) {
+    return c.json({ error: 'Data backend unconfigured.' }, 503);
   }
 
-  const { data, error } = await userSupabase
+  const { data, error } = await (db as any)
     .from('voxel_users')
     .select('*')
     .eq('id', authUser.id)
@@ -40,34 +39,38 @@ profileRouter.get('/', authMiddleware, async (c) => {
 });
 
 profileRouter.put('/', authMiddleware, async (c) => {
-  const token = c.get('authToken');
   const authUser = c.get('authUser');
   const body = await c.req.json();
   const { username, avatar, bio, isPublic, syncEnabled } = body;
 
-  const userSupabase = getUserSupabaseClient(token);
-  if (!userSupabase) {
-    return c.json({ error: 'Cloud service unconfigured.' }, 503);
+  const db = getDataClient();
+  if (!db) {
+    return c.json({ error: 'Data backend unconfigured.' }, 503);
   }
   const now = new Date().toISOString();
 
-  // If username is being changed, validate uniqueness and update canonical Auth identity
-  if (username && username.trim().toLowerCase() !== (authUser.user_metadata?.username || '').toLowerCase()) {
-    const adminSupabase = getAdminSupabaseClient();
-    if (adminSupabase) {
-      const newEmail = `${username.trim().toLowerCase()}@voxel.internal`;
-      const { error: authUpdateError } = await adminSupabase.auth.admin.updateUserById(authUser.id, {
-        email: newEmail,
-        user_metadata: { username: username.trim() }
-      });
-
-      if (authUpdateError) {
-        return c.json({
-          error: `Failed to update cloud authentication identity: ${authUpdateError.message}`,
-          code: 'AUTH_IDENTITY_UPDATE_FAILED'
-        }, 400);
-      }
+  // Username IS the identity — validate format + uniqueness, then update the
+  // canonical credential row and profile together.
+  if (username && username.trim().toLowerCase() !== authUser.username.toLowerCase()) {
+    if (!/^[a-zA-Z0-9_]{3,20}$/.test(username.trim())) {
+      return c.json({ error: 'Username must be 3-20 characters, letters, numbers, or underscores only.' }, 400);
     }
+    const { data: taken } = await (db as any)
+      .from('voxel_accounts')
+      .select('id, username')
+      .ilike('username', username.trim())
+      .maybeSingle();
+    if (taken && String(taken.username).toLowerCase() === username.trim().toLowerCase() && taken.id !== authUser.id) {
+      return c.json({ error: `Username "${username}" is already taken.`, code: 'USERNAME_TAKEN' }, 409);
+    }
+    const { error: credErr } = await (db as any)
+      .from('voxel_accounts')
+      .update({ username: username.trim() })
+      .eq('id', authUser.id);
+    if (credErr) {
+      return c.json({ error: `Failed to update account username: ${credErr.message}`, code: 'USERNAME_UPDATE_FAILED' }, 400);
+    }
+    authUser.username = username.trim();
   }
 
   const profileUpdate: Record<string, any> = {
@@ -85,7 +88,7 @@ profileRouter.put('/', authMiddleware, async (c) => {
   if (bio !== undefined) profileUpdate.bio = bio.trim();
   if (isPublic !== undefined) profileUpdate.is_public = isPublic;
 
-  const { data, error } = await userSupabase
+  const { data, error } = await (db as any)
     .from('voxel_users')
     .update(profileUpdate)
     .eq('id', authUser.id)
@@ -98,25 +101,21 @@ profileRouter.put('/', authMiddleware, async (c) => {
 
   // After a preset switch, remove orphaned uploaded avatar files.
   if (avatar !== undefined) {
-    const adminSupabase = getAdminSupabaseClient();
-    if (adminSupabase) {
-      try {
-        const { data: files } = await adminSupabase.storage.from('avatars').list(authUser.id);
-        if (files && files.length > 0) {
-          const { error: rmErr } = await adminSupabase.storage
-            .from('avatars')
-            .remove(files.map(f => `${authUser.id}/${f.name}`));
-          if (rmErr) console.warn('[CloudAPI Profile] Avatar file cleanup failed:', rmErr.message);
-        }
-      } catch (e: any) {
-        console.warn('[CloudAPI Profile] Avatar file cleanup failed:', e?.message);
+    try {
+      const { data: files } = await (db as any).storage.from('avatars').list(authUser.id);
+      if (files && files.length > 0) {
+        const { error: rmErr } = await (db as any).storage
+          .from('avatars')
+          .remove(files.map((f: any) => `${authUser.id}/${f.name}`));
+        if (rmErr) console.warn('[CloudAPI Profile] Avatar file cleanup failed:', rmErr.message);
       }
+    } catch (e: any) {
+      console.warn('[CloudAPI Profile] Avatar file cleanup failed:', e?.message);
     }
   }
 
   // Profile state changed (e.g. is_public) — re-evaluate achievements.
-  const evalAdmin = getAdminSupabaseClient();
-  if (evalAdmin) await evaluateAchievements(evalAdmin, authUser.id);
+  await evaluateAchievements(db, authUser.id);
 
   await logAuditEventServer({
     actor_id: authUser.id,

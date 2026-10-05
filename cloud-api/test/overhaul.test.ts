@@ -4,6 +4,7 @@ import { evaluateAchievements } from '../dist/achievementEngine.js';
 import { ADS_REQUIRED, getAdProvider } from '../dist/ads.js';
 import { maskHidden } from '../dist/routes/achievements.js';
 import { performSignup } from '../dist/signup.js';
+import { MemoryDataClient } from '../dist/memoryStore.js';
 
 /**
  * Fake Supabase client driven by a tableData map. Supports the query shapes
@@ -14,7 +15,6 @@ function makeFakeDb(tableData: Record<string, any[]> = {}) {
   const calls: { table: string; op: string; filters: any[]; payload?: any }[] = [];
   const upserts: { table: string; payload: any }[] = [];
   const inserts: { table: string; payload: any }[] = [];
-  const signUpCalls: any[] = [];
 
   function applyFilters(rows: any[], filters: any[]) {
     let out = rows.slice();
@@ -53,7 +53,7 @@ function makeFakeDb(tableData: Record<string, any[]> = {}) {
   }
 
   return {
-    calls, upserts, inserts, signUpCalls,
+    calls, upserts, inserts,
     from(table: string) {
       return {
         select: (_cols?: string, _opts?: any) => builder(table, 'read'),
@@ -62,14 +62,6 @@ function makeFakeDb(tableData: Record<string, any[]> = {}) {
         update: (payload: any) => builder(table, 'update', payload),
         delete: () => builder(table, 'delete')
       };
-    },
-    auth: {
-      signUp: async (args: any) => {
-        signUpCalls.push(args);
-        return { data: { user: { id: 'u1' }, session: { access_token: 'at', refresh_token: 'rt' } }, error: null };
-      },
-      signInWithPassword: async () => ({ data: { session: { access_token: 'at', refresh_token: 'rt' } }, error: null }),
-      admin: { deleteUser: async () => ({ error: null }), updateUserById: async () => ({ error: null }) }
     }
   };
 }
@@ -207,14 +199,11 @@ test('Hidden achievements are masked until unlocked', () => {
 // ─── Zero cosmetics during signup ───
 
 test('Signup: no cosmetics or achievements are granted during account setup', async () => {
-  const publicClient = makeFakeDb({});
-  const admin = makeFakeDb({});
-  const res = await performSignup(publicClient as any, admin as any, {
-    internalEmail: 'u@voxel.internal', password: 'secret1', username: 'u'
-  });
+  const db = new MemoryDataClient();
+  const res = await performSignup(db as any, { username: 'freebie_check', password: 'secret1' });
   assert.equal(res.kind, 'success');
-  // voxel_user_cosmetics must never be written during signup — no freebies.
-  const forbidden = [...admin.upserts, ...admin.inserts, ...publicClient.upserts, ...publicClient.inserts]
-    .filter(c => ['voxel_user_cosmetics', 'voxel_user_achievements'].includes(c.table));
-  assert.deepEqual(forbidden, []);
+  // voxel_user_cosmetics / voxel_user_achievements must never be written
+  // during signup — no freebies.
+  assert.deepEqual((db as any)._table('voxel_user_cosmetics'), []);
+  assert.deepEqual((db as any)._table('voxel_user_achievements'), []);
 });

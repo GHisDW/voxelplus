@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { authMiddleware, CloudApiEnv } from '../auth.js';
-import { getAdminSupabaseClient } from '../supabase.js';
+import { getDataClient } from '../store.js';
 import { getAdProvider, ADS_REQUIRED } from '../ads.js';
 import { evaluateAchievements } from '../achievementEngine.js';
 import { logAuditEventServer } from '../audit.js';
@@ -22,7 +22,7 @@ adsRouter.get('/status', async (c) => {
  */
 adsRouter.get('/progress', authMiddleware, async (c) => {
   const authUser = c.get('authUser');
-  const admin = getAdminSupabaseClient();
+  const admin = getDataClient();
   if (!admin) return c.json({ error: 'Privileged admin client unconfigured.' }, 503);
 
   const { data, error } = await admin
@@ -67,7 +67,7 @@ adsRouter.post('/complete', authMiddleware, async (c) => {
     return c.json({ error: 'Rewarded ads are not configured.', code: 'ADS_UNAVAILABLE' }, 503);
   }
 
-  const admin = getAdminSupabaseClient();
+  const admin = getDataClient();
   if (!admin) return c.json({ error: 'Privileged admin client unconfigured.' }, 503);
 
   // 1. Verify the completion cryptographically with the provider.

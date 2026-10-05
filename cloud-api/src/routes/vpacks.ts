@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { authMiddleware, CloudApiEnv } from '../auth.js';
-import { getAdminSupabaseClient } from '../supabase.js';
+import { getDataClient } from '../store.js';
 import { evaluateAchievements } from '../achievementEngine.js';
 import { logAuditEventServer } from '../audit.js';
 
@@ -10,7 +10,7 @@ export const vpacksRouter = new Hono<CloudApiEnv>();
  * GET /api/vpacks/catalog — the Shop's VPack catalog.
  */
 vpacksRouter.get('/catalog', async (c) => {
-  const admin = getAdminSupabaseClient();
+  const admin = getDataClient();
   if (!admin) return c.json({ error: 'Catalog unavailable.' }, 503);
   const { data, error } = await admin
     .from('voxel_vpack_catalog')
@@ -25,7 +25,7 @@ vpacksRouter.get('/catalog', async (c) => {
  */
 vpacksRouter.get('/', authMiddleware, async (c) => {
   const authUser = c.get('authUser');
-  const admin = getAdminSupabaseClient();
+  const admin = getDataClient();
   if (!admin) return c.json({ error: 'Privileged admin client unconfigured.' }, 503);
 
   const { data, error } = await admin
@@ -48,7 +48,7 @@ vpacksRouter.post('/', authMiddleware, async (c) => {
   const { title, description, contents } = body;
   if (!title || typeof title !== 'string') return c.json({ error: 'title is required.' }, 400);
 
-  const admin = getAdminSupabaseClient();
+  const admin = getDataClient();
   if (!admin) return c.json({ error: 'Privileged admin client unconfigured.' }, 503);
 
   const { data, error } = await admin
@@ -87,7 +87,7 @@ vpacksRouter.post('/convert', authMiddleware, async (c) => {
   const { instanceId, title, description } = body;
   if (!instanceId) return c.json({ error: 'instanceId is required.' }, 400);
 
-  const admin = getAdminSupabaseClient();
+  const admin = getDataClient();
   if (!admin) return c.json({ error: 'Privileged admin client unconfigured.' }, 503);
 
   const { data: instance, error: instErr } = await admin
@@ -135,7 +135,7 @@ vpacksRouter.post('/convert', authMiddleware, async (c) => {
 vpacksRouter.post('/:id/install', authMiddleware, async (c) => {
   const authUser = c.get('authUser');
   const id = c.req.param('id');
-  const admin = getAdminSupabaseClient();
+  const admin = getDataClient();
   if (!admin) return c.json({ error: 'Privileged admin client unconfigured.' }, 503);
 
   const { data: row, error } = await admin

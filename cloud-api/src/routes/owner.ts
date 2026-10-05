@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { authMiddleware, CloudApiEnv } from '../auth.js';
-import { getAdminSupabaseClient } from '../supabase.js';
+import { getDataClient } from '../store.js';
+import { resolveSession } from '../identity.js';
 import { logAuditEventServer } from '../audit.js';
 import { runTrackedDeletion } from '../deletion.js';
 
@@ -17,19 +18,19 @@ async function ownerAuthMiddleware(c: any, next: any) {
   }
 
   const token = authHeader.substring(7).trim();
-  const adminSupabase = getAdminSupabaseClient();
-  if (!adminSupabase) {
-    return c.json({ error: 'Admin service unavailable.', code: 'UNAVAILABLE' }, 503);
+  const db = getDataClient();
+  if (!db) {
+    return c.json({ error: 'Data backend unavailable.', code: 'UNAVAILABLE' }, 503);
   }
 
-  // Validate token with Supabase
-  const { data: { user }, error } = await adminSupabase.auth.getUser(token);
-  if (error || !user) {
+  // Validate the Voxel+ session token server-side.
+  const user = await resolveSession(db, token);
+  if (!user) {
     return c.json({ error: 'Invalid or expired token.', code: 'UNAUTHORIZED' }, 401);
   }
 
   // SERVER-SIDE check: is this user an owner or admin?
-  const { data: roleRow } = await adminSupabase
+  const { data: roleRow } = await (db as any)
     .from('voxel_owner_roles')
     .select('role')
     .eq('user_id', user.id)
@@ -41,7 +42,7 @@ async function ownerAuthMiddleware(c: any, next: any) {
   }
 
   c.set('authToken', token);
-  c.set('authUser', { id: user.id, email: user.email || '', user_metadata: user.user_metadata || {} });
+  c.set('authUser', { id: user.id, username: user.username });
   c.set('ownerRole', roleRow.role);
 
   await next();
@@ -51,7 +52,7 @@ async function ownerAuthMiddleware(c: any, next: any) {
  * GET /api/owner/users — list all users (for search/management)
  */
 ownerRouter.get('/users', ownerAuthMiddleware, async (c) => {
-  const adminSupabase = getAdminSupabaseClient()!;
+  const adminSupabase = getDataClient()!;
   const query = c.req.query('q')?.toLowerCase();
   const limit = Math.min(Number(c.req.query('limit') || 50), 100);
   const offset = Number(c.req.query('offset') || 0);
@@ -77,7 +78,7 @@ ownerRouter.get('/users', ownerAuthMiddleware, async (c) => {
  */
 ownerRouter.get('/users/:userId', ownerAuthMiddleware, async (c) => {
   const userId = c.req.param('userId');
-  const adminSupabase = getAdminSupabaseClient()!;
+  const adminSupabase = getDataClient()!;
 
   const { data, error } = await adminSupabase
     .rpc('get_user_admin_profile', { target_user_id: userId });
@@ -100,7 +101,7 @@ ownerRouter.post('/users/:userId/title', ownerAuthMiddleware, async (c) => {
 
   if (!titleId) return c.json({ error: 'titleId is required.' }, 400);
 
-  const adminSupabase = getAdminSupabaseClient()!;
+  const adminSupabase = getDataClient()!;
 
   // Verify title exists
   const { data: title } = await adminSupabase
@@ -148,7 +149,7 @@ ownerRouter.delete('/users/:userId/title', ownerAuthMiddleware, async (c) => {
 
   if (!titleId) return c.json({ error: 'titleId is required.' }, 400);
 
-  const adminSupabase = getAdminSupabaseClient()!;
+  const adminSupabase = getDataClient()!;
 
   await adminSupabase
     .from('voxel_user_titles')
@@ -186,7 +187,7 @@ ownerRouter.post('/users/:userId/badge', ownerAuthMiddleware, async (c) => {
 
   if (!badgeId) return c.json({ error: 'badgeId is required.' }, 400);
 
-  const adminSupabase = getAdminSupabaseClient()!;
+  const adminSupabase = getDataClient()!;
 
   const { data: badge } = await adminSupabase
     .from('voxel_badges')
@@ -232,7 +233,7 @@ ownerRouter.delete('/users/:userId/badge', ownerAuthMiddleware, async (c) => {
 
   if (!badgeId) return c.json({ error: 'badgeId is required.' }, 400);
 
-  const adminSupabase = getAdminSupabaseClient()!;
+  const adminSupabase = getDataClient()!;
 
   await adminSupabase
     .from('voxel_user_badges')
@@ -260,7 +261,7 @@ ownerRouter.patch('/users/:userId/creator', ownerAuthMiddleware, async (c) => {
   const body = await c.req.json();
   const { isCreator } = body;
 
-  const adminSupabase = getAdminSupabaseClient()!;
+  const adminSupabase = getDataClient()!;
 
   const { error } = await adminSupabase
     .from('voxel_users')
@@ -300,7 +301,7 @@ ownerRouter.delete('/users/:userId', ownerAuthMiddleware, async (c) => {
     return c.json({ error: 'Cannot delete your own owner account via the control panel.', code: 'SELF_DELETE_FORBIDDEN' }, 403);
   }
 
-  const adminSupabase = getAdminSupabaseClient()!;
+  const adminSupabase = getDataClient()!;
 
   // Get target user info for audit log
   const { data: targetUser } = await adminSupabase
@@ -382,7 +383,7 @@ ownerRouter.delete('/bulk', ownerAuthMiddleware, async (c) => {
     return c.json({ error: 'Confirmation phrase "DELETE_ALL_ACCOUNTS_PERMANENTLY" required.', code: 'CONFIRMATION_REQUIRED' }, 400);
   }
 
-  const adminSupabase = getAdminSupabaseClient()!;
+  const adminSupabase = getDataClient()!;
 
   // Get all non-owner users (PostgREST does not support subqueries inside
   // .not('in', ...), so resolve owner-role ids explicitly first).
@@ -456,7 +457,7 @@ ownerRouter.delete('/bulk', ownerAuthMiddleware, async (c) => {
  * GET /api/owner/audit — owner audit log
  */
 ownerRouter.get('/audit', ownerAuthMiddleware, async (c) => {
-  const adminSupabase = getAdminSupabaseClient()!;
+  const adminSupabase = getDataClient()!;
   const limit = Math.min(Number(c.req.query('limit') || 50), 200);
   const offset = Number(c.req.query('offset') || 0);
 
@@ -476,7 +477,7 @@ ownerRouter.get('/audit', ownerAuthMiddleware, async (c) => {
  */
 ownerRouter.get('/check', authMiddleware, async (c) => {
   const authUser = c.get('authUser');
-  const adminSupabase = getAdminSupabaseClient();
+  const adminSupabase = getDataClient();
   if (!adminSupabase) return c.json({ isOwner: false, role: null });
 
   const { data: roleRow } = await adminSupabase

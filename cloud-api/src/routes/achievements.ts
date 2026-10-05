@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { authMiddleware, CloudApiEnv } from '../auth.js';
-import { getAdminSupabaseClient, getUserSupabaseClient } from '../supabase.js';
+import { getDataClient } from '../store.js';
 import { evaluateAchievements } from '../achievementEngine.js';
 
 export const achievementsRouter = new Hono<CloudApiEnv>();
@@ -12,11 +12,10 @@ export const achievementsRouter = new Hono<CloudApiEnv>();
  * Returns 503 on backend failure — never an empty list pretending nothing exists.
  */
 achievementsRouter.get('/catalog', async (c) => {
-  const { getPublicSupabaseClient } = await import('../supabase.js');
-  const supabase = getPublicSupabaseClient();
-  if (!supabase) return c.json({ error: 'Catalog unavailable.' }, 503);
+  const db = getDataClient();
+  if (!db) return c.json({ error: 'Catalog unavailable.' }, 503);
 
-  const { data, error } = await supabase
+  const { data, error } = await (db as any)
     .from('voxel_achievements')
     .select('id, title, description, icon, requirement, category, rarity, hidden, reward_cosmetic_id, reward_title_id, reward_badge_id')
     .eq('enabled', true)
@@ -33,25 +32,22 @@ achievementsRouter.get('/catalog', async (c) => {
  * Hidden achievements appear only once unlocked.
  */
 achievementsRouter.get('/', authMiddleware, async (c) => {
-  const token = c.get('authToken');
   const authUser = c.get('authUser');
-  const userSupabase = getUserSupabaseClient(token);
-  const adminSupabase = getAdminSupabaseClient();
+  const db = getDataClient();
 
-  if (!userSupabase) return c.json({ error: 'Cloud service unconfigured.' }, 503);
-  if (!adminSupabase) return c.json({ error: 'Privileged admin client unconfigured.' }, 503);
+  if (!db) return c.json({ error: 'Data backend unconfigured.' }, 503);
 
   // Evaluate first so newly-satisfied conditions unlock immediately.
-  await evaluateAchievements(adminSupabase, authUser.id);
+  await evaluateAchievements(db, authUser.id);
 
-  const { data: allAchievements, error: achErr } = await userSupabase
+  const { data: allAchievements, error: achErr } = await (db as any)
     .from('voxel_achievements')
     .select('*')
     .eq('enabled', true)
     .order('rarity');
   if (achErr) return c.json({ error: 'Achievements unavailable.' }, 503);
 
-  const { data: userAchievements, error: uaErr } = await userSupabase
+  const { data: userAchievements, error: uaErr } = await (db as any)
     .from('voxel_user_achievements')
     .select('achievement_id, unlocked_at')
     .eq('user_id', authUser.id);
@@ -80,7 +76,7 @@ achievementsRouter.get('/', authMiddleware, async (c) => {
         }
       };
       // Locked hidden achievements expose nothing identifying.
-      return maskHidden(base, unlockedAt);
+      return maskHidden(base, unlockedAt as string | null);
     });
 
   return c.json(result);

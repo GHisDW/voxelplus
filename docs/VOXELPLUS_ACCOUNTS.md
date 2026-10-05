@@ -26,7 +26,8 @@ The **Voxel⁺ Account System** provides a custom launcher identity, cosmetics, 
 +-------------------------------------------------------------------------+
 |                       Voxel⁺ Cloud API Microservice                     |
 |                                                                         |
-|  - Validates user sessions via Supabase Auth                            |
+|  - Username+password auth: scrypt credentials in voxel_accounts         |
+|  - Voxel+ sessions: opaque tokens, SHA-256 hashed in voxel_sessions     |
 |  - Server-authoritative achievement evaluation & reward granting        |
 |  - Server-authoritative cosmetic ownership validation                   |
 |  - Avatar upload MIME / size validation -> Supabase Storage             |
@@ -34,14 +35,13 @@ The **Voxel⁺ Account System** provides a custom launcher identity, cosmetics, 
 |  - Protected account deletion and audited bulk deletion                 |
 +-------------------------------------------------------------------------+
            |                                             |
-           | Multi-tenant policies                       | Direct storage & RLS
+           | Infrastructure only                         | Persistence
            v                                             v
 +-----------------------------+        +----------------------------------+
 |         TenantScale         |        |       Supabase Cloud Service     |
 |                             |        |                                  |
-| - Tenant isolation          |        | - Supabase Auth (JWT tokens)     |
 | - IP signup rate limiting   |        | - PostgreSQL Database + RLS      |
-| - Audit event logging       |        | - Storage (avatars/{userId}/...) |
+| - Audit event forwarding    |        | - Storage (avatars/{userId}/...) |
 +-----------------------------+        +----------------------------------+
 ```
 
@@ -53,27 +53,37 @@ The **Voxel⁺ Account System** provides a custom launcher identity, cosmetics, 
 | :--- | :--- | :--- |
 | **Electron Renderer** | Desktop UI, local caching, IPC boundary | No Cloud Keys (IPC only) |
 | **Electron Main** | Session store encryption (safeStorage), IPC handlers | `VOXELPLUS_CLOUD_API_URL` |
-| **Cloud API Microservice** | Session auth, achievement logic, avatar pipeline, owner access | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `TENANTSCALE_CLIENT_KEY` |
-| **TenantScale SDK** | Tenant isolation, IP signup rate limiter, audit event logging | Single-tenant `VOXELPLUS_TENANT_ID` |
-| **Supabase Auth** | User authentication authority across all devices | Auth JWT |
-| **PostgreSQL + RLS** | User data persistence and strict row-level isolation | Database RLS Policies (`auth.uid()`) |
+| **Cloud API Microservice** | Identity, sessions, achievement logic, avatar pipeline, owner access | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `VOXELPLUS_TENANT_ID` |
+| **TenantScale SDK** | IP signup rate limiter, audit event forwarding | Server-side only; optional (local fallbacks) |
+| **`voxel_accounts`** | Voxel+ credential rows (scrypt password hashes) | service-role only, no user RLS policy |
+| **`voxel_sessions`** | Voxel+ session tokens (SHA-256 hashed, 30d expiry) | service-role only, no user RLS policy |
+| **PostgreSQL + RLS** | User data persistence | Ownership enforced server-side (`user_id` filters) |
 | **Supabase Storage** | Profile picture storage bucket (`avatars`) | Storage RLS Policies (`avatars/{userId}/...`) |
+
+> **No email anywhere.** Voxel+ accounts are username+password. There is no
+> Supabase Auth user, no internal email address, and no confirmation flow.
+> TenantScale is infrastructure (rate limiting + audit forwarding), not the
+> identity UX; its session validation is not used because Voxel+ is a
+> single-tenant B2C product where players have no tenant memberships.
 
 ### Security Boundary Guarantees:
 1. **Zero Secret Leakage:** The desktop client bundle contains **0** Supabase service-role keys or database admin credentials. All privileged operations go through the Cloud API.
-2. **Server-Authoritative Evaluation:** Achievements, titles, badges, and cosmetics cannot be granted by client request. Clients report actions (e.g. `INSTANCE_CREATED`), and the server determines whether the conditions are satisfied.
+2. **Server-Authoritative Evaluation:** Achievements, titles, badges, and cosmetics cannot be granted by client request. The server derives unlocks from authoritative state after real actions.
 3. **Owner Role Authorization:** Owner endpoints verify role records in `voxel_owner_roles` server-side. No client-side checks (`username === 'GHisDW'`) can grant access.
 
 ---
 
 ## 3. Database Migrations
 
-The database schema is defined in 4 sequential migrations:
+The database schema is defined in sequential migrations:
 
 1. `migrations/001_initial_account_schema.sql`: Core `voxel_users`, `voxel_cloud_sync`, and `voxel_library` tables with RLS policies.
 2. `migrations/002_cosmetics_achievements_titles_badges.sql`: Minecraft cosmetics catalog, user cosmetics, achievements catalog, user achievements, titles, badges, and user-assigned titles/badges.
 3. `migrations/003_owner_panel.sql`: `voxel_owner_roles` table, `voxel_owner_audit_log` table, and server-side RPC functions for owner administration.
 4. `migrations/004_avatar_storage.sql`: Supabase Storage bucket configuration and RLS policies for user-isolated avatar paths (`avatars/{userId}/*`).
+5. `migrations/005_public_profile_creator_flag.sql`: Public-profile RPC returns `is_creator` + `avatar_url`.
+6. `migrations/006_cosmetics_achievements_overhaul.sql`: Condition-based achievements, canonical cosmetic catalog, `voxel_instances`, `voxel_ad_completions`, `voxel_ad_progress`, `voxel_vpack_catalog`.
+7. `migrations/007_username_password_auth.sql`: `voxel_accounts` (scrypt credentials), `voxel_sessions` (hashed tokens), `voxel_audit_events`, and re-keying of per-user FKs from `auth.users` to `voxel_accounts`.
 
 ---
 
@@ -96,14 +106,29 @@ Cosmetics are collectible Minecraft items that decorate player profiles, avatar 
 
 ## 5. Server-Authoritative Achievements
 
-Achievements unlock automatically in response to verified user events:
+Achievements are unlocked by the server-side engine (`achievementEngine.ts`),
+which recomputes condition-based metrics from authoritative state after real
+actions (instance create, library save, VPack create/install/convert, profile
+visibility, avatar upload, ad completion). Clients cannot report or trigger
+unlocks — there is no client-facing achievement endpoint.
 
-- `ACCOUNT_CREATED` → Unlocks **First Steps** (Rewards *Dirt Block* cosmetic)
-- `INSTANCE_CREATED` → Unlocks **Builder** (Rewards *Crafting Table* cosmetic)
-- `CONTENT_SAVED` → Unlocks **Collector** (Rewards *Chest* cosmetic)
-- `CONTENT_INSTALLED` → Unlocks **Explorer** (Rewards *Compass* cosmetic)
-- `PROFILE_MADE_PUBLIC` → Unlocks **Community** (Rewards *Emerald* cosmetic)
-- `PACK_CREATED` → Unlocks **Creator** (Rewards *Diamond* cosmetic)
+Metrics include: instances created (lifetime counter, immune to
+delete/recreate farming), distinct MC versions, cosmetics/effects owned,
+VPacks created/installed/converted, library size, public packs, mods/shaders
+installed, public profile, custom avatar, legendary ownership.
+
+Rewards (cosmetics / titles / badges) are granted idempotently via
+`UNIQUE(user_id, *_id)` upserts — concurrent unlocks collapse to one grant.
+Hidden `secret` achievements are masked server-side (`???`) until unlocked.
+
+### Rewarded Ads
+
+Cosmetics and VPacks are acquired via rewarded ads with rarity-based,
+server-side costs (common 2 / rare 3 / epic 4 / legendary 5 / vpack 1 ads).
+Completions go through a provider-agnostic `RewardedAdProvider` registry
+(`VOXELPLUS_AD_PROVIDER`) with anti-replay enforcement via
+`voxel_ad_completions UNIQUE(provider, completion_id)`. With no provider
+configured the API returns 503 `ADS_UNAVAILABLE` — nothing is faked.
 
 ---
 
@@ -133,16 +158,24 @@ The Owner Control Panel (`OwnerPage.ts` + `/api/owner/*`) provides:
 - `GET /api/achievements/catalog` — All available achievements
 
 ### Authenticated User Routes (Bearer Token)
-- `POST /api/account/signup` — Create new Voxel⁺ account
-- `POST /api/account/login` — Sign in and obtain JWT
-- `POST /api/account/password` — Change password
+- `POST /api/account/signup` — Create new Voxel⁺ account (username+password)
+- `POST /api/account/login` — Sign in and obtain a Voxel+ session token
+- `POST /api/account/refresh` — Rotate session via refresh token
+- `POST /api/account/password` — Change password (revokes other sessions)
 - `DELETE /api/account` — Delete own account
 - `GET /api/profile` — Fetch user profile
 - `PUT /api/profile` — Update bio / visibility
 - `GET /api/cosmetics` — List user's unlocked cosmetics
 - `PUT /api/cosmetics/select` — Equip active cosmetic
 - `GET /api/achievements` — List user's achievements with unlock status
-- `POST /api/achievements/event` — Report in-app event trigger
+- `GET /api/ads/status` — Rewarded-ads availability
+- `GET /api/ads/progress` — Per-item ad progress
+- `POST /api/ads/complete` — Redeem a verified ad completion
+- `GET /api/instances` / `POST /api/instances` / `DELETE /api/instances/:id` — Cloud instance records
+- `GET /api/vpacks` / `POST /api/vpacks` — User VPacks
+- `GET /api/vpacks/catalog` — VPack catalog
+- `POST /api/vpacks/convert` — Convert a real instance into a VPack
+- `POST /api/vpacks/:id/install` — Install a VPack
 - `POST /api/avatar/upload` — Upload avatar image (multipart/form-data)
 - `DELETE /api/avatar` — Remove avatar / reset to default
 - `GET /api/library` — Get user's cloud library
@@ -167,14 +200,30 @@ The Owner Control Panel (`OwnerPage.ts` + `/api/owner/*`) provides:
 
 ## 8. Development & Deployment
 
+### Local development (zero secrets required)
+
+A contributor can clone the repo and run everything without any production
+credentials: with no Supabase env set, the Cloud API runs on an **in-memory
+data backend** seeded with the full cosmetics/achievements/vpack catalogs.
+
+```bash
+# Terminal 1 — Cloud API on the in-memory backend
+cd cloud-api && npm install && npm run dev
+
+# Terminal 2 — Desktop launcher pointed at the local API
+npm install && VOXELPLUS_CLOUD_API_URL=http://localhost:3001 npm run dev
+```
+
 ### Environment Variables (.env)
 ```env
-# Cloud API Server
+# Cloud API Server — all optional for local dev
 PORT=3001
-START_SERVER=true
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
-VOXELPLUS_TENANT_ID=00000000-0000-0000-0000-000000000001
+VOXELPLUS_DATA_BACKEND=memory          # force in-memory backend (default when no Supabase env)
+SUPABASE_URL=https://your-project.supabase.co      # production only
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key    # production only, NEVER in the client
+VOXELPLUS_TENANT_ID=00000000-0000-0000-0000-000000000001   # TenantScale (optional)
+VOXELPLUS_OWNER_USERNAMES=             # comma-separated usernames granted 'owner' at login
+VOXELPLUS_AD_PROVIDER=                 # rewarded-ad provider registry key
 
 # Desktop Launcher Client
 VOXELPLUS_CLOUD_API_URL=http://localhost:3001

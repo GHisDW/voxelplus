@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { authMiddleware, CloudApiEnv } from '../auth.js';
-import { getAdminSupabaseClient } from '../supabase.js';
+import { getDataClient } from '../store.js';
 import { evaluateAchievements } from '../achievementEngine.js';
 import { logAuditEventServer } from '../audit.js';
 
@@ -11,7 +11,7 @@ export const instancesRouter = new Hono<CloudApiEnv>();
  */
 instancesRouter.get('/', authMiddleware, async (c) => {
   const authUser = c.get('authUser');
-  const admin = getAdminSupabaseClient();
+  const admin = getDataClient();
   if (!admin) return c.json({ error: 'Privileged admin client unconfigured.' }, 503);
 
   const { data, error } = await admin
@@ -34,7 +34,7 @@ instancesRouter.post('/', authMiddleware, async (c) => {
   const { name, version, modsCount, resourcepacksCount, shadersCount } = body;
   if (!name || typeof name !== 'string') return c.json({ error: 'name is required.' }, 400);
 
-  const admin = getAdminSupabaseClient();
+  const admin = getDataClient();
   if (!admin) return c.json({ error: 'Privileged admin client unconfigured.' }, 503);
 
   const { data: row, error } = await admin
@@ -81,7 +81,7 @@ instancesRouter.post('/', authMiddleware, async (c) => {
 instancesRouter.delete('/:id', authMiddleware, async (c) => {
   const authUser = c.get('authUser');
   const id = c.req.param('id');
-  const admin = getAdminSupabaseClient();
+  const admin = getDataClient();
   if (!admin) return c.json({ error: 'Privileged admin client unconfigured.' }, 503);
 
   const { error } = await admin

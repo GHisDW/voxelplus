@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { authMiddleware, CloudApiEnv } from '../auth.js';
-import { getAdminSupabaseClient, getUserSupabaseClient } from '../supabase.js';
+import { getDataClient } from '../store.js';
 import { logAuditEventServer } from '../audit.js';
 import { evaluateAchievements } from '../achievementEngine.js';
 
@@ -45,7 +45,6 @@ avatarRouter.post('/upload', authMiddleware, handleAvatarUpload);
 
 async function handleAvatarUpload(c: any) {
   const authUser = c.get('authUser');
-  const token = c.get('authToken');
 
   // Parse multipart form data
   let formData: FormData;
@@ -86,7 +85,7 @@ async function handleAvatarUpload(c: any) {
     }, 413);
   }
 
-  const adminSupabase = getAdminSupabaseClient();
+  const adminSupabase = getDataClient();
   if (!adminSupabase) {
     return c.json({ error: 'Storage service unconfigured.' }, 503);
   }
@@ -145,7 +144,7 @@ async function handleAvatarUpload(c: any) {
   // Update profile with new avatar_url — the canonical avatar value.
   // A failure here would leave the file uploaded but unlinked; report it
   // instead of pretending the upload succeeded.
-  const userSupabase = getUserSupabaseClient(token);
+  const userSupabase = getDataClient();
   if (!userSupabase) {
     return c.json({ error: 'Cloud service unconfigured.' }, 503);
   }
@@ -179,9 +178,8 @@ async function handleAvatarUpload(c: any) {
  */
 avatarRouter.delete('/', authMiddleware, async (c) => {
   const authUser = c.get('authUser');
-  const token = c.get('authToken');
 
-  const adminSupabase = getAdminSupabaseClient();
+  const adminSupabase = getDataClient();
   if (!adminSupabase) return c.json({ error: 'Storage service unconfigured.' }, 503);
 
   // List user's avatar files and remove them — errors are reported, not
@@ -204,7 +202,7 @@ avatarRouter.delete('/', authMiddleware, async (c) => {
 
   // Clear avatar_url from profile — restores the preset `avatar` as the
   // canonical value. A failure leaves a stale URL, so report it.
-  const userSupabase = getUserSupabaseClient(token);
+  const userSupabase = getDataClient();
   if (!userSupabase) {
     return c.json({ error: 'Cloud service unconfigured.' }, 503);
   }

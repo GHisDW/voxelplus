@@ -1,15 +1,14 @@
 import { Hono } from 'hono';
 import { authMiddleware, CloudApiEnv } from '../auth.js';
-import { getUserSupabaseClient, getAdminSupabaseClient } from '../supabase.js';
+import { getDataClient } from '../store.js';
 import { logAuditEventServer } from '../audit.js';
 import { evaluateAchievements } from '../achievementEngine.js';
 
 export const libraryRouter = new Hono<CloudApiEnv>();
 
 libraryRouter.get('/', authMiddleware, async (c) => {
-  const token = c.get('authToken');
   const authUser = c.get('authUser');
-  const userSupabase = getUserSupabaseClient(token);
+  const userSupabase = getDataClient();
 
   if (!userSupabase) {
     return c.json({ error: 'Cloud service unconfigured.' }, 503);
@@ -24,7 +23,7 @@ libraryRouter.get('/', authMiddleware, async (c) => {
     return c.json({ error: error.message }, 400);
   }
 
-  const items = (data || []).map((row) => ({
+  const items = (data || []).map((row: any) => ({
     id: row.id,
     title: row.title,
     type: row.type,
@@ -37,7 +36,6 @@ libraryRouter.get('/', authMiddleware, async (c) => {
 });
 
 libraryRouter.post('/', authMiddleware, async (c) => {
-  const token = c.get('authToken');
   const authUser = c.get('authUser');
   const body = await c.req.json();
   const { id, title, type, source, metadata } = body;
@@ -46,7 +44,7 @@ libraryRouter.post('/', authMiddleware, async (c) => {
     return c.json({ error: 'Title and type are required.' }, 400);
   }
 
-  const userSupabase = getUserSupabaseClient(token);
+  const userSupabase = getDataClient();
   if (!userSupabase) {
     return c.json({ error: 'Cloud service unconfigured.' }, 503);
   }
@@ -71,7 +69,7 @@ libraryRouter.post('/', authMiddleware, async (c) => {
   }
 
   // Library state changed — re-evaluate server-derived achievements.
-  const adminSupabase = getAdminSupabaseClient();
+  const adminSupabase = getDataClient();
   if (adminSupabase) await evaluateAchievements(adminSupabase, authUser.id);
 
   await logAuditEventServer({

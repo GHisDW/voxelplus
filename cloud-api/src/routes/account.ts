@@ -1,13 +1,16 @@
 import { Hono } from 'hono';
-import { getPublicSupabaseClient, getAdminSupabaseClient, getUserSupabaseClient } from '../supabase.js';
+import { getDataClient } from '../store.js';
 import { authMiddleware, CloudApiEnv } from '../auth.js';
 import { logAuditEventServer, checkIpCreationLimit } from '../audit.js';
 import { runTrackedDeletion } from '../deletion.js';
 import { performSignup } from '../signup.js';
+import { verifyCredentials, issueSession, refreshSession, changePassword } from '../identity.js';
 
 export const accountRouter = new Hono<CloudApiEnv>();
 
-// Unauthenticated Signup Endpoint
+const USERNAME_RE = /^[a-zA-Z0-9_]{3,20}$/;
+
+// Unauthenticated Signup Endpoint — username + password, no email.
 accountRouter.post('/signup', async (c) => {
   const body = await c.req.json();
   const { username, password, avatar, bio, isPublic } = body;
@@ -16,8 +19,7 @@ accountRouter.post('/signup', async (c) => {
     return c.json({ error: 'Username and password are required.' }, 400);
   }
 
-  // Username format validation
-  if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
+  if (!USERNAME_RE.test(username)) {
     return c.json({ error: 'Username must be 3-20 characters, letters, numbers, or underscores only.' }, 400);
   }
 
@@ -39,47 +41,36 @@ accountRouter.post('/signup', async (c) => {
     }, 429);
   }
 
-  const internalEmail = `${username.trim().toLowerCase()}@voxel.internal`;
-  const supabase = getPublicSupabaseClient();
-  if (!supabase) {
-    return c.json({ error: 'Cloud service unconfigured.' }, 503);
+  const db = getDataClient();
+  if (!db) {
+    return c.json({ error: 'Data backend unconfigured.' }, 503);
   }
 
-  // The service-role client is REQUIRED before any Auth user is created:
-  // it is needed for both the voxel_users profile row and orphan
-  // compensation. Refusing the signup up front guarantees no Auth identity
-  // can ever be created that we cannot complete or roll back — there is no
-  // code path where "auth signup succeeded + admin client unavailable"
-  // leaves an orphaned account.
-  const adminSupabase = getAdminSupabaseClient();
-
-  // Check username uniqueness before signup
-  const { data: existingUser } = await supabase
+  // Check username uniqueness before creating anything.
+  const { data: existingUser } = await (db as any)
     .from('voxel_users')
     .select('username')
     .ilike('username', username.trim())
     .maybeSingle();
 
-  if (existingUser) {
+  const { data: existingAccount } = await (db as any)
+    .from('voxel_accounts')
+    .select('username')
+    .ilike('username', username.trim())
+    .maybeSingle();
+
+  const taken = [existingUser, existingAccount].some(
+    r => r && String(r.username).toLowerCase() === username.trim().toLowerCase()
+  );
+  if (taken) {
     return c.json({ error: `Username "${username}" is already taken. Please choose a different username.` }, 409);
   }
 
-  // 1–3. Auth signup → profile creation (service-role) → session. See
-  // performSignup for the ordering guarantees — an Auth identity is only
-  // ever created when the admin client needed to complete or roll back is
-  // already available.
-  const outcome = await performSignup(supabase, adminSupabase, {
-    internalEmail,
-    password,
-    username,
-    avatar,
-    bio,
-    isPublic
-  });
+  const outcome = await performSignup(db, { password, username, avatar, bio, isPublic });
 
   switch (outcome.kind) {
-    case 'admin_unavailable':
-      return c.json({ error: 'Cloud service unconfigured.' }, 503);
+    case 'username_taken':
+      return c.json({ error: `Username "${username}" is already taken. Please choose a different username.` }, 409);
     case 'signup_failed':
       return c.json({ error: outcome.error }, 400);
     case 'orphaned':
@@ -108,8 +99,9 @@ accountRouter.post('/signup', async (c) => {
     actor_id: userId,
     actor_type: 'user',
     action: 'account.create',
-    resource: 'voxel_users',
-    details: { username, isPublic }
+    resource: 'voxel_accounts',
+    details: { username, isPublic },
+    ip: clientIp
   });
 
   return c.json({
@@ -118,7 +110,7 @@ accountRouter.post('/signup', async (c) => {
     refreshToken: outcome.refreshToken,
     profile: {
       id: userId,
-      username,
+      username: username.trim(),
       avatar: avatar || 'avatar_steve',
       bio: bio || '',
       createdAt: now,
@@ -129,7 +121,7 @@ accountRouter.post('/signup', async (c) => {
   });
 });
 
-// Unauthenticated Login Endpoint
+// Unauthenticated Login Endpoint — username + password → Voxel+ session.
 accountRouter.post('/login', async (c) => {
   const body = await c.req.json();
   const { username, password } = body;
@@ -138,32 +130,43 @@ accountRouter.post('/login', async (c) => {
     return c.json({ error: 'Username and password are required.' }, 400);
   }
 
-  const internalEmail = `${username.trim().toLowerCase()}@voxel.internal`;
-  const supabase = getPublicSupabaseClient();
-  if (!supabase) {
-    return c.json({ error: 'Cloud service unconfigured.' }, 503);
+  const db = getDataClient();
+  if (!db) {
+    return c.json({ error: 'Data backend unconfigured.' }, 503);
   }
 
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: internalEmail,
-    password
-  });
-
-  if (error || !data.user || !data.session) {
-    return c.json({ error: error?.message || 'Invalid username or password.' }, 401);
+  const user = await verifyCredentials(db, String(username).trim(), password);
+  if (!user) {
+    return c.json({ error: 'Invalid username or password.', code: 'UNAUTHORIZED' }, 401);
   }
 
-  const userId = data.user.id;
+  const session = await issueSession(db, user.id);
+  if ('error' in session) {
+    return c.json({ error: 'Failed to establish session.' }, 500);
+  }
 
-  const { data: profileRow } = await supabase
+  // Owner bootstrap: deployment-configured owner usernames get the owner
+  // role granted server-side at login (VOXELPLUS_OWNER_USERNAMES env,
+  // comma-separated). Role rows still live in voxel_owner_roles — this only
+  // seeds the first grant.
+  const ownerNames = (process.env.VOXELPLUS_OWNER_USERNAMES || '')
+    .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+  if (ownerNames.includes(user.username.toLowerCase())) {
+    await (db as any).from('voxel_owner_roles').upsert(
+      { user_id: user.id, role: 'owner' },
+      { onConflict: 'user_id,role', ignoreDuplicates: true }
+    );
+  }
+
+  const { data: profileRow } = await (db as any)
     .from('voxel_users')
     .select('*')
-    .eq('id', userId)
-    .single();
+    .eq('id', user.id)
+    .maybeSingle();
 
   const profile = {
-    id: userId,
-    username: profileRow?.username || username,
+    id: user.id,
+    username: profileRow?.username || user.username,
     avatar: profileRow?.avatar_url || profileRow?.avatar || 'avatar_steve',
     bio: profileRow?.bio || '',
     createdAt: profileRow?.created_at || new Date().toISOString(),
@@ -173,19 +176,37 @@ accountRouter.post('/login', async (c) => {
   };
 
   await logAuditEventServer({
-    actor_id: userId,
+    actor_id: user.id,
     actor_type: 'user',
     action: 'account.login',
-    resource: 'voxel_users',
-    details: { username }
+    resource: 'voxel_accounts',
+    details: { username: user.username }
   });
 
   return c.json({
-    userId,
-    accessToken: data.session.access_token,
-    refreshToken: data.session.refresh_token,
+    userId: user.id,
+    accessToken: session.accessToken,
+    refreshToken: session.refreshToken,
+    expiresAt: session.expiresAt,
     profile
   });
+});
+
+// Refresh session (rotates tokens).
+accountRouter.post('/refresh', async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const { refreshToken } = body as any;
+  if (!refreshToken) {
+    return c.json({ error: 'refreshToken is required.', code: 'UNAUTHORIZED' }, 401);
+  }
+  const db = getDataClient();
+  if (!db) return c.json({ error: 'Data backend unconfigured.' }, 503);
+
+  const session = await refreshSession(db, refreshToken);
+  if (!session || 'error' in session) {
+    return c.json({ error: 'Invalid or expired refresh token.', code: 'UNAUTHORIZED' }, 401);
+  }
+  return c.json(session);
 });
 
 // Authenticated Password Change Endpoint
@@ -195,25 +216,21 @@ accountRouter.post('/password', authMiddleware, async (c) => {
   const body = await c.req.json();
   const { newPassword } = body;
 
-  if (!newPassword || newPassword.length < 6) {
+  if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 6) {
     return c.json({ error: 'New password must be at least 6 characters.' }, 400);
   }
 
-  const supabase = getUserSupabaseClient(token);
-  if (!supabase) {
-    return c.json({ error: 'Cloud service unconfigured.' }, 503);
-  }
-  const { error } = await supabase.auth.updateUser({ password: newPassword });
-
+  const db = getDataClient()!;
+  const { error } = await changePassword(db, authUser.id, newPassword, token);
   if (error) {
-    return c.json({ error: error.message }, 400);
+    return c.json({ error }, 400);
   }
 
   await logAuditEventServer({
     actor_id: authUser.id,
     actor_type: 'user',
     action: 'account.password_change',
-    resource: 'auth.users'
+    resource: 'voxel_accounts'
   });
 
   return c.json({ success: true });
@@ -224,15 +241,15 @@ accountRouter.delete('/', authMiddleware, async (c) => {
   const authUser = c.get('authUser');
   const userId = authUser.id;
 
-  const adminSupabase = getAdminSupabaseClient();
-  if (!adminSupabase) {
-    return c.json({ error: 'Privileged admin client unconfigured.' }, 503);
+  const db = getDataClient();
+  if (!db) {
+    return c.json({ error: 'Data backend unconfigured.' }, 503);
   }
 
   // Tracked, resumable deletion. If durable deletion state cannot be read
   // or written, no destructive step runs — the request fails closed.
   try {
-    const outcome = await runTrackedDeletion(adminSupabase, userId);
+    const outcome = await runTrackedDeletion(db, userId);
 
     switch (outcome.kind) {
       case 'already_complete':
@@ -250,7 +267,7 @@ accountRouter.delete('/', authMiddleware, async (c) => {
           actor_id: userId,
           actor_type: 'user',
           action: 'account.delete',
-          resource: 'voxel_users',
+          resource: 'voxel_accounts',
           details: { userId, failedStep: outcome.step }
         });
         return c.json({
@@ -265,7 +282,7 @@ accountRouter.delete('/', authMiddleware, async (c) => {
       actor_id: userId,
       actor_type: 'user',
       action: 'account.delete',
-      resource: 'voxel_users',
+      resource: 'voxel_accounts',
       details: { userId }
     });
 

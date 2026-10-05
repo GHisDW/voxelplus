@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { authMiddleware, CloudApiEnv } from '../auth.js';
-import { getUserSupabaseClient } from '../supabase.js';
+import { getDataClient } from '../store.js';
 import { logAuditEventServer } from '../audit.js';
 
 export const syncRouter = new Hono<CloudApiEnv>();
@@ -9,15 +9,14 @@ export const syncRouter = new Hono<CloudApiEnv>();
 const MAX_SYNC_PAYLOAD_BYTES = 500 * 1024;
 
 syncRouter.get('/', authMiddleware, async (c) => {
-  const token = c.get('authToken');
   const authUser = c.get('authUser');
 
-  const userSupabase = getUserSupabaseClient(token);
-  if (!userSupabase) {
-    return c.json({ error: 'Cloud service unconfigured.' }, 503);
+  const db = getDataClient();
+  if (!db) {
+    return c.json({ error: 'Data backend unconfigured.' }, 503);
   }
 
-  const { data, error } = await userSupabase
+  const { data, error } = await (db as any)
     .from('voxel_cloud_sync')
     .select('sync_payload, last_synced_at')
     .eq('user_id', authUser.id)
@@ -31,7 +30,6 @@ syncRouter.get('/', authMiddleware, async (c) => {
 });
 
 syncRouter.post('/', authMiddleware, async (c) => {
-  const token = c.get('authToken');
   const authUser = c.get('authUser');
   const body = await c.req.json();
 
@@ -43,9 +41,9 @@ syncRouter.post('/', authMiddleware, async (c) => {
     }, 413);
   }
 
-  const userSupabase = getUserSupabaseClient(token);
-  if (!userSupabase) {
-    return c.json({ error: 'Cloud service unconfigured.' }, 503);
+  const db = getDataClient();
+  if (!db) {
+    return c.json({ error: 'Data backend unconfigured.' }, 503);
   }
 
   const now = new Date().toISOString();
@@ -56,7 +54,7 @@ syncRouter.post('/', authMiddleware, async (c) => {
     status: 'Synced'
   };
 
-  const { error } = await userSupabase
+  const { error } = await (db as any)
     .from('voxel_cloud_sync')
     .upsert({
       user_id: authUser.id,

@@ -29,10 +29,6 @@ export class CloudApiClient {
     return this._cloudReachable;
   }
 
-  public static toInternalEmail(username: string): string {
-    return `${username.trim().toLowerCase()}@voxel.internal`;
-  }
-
   /**
    * Validates access token with Cloud API server.
    */
@@ -118,6 +114,26 @@ export class CloudApiClient {
       refreshToken: data.refreshToken,
       user: data.profile
     };
+  }
+
+  /**
+   * Exchanges a refresh token for a new access/refresh pair.
+   * Returns null when the refresh token is invalid or expired.
+   */
+  public static async refreshCloudSession(refreshToken: string): Promise<AccountSession | null> {
+    if (!refreshToken) return null;
+    const res = await fetch(`${this.apiBaseUrl}/api/account/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken })
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as any;
+    return {
+      accessToken: data.accessToken,
+      refreshToken: data.refreshToken,
+      user: data.profile ?? null
+    } as AccountSession;
   }
 
   public static async signOutCloud(): Promise<void> {

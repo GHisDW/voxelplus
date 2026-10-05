@@ -1,6 +1,5 @@
 import { Hono } from 'hono';
-import { getPublicSupabaseClient } from '../supabase.js';
-import type { SupabaseClient } from '@supabase/supabase-js';
+import { getDataClient, DataClient } from '../store.js';
 
 export const publicRouter = new Hono();
 
@@ -23,12 +22,12 @@ type PublicProfileRow = {
  * Throws when the library query fails — callers must surface an unavailable
  * state rather than fabricated zero counts.
  */
-export async function withLibraryCounts(supabase: SupabaseClient, rows: PublicProfileRow[]) {
+export async function withLibraryCounts(db: DataClient, rows: PublicProfileRow[]) {
   const counts = new Map<string, { packs: number; skins: number }>();
   for (const row of rows) counts.set(row.id, { packs: 0, skins: 0 });
 
   if (rows.length > 0) {
-    const { data: libRows, error: libErr } = await supabase
+    const { data: libRows, error: libErr } = await (db as any)
       .from('voxel_library')
       .select('user_id, type')
       .in('user_id', rows.map(r => r.id))
@@ -64,13 +63,13 @@ export async function withLibraryCounts(supabase: SupabaseClient, rows: PublicPr
 
 publicRouter.get('/profiles', async (c) => {
   const query = c.req.query('q')?.toLowerCase();
-  const supabase = getPublicSupabaseClient();
+  const db = getDataClient();
 
-  if (!supabase) {
-    return c.json({ error: 'Cloud service unconfigured.' }, 503);
+  if (!db) {
+    return c.json({ error: 'Data backend unconfigured.' }, 503);
   }
 
-  const { data: rpcData, error: rpcError } = await supabase.rpc('get_public_user_profiles');
+  const { data: rpcData, error: rpcError } = await (db as any).rpc('get_public_user_profiles');
 
   if (!rpcError && rpcData && Array.isArray(rpcData)) {
     let list = rpcData.map((row: any) => ({
@@ -92,7 +91,7 @@ publicRouter.get('/profiles', async (c) => {
 
   // Equivalent safe query fallback: public profiles from voxel_users (public
   // RLS) plus real public library counts. No fabricated zero counts.
-  const { data: users, error } = await supabase
+  const { data: users, error } = await (db as any)
     .from('voxel_users')
     .select('id, username, avatar, avatar_url, bio, created_at, is_creator')
     .eq('is_public', true)
@@ -104,7 +103,7 @@ publicRouter.get('/profiles', async (c) => {
 
   let list;
   try {
-    list = await withLibraryCounts(supabase, users as PublicProfileRow[]);
+    list = await withLibraryCounts(db, users as PublicProfileRow[]);
   } catch {
     return c.json({ error: 'Public profiles are temporarily unavailable.' }, 503);
   }
@@ -118,13 +117,13 @@ publicRouter.get('/profiles', async (c) => {
 
 publicRouter.get('/profiles/:username', async (c) => {
   const username = c.req.param('username');
-  const supabase = getPublicSupabaseClient();
+  const db = getDataClient();
 
-  if (!supabase) {
-    return c.json({ error: 'Cloud service unconfigured.' }, 503);
+  if (!db) {
+    return c.json({ error: 'Data backend unconfigured.' }, 503);
   }
 
-  const { data: rpcData, error: rpcError } = await supabase.rpc('get_public_user_profiles');
+  const { data: rpcData, error: rpcError } = await (db as any).rpc('get_public_user_profiles');
 
   if (!rpcError && rpcData && Array.isArray(rpcData)) {
     const match = rpcData.find((row: any) => row.username.toLowerCase() === username.toLowerCase());
@@ -142,7 +141,7 @@ publicRouter.get('/profiles/:username', async (c) => {
     }
   }
 
-  const { data: user, error } = await supabase
+  const { data: user, error } = await (db as any)
     .from('voxel_users')
     .select('id, username, avatar, avatar_url, bio, created_at, is_public, is_creator')
     .ilike('username', username)
@@ -154,7 +153,7 @@ publicRouter.get('/profiles/:username', async (c) => {
 
   let list;
   try {
-    list = await withLibraryCounts(supabase, [user as PublicProfileRow]);
+    list = await withLibraryCounts(db, [user as PublicProfileRow]);
   } catch {
     return c.json({ error: 'Public profile is temporarily unavailable.' }, 503);
   }

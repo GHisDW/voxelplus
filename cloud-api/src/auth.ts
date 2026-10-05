@@ -1,10 +1,10 @@
 import { Context, Next } from 'hono';
-import { getPublicSupabaseClient } from './supabase.js';
+import { getDataClient } from './store.js';
+import { resolveSession } from './identity.js';
 
 export interface AuthenticatedUser {
   id: string;
-  email: string;
-  user_metadata?: Record<string, any>;
+  username: string;
 }
 
 export type CloudApiEnv = {
@@ -16,24 +16,21 @@ export type CloudApiEnv = {
 };
 
 /**
- * Why TenantScale `validateSession()` is NOT used here:
+ * Session validation middleware for Voxel+ accounts.
  *
- * The TenantScale SDK's validateSession(jwt) validates the Supabase JWT AND
- * resolves the caller's membership in a TenantScale tenant — it throws for
- * any valid Supabase user that is not a member of the tenant (and is not a
- * super_admin). Voxel+ is a single-tenant B2C product: normal players are
- * Supabase Auth users, not TenantScale tenant members. Routing every request
- * through validateSession would reject every legitimate player, while adding
- * no security benefit — Voxel+ has exactly one implicit tenant.
+ * Voxel+ uses username+password identities — no Supabase Auth, no email.
+ * The Bearer token is an opaque Voxel+ session issued at signup/login; it is
+ * resolved server-side against `voxel_sessions` (SHA-256 hashes, expiry
+ * enforced). Fails closed on missing/malformed header, unavailable data
+ * backend, unknown/expired token, or any thrown error.
  *
- * Supabase `auth.getUser(token)` is therefore the correct identity check:
- * it cryptographically validates the JWT against the project and returns the
- * authenticated user, and every downstream query still runs under RLS scoped
- * to auth.uid(). TenantScale remains in use where it genuinely applies:
- * audit logging and IP-based account-creation rate limiting (see audit.ts).
- *
- * The middleware fails closed: missing/malformed header, unconfigured client,
- * invalid/expired token, or a thrown error all deny the request.
+ * TenantScale `validateSession()` is deliberately NOT used for identity:
+ * it validates TenantScale tenant membership, and Voxel+ is a single-tenant
+ * B2C product whose players are Voxel+ accounts, not tenant members — it
+ * would reject every legitimate user. TenantScale remains used where it
+ * genuinely applies: audit logging and IP-based signup rate limiting
+ * (see audit.ts). Ownership/authorization below this layer is enforced by
+ * server-side user_id scoping on the privileged data client.
  */
 export async function authMiddleware(c: Context<CloudApiEnv>, next: Next) {
   const authHeader = c.req.header('Authorization');
@@ -47,22 +44,18 @@ export async function authMiddleware(c: Context<CloudApiEnv>, next: Next) {
   }
 
   try {
-    const supabase = getPublicSupabaseClient();
-    if (!supabase) {
-      return c.json({ error: 'Cloud database unconfigured.', code: 'UNAVAILABLE' }, 503);
+    const db = getDataClient();
+    if (!db) {
+      return c.json({ error: 'Data backend unconfigured.', code: 'UNAVAILABLE' }, 503);
     }
-    const { data: { user }, error } = await supabase.auth.getUser(token);
 
-    if (error || !user) {
-      return c.json({ error: error?.message || 'Invalid or expired session token.', code: 'UNAUTHORIZED' }, 401);
+    const user = await resolveSession(db, token);
+    if (!user) {
+      return c.json({ error: 'Invalid or expired session token.', code: 'UNAUTHORIZED' }, 401);
     }
 
     c.set('authToken', token);
-    c.set('authUser', {
-      id: user.id,
-      email: user.email || '',
-      user_metadata: user.user_metadata || {}
-    });
+    c.set('authUser', { id: user.id, username: user.username });
 
     await next();
   } catch (err: any) {

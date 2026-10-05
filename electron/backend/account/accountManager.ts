@@ -154,6 +154,22 @@ export class AccountManager {
       AccountStore.setActiveSession(session);
       return session;
     } catch (err: any) {
+      // Access token rejected — try the stored refresh token once before
+      // giving up (INVALID_SESSION only; other failures revoke too but a
+      // refresh attempt is harmless and still fail-closed).
+      if (session.refreshToken) {
+        const rotated = await CloudApiClient.refreshCloudSession(session.refreshToken).catch(() => null);
+        if (rotated?.accessToken) {
+          try {
+            const verifiedProfile = await CloudApiClient.validateCloudToken(rotated.accessToken);
+            const next = { ...rotated, user: verifiedProfile };
+            AccountStore.setActiveSession(next);
+            return next;
+          } catch {
+            // fall through to revoke
+          }
+        }
+      }
       console.warn('[AccountManager] Cloud session validation failed. Revoking session:', err?.message || err);
       AccountStore.setActiveSession(null);
       return null;
