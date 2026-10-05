@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { authMiddleware, CloudApiEnv } from '../auth.js';
 import { getAdminSupabaseClient, getUserSupabaseClient } from '../supabase.js';
 import { logAuditEventServer } from '../audit.js';
+import { evaluateAchievements } from '../achievementEngine.js';
 
 export const avatarRouter = new Hono<CloudApiEnv>();
 
@@ -166,6 +167,9 @@ async function handleAvatarUpload(c: any) {
     resource: 'storage.avatars',
     details: { storagePath, sizeBytes: file.size, mimeType: file.type }
   });
+
+  // Custom avatar now set — re-evaluate achievements.
+  if (adminSupabase) await evaluateAchievements(adminSupabase, authUser.id);
 
   return c.json({ success: true, avatarUrl, storagePath });
 }

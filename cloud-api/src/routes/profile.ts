@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { authMiddleware, CloudApiEnv } from '../auth.js';
 import { getUserSupabaseClient, getAdminSupabaseClient } from '../supabase.js';
 import { logAuditEventServer } from '../audit.js';
+import { evaluateAchievements } from '../achievementEngine.js';
 
 export const profileRouter = new Hono<CloudApiEnv>();
 
@@ -112,6 +113,10 @@ profileRouter.put('/', authMiddleware, async (c) => {
       }
     }
   }
+
+  // Profile state changed (e.g. is_public) — re-evaluate achievements.
+  const evalAdmin = getAdminSupabaseClient();
+  if (evalAdmin) await evaluateAchievements(evalAdmin, authUser.id);
 
   await logAuditEventServer({
     actor_id: authUser.id,

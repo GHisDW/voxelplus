@@ -46,7 +46,17 @@ const api = {
   // Achievements
   listAchievementsCatalog: () => ipcRenderer.invoke('achievements:catalog'),
   getUserAchievements: () => ipcRenderer.invoke('achievements:getUser'),
-  reportAchievementEvent: (eventType: string, metadata?: any) => ipcRenderer.invoke('achievements:event', eventType, metadata),
+
+  // Rewarded ads + VPacks
+  getAdsStatus: () => ipcRenderer.invoke('ads:status'),
+  getAdProgress: () => ipcRenderer.invoke('ads:progress'),
+  completeAd: (itemKind: 'cosmetic' | 'vpack', itemId: string, completionId: string, proof: string) =>
+    ipcRenderer.invoke('ads:complete', itemKind, itemId, completionId, proof),
+  listVpackCatalog: () => ipcRenderer.invoke('vpacks:catalog'),
+  listVpacks: () => ipcRenderer.invoke('vpacks:list'),
+  createVpack: (payload: { title: string; description?: string; contents?: any }) => ipcRenderer.invoke('vpacks:create', payload),
+  convertInstanceToVpack: (payload: { instanceId: string; title?: string; description?: string }) => ipcRenderer.invoke('vpacks:convert', payload),
+  installVpack: (vpackId: string) => ipcRenderer.invoke('vpacks:install', vpackId),
 
   // Avatar
   uploadAvatar: (buffer: ArrayBuffer | Uint8Array, fileName: string, mimeType: string) =>

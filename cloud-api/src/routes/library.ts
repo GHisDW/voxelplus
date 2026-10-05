@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
 import { authMiddleware, CloudApiEnv } from '../auth.js';
-import { getUserSupabaseClient } from '../supabase.js';
+import { getUserSupabaseClient, getAdminSupabaseClient } from '../supabase.js';
 import { logAuditEventServer } from '../audit.js';
+import { evaluateAchievements } from '../achievementEngine.js';
 
 export const libraryRouter = new Hono<CloudApiEnv>();
 
@@ -68,6 +69,10 @@ libraryRouter.post('/', authMiddleware, async (c) => {
   if (error) {
     return c.json({ error: error.message }, 400);
   }
+
+  // Library state changed — re-evaluate server-derived achievements.
+  const adminSupabase = getAdminSupabaseClient();
+  if (adminSupabase) await evaluateAchievements(adminSupabase, authUser.id);
 
   await logAuditEventServer({
     actor_id: authUser.id,

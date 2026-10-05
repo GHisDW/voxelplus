@@ -9,7 +9,6 @@ export interface CosmeticDef {
   description: string;
   effectClass?: string;
   isEffect?: boolean;
-  unlockedByDefault?: boolean;
 }
 
 // Map item IDs to their texture dataUrls from MINECRAFT_ITEMS
@@ -18,102 +17,57 @@ function getTexture(itemId: string): string {
   return item?.dataUrl || '';
 }
 
+/**
+ * Visual definitions keyed by the CANONICAL server catalog ids
+ * (voxel_cosmetics.id). These are display assets only — ownership lives
+ * exclusively in the cloud (voxel_user_cosmetics); nothing here unlocks,
+ * grants, or persists cosmetics.
+ */
 export const COSMETIC_ITEMS: CosmeticDef[] = [
+  { id: 'cosmetic_dirt_block', name: 'Grass Block', type: 'item', textureUrl: getTexture('grass_block'), rarity: 'common', description: 'The foundation of every world you create.' },
+  { id: 'cosmetic_grass_block', name: 'Grass Block', type: 'item', textureUrl: getTexture('grass_block'), rarity: 'common', description: 'The surface of the world.' },
+  { id: 'cosmetic_crafting_table', name: 'Crafting Table', type: 'item', textureUrl: getTexture('crafting_table'), rarity: 'common', description: '3x3 grid of infinite possibilities.' },
+  { id: 'cosmetic_compass', name: 'Compass', type: 'item', textureUrl: getTexture('compass'), rarity: 'rare', description: 'Points toward adventure.' },
+  { id: 'cosmetic_chest', name: 'Chest', type: 'item', textureUrl: getTexture('chest'), rarity: 'rare', description: 'A collector\'s pride.' },
+  { id: 'cosmetic_diamond', name: 'Diamond', type: 'item', textureUrl: getTexture('diamond'), rarity: 'epic', description: 'The rarest of treasures.' },
+  { id: 'cosmetic_netherite', name: 'Netherite Ingot', type: 'item', textureUrl: getTexture('netherite_ingot'), rarity: 'epic', description: 'Forged in the Nether.' },
+  { id: 'cosmetic_emerald', name: 'Emerald', type: 'item', textureUrl: getTexture('emerald'), rarity: 'rare', description: 'A merchant\'s currency.' },
+  { id: 'cosmetic_nether_star', name: 'Nether Star', type: 'item', textureUrl: getTexture('nether_star'), rarity: 'legendary', description: 'The rarest cosmetic.' },
+  { id: 'cosmetic_ender_dragon_egg', name: 'Dragon Egg', type: 'item', textureUrl: getTexture('dragon_egg'), rarity: 'legendary', description: 'The ultimate trophy.' },
+  { id: 'cosmetic_beacon', name: 'Beacon', type: 'item', textureUrl: getTexture('beacon'), rarity: 'legendary', description: 'A beacon of light.' },
+  { id: 'cosmetic_totem', name: 'Totem of Undying', type: 'item', textureUrl: getTexture('totem_of_undying'), rarity: 'epic', description: 'Cheating death.' },
+  { id: 'cosmetic_book', name: 'Enchanted Book', type: 'badge', textureUrl: getTexture('enchanted_book'), rarity: 'common', description: 'Knowledge is power.' },
+  { id: 'cosmetic_sword', name: 'Diamond Sword', type: 'badge', textureUrl: getTexture('diamond_sword'), rarity: 'rare', description: 'Ready for battle.' },
+  { id: 'cosmetic_elytra_x', name: 'Elytra', type: 'item', textureUrl: getTexture('elytra'), rarity: 'legendary', description: 'Wings of the End.' },
   {
-    id: 'dirt_block',
-    name: 'Grass Block',
-    type: 'item',
-    textureUrl: getTexture('grass_block'),
-    rarity: 'common',
-    description: 'The foundation of every world you create.',
-    unlockedByDefault: true
-  },
-  {
-    id: 'crafting_table',
-    name: 'Crafting Table',
-    type: 'item',
-    textureUrl: getTexture('crafting_table'),
-    rarity: 'common',
-    description: '3x3 grid of infinite possibilities.',
-    unlockedByDefault: false
-  },
-  {
-    id: 'diamond',
-    name: 'Pure Diamond',
-    type: 'item',
-    textureUrl: getTexture('diamond'),
-    rarity: 'rare',
-    description: 'Rare gemstone excavated from deep underground caverns.',
-    unlockedByDefault: false
-  },
-  {
-    id: 'golden_apple',
-    name: 'Golden Apple',
-    type: 'item',
-    textureUrl: getTexture('golden_apple'),
-    rarity: 'rare',
-    description: 'Infused with regeneration and vitality enchantments.',
-    unlockedByDefault: false
-  },
-  {
-    id: 'totem_of_undying',
-    name: 'Totem of Undying',
-    type: 'item',
-    textureUrl: getTexture('totem_of_undying'),
-    rarity: 'epic',
-    description: 'Bestows second life and cheat-death warding.',
-    unlockedByDefault: false
-  },
-  {
-    id: 'netherite_ingot',
-    name: 'Netherite Ingot',
-    type: 'item',
-    textureUrl: getTexture('netherite_ingot'),
-    rarity: 'epic',
-    description: 'Forged from ancient Nether debris, indestructible in lava.',
-    unlockedByDefault: false
-  },
-  {
-    id: 'elytra',
-    name: 'Elytra Wings',
-    type: 'item',
-    textureUrl: getTexture('elytra'),
-    rarity: 'legendary',
-    description: 'Aerodynamic wings discovered within mysterious End Ships.',
-    unlockedByDefault: false
-  },
-  {
-    id: 'enchantment_glint',
-    name: 'Enchantment Glint',
-    type: 'effect',
-    isEffect: true,
-    textureUrl: getTexture('enchanted_book'),
-    rarity: 'legendary',
+    id: 'effect_enchanted_glint', name: 'Enchanted Glint', type: 'effect', isEffect: true,
+    textureUrl: getTexture('enchanted_book'), rarity: 'rare',
     description: 'Classic shimmering purple Minecraft enchantment glint sweep across your avatar.',
-    effectClass: 'effect-enchantment-glint',
-    unlockedByDefault: false
+    effectClass: 'effect-enchantment-glint'
   },
   {
-    id: 'golden_radiance',
-    name: 'Golden Radiance',
-    type: 'effect',
-    isEffect: true,
-    textureUrl: getTexture('beacon'),
-    rarity: 'epic',
+    id: 'effect_golden_radiance', name: 'Golden Radiance', type: 'effect', isEffect: true,
+    textureUrl: getTexture('beacon'), rarity: 'epic',
     description: 'Blazing golden aura of sunlight sweeping your player profile.',
-    effectClass: 'effect-golden-radiance',
-    unlockedByDefault: false
+    effectClass: 'effect-golden-radiance'
   },
   {
-    id: 'prismatic_shimmer',
-    name: 'Prismatic Shimmer',
-    type: 'effect',
-    isEffect: true,
-    textureUrl: getTexture('heart_of_the_sea'),
-    rarity: 'legendary',
+    id: 'effect_prismatic_shimmer', name: 'Prismatic Shimmer', type: 'effect', isEffect: true,
+    textureUrl: getTexture('heart_of_the_sea'), rarity: 'legendary',
     description: 'Mesmerizing holographic rainbow sheen sweeping across your avatar.',
-    effectClass: 'effect-prismatic-shimmer',
-    unlockedByDefault: false
+    effectClass: 'effect-prismatic-shimmer'
+  },
+  {
+    id: 'effect_smoldering_ember', name: 'Smoldering Ember', type: 'effect', isEffect: true,
+    textureUrl: getTexture('blaze_powder'), rarity: 'epic',
+    description: 'Nether-hot embers trail behind you.',
+    effectClass: 'effect-smoldering-ember'
+  },
+  {
+    id: 'effect_frost_aura', name: 'Frost Aura', type: 'effect', isEffect: true,
+    textureUrl: getTexture('snowball'), rarity: 'rare',
+    description: 'Cold as powdered snow.',
+    effectClass: 'effect-frost-aura'
   }
 ];
 
@@ -122,30 +76,11 @@ export function getCosmeticDef(id: string | null | undefined): CosmeticDef | und
   return COSMETIC_ITEMS.find((c) => c.id === id);
 }
 
+/**
+ * Closed-set effect renderer mapping: a cosmetic id maps to one of a fixed
+ * set of CSS classes — never arbitrary server-supplied CSS/JS.
+ */
 export function getCosmeticEffectClass(cosmeticId: string | null | undefined): string {
   const def = getCosmeticDef(cosmeticId);
   return def?.effectClass || '';
-}
-
-// Local storage helper for unlocked cosmetics (persisted per user)
-const UNLOCKED_STORAGE_KEY = 'voxelplus_unlocked_cosmetics';
-
-export function getUnlockedCosmetics(userId: string): string[] {
-  try {
-    const raw = localStorage.getItem(`${UNLOCKED_STORAGE_KEY}_${userId}`);
-    if (raw) {
-      return JSON.parse(raw);
-    }
-  } catch {}
-  return ['dirt_block']; // Default free starter
-}
-
-export function unlockCosmeticForUser(userId: string, cosmeticId: string): void {
-  try {
-    const unlocked = getUnlockedCosmetics(userId);
-    if (!unlocked.includes(cosmeticId)) {
-      unlocked.push(cosmeticId);
-      localStorage.setItem(`${UNLOCKED_STORAGE_KEY}_${userId}`, JSON.stringify(unlocked));
-    }
-  } catch {}
 }

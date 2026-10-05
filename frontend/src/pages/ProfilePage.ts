@@ -2,8 +2,7 @@ import { VoxelUserProfile } from '../../../electron/types';
 import { api } from '../services/api';
 import { NotificationToast } from '../components/NotificationToast';
 import { getAvatarDataUrl } from '../assets/minecraftAvatars';
-import { COSMETIC_ITEMS, getCosmeticDef, getCosmeticEffectClass, getUnlockedCosmetics, unlockCosmeticForUser } from '../assets/cosmeticAssets';
-import { SponsorAdModal } from '../components/SponsorAdModal';
+import { getCosmeticDef, getCosmeticEffectClass } from '../assets/cosmeticAssets';
 
 export interface ProfilePageEvents {
   onLogout?: () => void;
@@ -22,6 +21,7 @@ export class ProfilePage {
   private cosmeticsCatalog: any[] = [];
   private userCosmetics: any[] = [];
   private achievementsCatalog: any[] = [];
+  private userAchievements: any[] = [];
 
   constructor(events: ProfilePageEvents = {}) {
     this.events = events;
@@ -42,12 +42,13 @@ export class ProfilePage {
       this.user = await api.getCurrentUser();
       if (this.user) {
         try {
-          const [lib, syncData, cosCatalog, uCosmetics, achCatalog] = await Promise.all([
+          const [lib, syncData, cosCatalog, uCosmetics, achCatalog, uAchievements] = await Promise.all([
             api.getLibrary().catch(() => []),
             api.syncCloudData().catch(() => ({}) as any),
             api.listCosmeticsCatalog().catch(() => []),
             api.getUserCosmetics().catch(() => []),
-            api.listAchievementsCatalog().catch(() => [])
+            api.listAchievementsCatalog().catch(() => []),
+            api.getUserAchievements().catch(() => [])
           ]);
           this.userLibrary = lib || [];
           this.userPacks = syncData?.packs || [];
@@ -55,6 +56,7 @@ export class ProfilePage {
           this.cosmeticsCatalog = cosCatalog || [];
           this.userCosmetics = uCosmetics || [];
           this.achievementsCatalog = achCatalog || [];
+          this.userAchievements = uAchievements || [];
         } catch {
           // Fallback gracefully
         }
@@ -89,9 +91,12 @@ export class ProfilePage {
       day: 'numeric'
     });
 
-    // Achievement percentage calculation
-    const unlockedAchCount = (this.user.achievements || []).length;
-    const totalAchCount = Math.max(this.achievementsCatalog.length, 1);
+    // Achievement percentage calculation (server-authoritative list preferred)
+    const unlockedAchCount = this.userAchievements.length > 0
+      ? this.userAchievements.filter(a => a.unlocked).length
+      : (this.user.achievements || []).length;
+    const totalAchCount = Math.max(
+      this.userAchievements.length || this.achievementsCatalog.length, 1);
     const achPct = Math.round((unlockedAchCount / totalAchCount) * 100);
 
     // Selected cosmetic lookup
@@ -360,14 +365,13 @@ export class ProfilePage {
       gap: 14px;
     `;
 
-    // Combine catalog with unlocked status
+    // Ownership is cloud-authoritative only (voxel_user_cosmetics via API).
     const ownedIds = new Set(this.userCosmetics.map(uc => uc.id));
-    const localUnlocked = new Set(getUnlockedCosmetics(this.user?.id || 'guest'));
-    const catalog = this.cosmeticsCatalog.length > 0 ? this.cosmeticsCatalog : COSMETIC_ITEMS;
+    const catalog = this.cosmeticsCatalog;
 
     catalog.forEach(c => {
       const def = getCosmeticDef(c.id);
-      const isOwned = ownedIds.has(c.id) || localUnlocked.has(c.id) || c.id === 'dirt_block';
+      const isOwned = ownedIds.has(c.id);
       const isSelected = this.user?.selectedCosmetic === c.id;
       const texture = def?.textureUrl || c.icon;
       const effectClass = def?.effectClass || '';
@@ -414,7 +418,7 @@ export class ProfilePage {
 
         <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--border-subtle);">
           <span style="font-size: 0.75rem; color: var(--text-muted);">
-            ${isOwned ? '✓ UNLOCKED' : '📺 5s Sponsor Ad'}
+            ${isOwned ? '✓ OWNED' : (c.unlock_condition || '').toLowerCase().includes('achievement') ? '🏆 Achievement reward' : '🔒 Not owned'}
           </span>
           <div>
             ${isOwned ? `
@@ -422,16 +426,7 @@ export class ProfilePage {
                 ${isSelected ? '✓ Equipped' : 'Equip'}
               </button>
             ` : `
-              <button class="btn btn-secondary btn-unlock-ad" data-unlock-id="${c.id}" style="
-                padding: 4px 12px;
-                font-size: 0.78rem;
-                font-weight: 700;
-                background: rgba(168, 85, 247, 0.15);
-                border: 1px solid rgba(168, 85, 247, 0.4);
-                color: #c084fc;
-              ">
-                📺 Watch Ad
-              </button>
+              <span style="font-size: 0.78rem; color: var(--text-muted);">Unlock in Shop</span>
             `}
           </div>
         </div>
@@ -447,24 +442,6 @@ export class ProfilePage {
           } catch (e: any) {
             NotificationToast.show(e.message || 'Failed to select cosmetic.', 'error');
           }
-        };
-      }
-
-      const unlockBtn = card.querySelector('[data-unlock-id]') as HTMLButtonElement;
-      if (unlockBtn && def) {
-        unlockBtn.onclick = () => {
-          const adModal = new SponsorAdModal({
-            cosmetic: def,
-            userId: this.user?.id || 'guest',
-            onUnlocked: async () => {
-              try {
-                await api.selectCosmetic(def.id);
-              } catch {}
-              await this.render();
-            },
-            onClose: () => {}
-          });
-          adModal.show();
         };
       }
 
@@ -506,17 +483,35 @@ export class ProfilePage {
       </div>
     `;
 
-    const grid = document.createElement('div');
-    grid.style.cssText = `
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-      gap: 14px;
-    `;
+    // Server-returned achievements include unlock state; use the merged
+    // authenticated list, falling back to the public catalog + profile ids.
+    const achList = this.userAchievements.length > 0
+      ? this.userAchievements
+      : this.achievementsCatalog.map(ach => ({
+          ...ach,
+          unlocked: (this.user?.achievements || []).includes(ach.id),
+          unlockedAt: null
+        }));
 
-    const userAchMap = new Map((this.user?.achievements || []).map(a => [a, true]));
+    // Group by category for a polished, browsable list.
+    const categories = new Map<string, any[]>();
+    achList.forEach(ach => {
+      const cat = ach.category || 'general';
+      if (!categories.has(cat)) categories.set(cat, []);
+      categories.get(cat)!.push(ach);
+    });
 
-    this.achievementsCatalog.forEach(ach => {
-      const isUnlocked = userAchMap.has(ach.id);
+    categories.forEach((achs, category) => {
+      const header = document.createElement('div');
+      header.style.cssText = `font-size: 0.85rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 8px;`;
+      header.textContent = category;
+      wrap.appendChild(header);
+
+      const catGrid = document.createElement('div');
+      catGrid.style.cssText = `display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px;`;
+
+      achs.forEach(ach => {
+      const isUnlocked = ach.unlocked === true;
 
       const card = document.createElement('div');
       card.className = 'horizontal-card';
@@ -554,18 +549,19 @@ export class ProfilePage {
             ${ach.description}
           </p>
           <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.75rem;">
-            <span style="color: var(--text-muted);">Reward: ${ach.reward || 'Cosmetic'}</span>
+            <span style="color: var(--text-muted);">${ach.requirement ? `Goal: ${ach.requirement}` : ''}</span>
             <span style="font-weight: 700; color: ${isUnlocked ? '#10b981' : 'var(--text-muted)'};">
-              ${isUnlocked ? '✓ UNLOCKED' : 'LOCKED'}
+              ${isUnlocked ? '✓ UNLOCKED' : ach.hidden ? '❓ HIDDEN' : 'LOCKED'}
             </span>
           </div>
         </div>
       `;
 
-      grid.appendChild(card);
+      catGrid.appendChild(card);
+      });
+      wrap.appendChild(catGrid);
     });
 
-    wrap.appendChild(grid);
     return wrap;
   }
 

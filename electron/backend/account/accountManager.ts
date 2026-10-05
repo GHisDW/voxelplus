@@ -439,20 +439,9 @@ export class AccountManager {
   // ─── Cosmetics ───
 
   public static async listCosmeticsCatalog(): Promise<any[]> {
-    const catalog = await CloudApiClient.fetchCosmeticsCatalog();
-    if (catalog && catalog.length > 0) return catalog;
-    // Default catalog fallback with Minecraft items and effects
-    return [
-      { id: 'dirt_block', name: 'Dirt Block', type: 'avatar_frame', icon: 'minecraft:grass_block', rarity: 'common', description: 'The foundation of every world' },
-      { id: 'crafting_table', name: 'Crafting Table', type: 'avatar_frame', icon: 'minecraft:crafting_table', rarity: 'common', description: '3x3 grid of pure creation' },
-      { id: 'diamond', name: 'Diamond', type: 'profile_icon', icon: 'minecraft:diamond', rarity: 'rare', description: 'Precious gemstone from deep underground' },
-      { id: 'golden_apple', name: 'Golden Apple', type: 'profile_icon', icon: 'minecraft:golden_apple', rarity: 'rare', description: 'Infused with regeneration and vitality' },
-      { id: 'netherite_ingot', name: 'Netherite Ingot', type: 'featured', icon: 'minecraft:netherite_ingot', rarity: 'epic', description: 'Forged from ancient debris in the Nether' },
-      { id: 'elytra', name: 'Elytra Wings', type: 'featured', icon: 'minecraft:elytra', rarity: 'legendary', description: 'Wings of aerodynamic flight from End Ships' },
-      { id: 'enchantment_glint', name: 'Enchantment Glint', type: 'effect', icon: 'effect:glint', rarity: 'legendary', description: 'Mythic pulsating purple radiance with glistening shimmer effect' },
-      { id: 'golden_radiance', name: 'Golden Radiance', type: 'effect', icon: 'effect:gold_shine', rarity: 'epic', description: 'Blazing golden aura of the sun' },
-      { id: 'prismatic_shimmer', name: 'Prismatic Shimmer', type: 'effect', icon: 'effect:prismatic', rarity: 'legendary', description: 'Prismatic rainbow aura sweeping across your avatar' }
-    ];
+    // The cloud catalog is authoritative — a missing catalog is an error,
+    // not a substitute local list with different IDs.
+    return CloudApiClient.fetchCosmeticsCatalog();
   }
 
   public static async getUserCosmetics(): Promise<any[]> {
@@ -492,10 +481,99 @@ export class AccountManager {
     return CloudApiClient.fetchUserAchievements(session.accessToken);
   }
 
-  public static async reportAchievementEvent(eventType: string, metadata?: any): Promise<any> {
+  // ─── Rewarded ads ───
+
+  public static async getAdsStatus(): Promise<{ available: boolean; provider: string | null }> {
+    try {
+      return await CloudApiClient.fetchAdsStatus();
+    } catch {
+      return { available: false, provider: null };
+    }
+  }
+
+  public static async getAdProgress(): Promise<any[]> {
+    const session = await this.getCurrentSession();
+    if (!session) return [];
+    return CloudApiClient.fetchAdProgress(session.accessToken);
+  }
+
+  public static async completeAd(itemKind: 'cosmetic' | 'vpack', itemId: string, completionId: string, proof: string): Promise<any> {
+    const session = await this.getCurrentSession();
+    if (!session) {
+      throw new VoxelError({
+        title: 'Authentication Required',
+        message: 'Must be logged in to complete rewarded ads.',
+        category: 'CONFIGURATION',
+        code: 'UNAUTHORIZED'
+      });
+    }
+    return CloudApiClient.completeAd(session.accessToken, itemKind, itemId, completionId, proof);
+  }
+
+  // ─── VPacks ───
+
+  public static async listVpackCatalog(): Promise<any[]> {
+    return CloudApiClient.fetchVpackCatalog();
+  }
+
+  public static async listVpacks(): Promise<any[]> {
+    const session = await this.getCurrentSession();
+    if (!session) return [];
+    return CloudApiClient.fetchVpacks(session.accessToken);
+  }
+
+  public static async createVpack(payload: { title: string; description?: string; contents?: any }): Promise<any> {
+    const session = await this.getCurrentSession();
+    if (!session) {
+      throw new VoxelError({
+        title: 'Authentication Required',
+        message: 'Must be logged in to create a VPack.',
+        category: 'CONFIGURATION',
+        code: 'UNAUTHORIZED'
+      });
+    }
+    return CloudApiClient.createVpack(session.accessToken, payload);
+  }
+
+  public static async convertInstanceToVpack(payload: { instanceId: string; title?: string; description?: string }): Promise<any> {
+    const session = await this.getCurrentSession();
+    if (!session) {
+      throw new VoxelError({
+        title: 'Authentication Required',
+        message: 'Must be logged in to convert a VPack.',
+        category: 'CONFIGURATION',
+        code: 'UNAUTHORIZED'
+      });
+    }
+    return CloudApiClient.convertInstanceToVpack(session.accessToken, payload);
+  }
+
+  public static async installVpack(vpackId: string): Promise<any> {
+    const session = await this.getCurrentSession();
+    if (!session) {
+      throw new VoxelError({
+        title: 'Authentication Required',
+        message: 'Must be logged in to install a VPack.',
+        category: 'CONFIGURATION',
+        code: 'UNAUTHORIZED'
+      });
+    }
+    return CloudApiClient.installVpack(session.accessToken, vpackId);
+  }
+
+  // ─── Instances (cloud record) ───
+
+  public static async recordInstanceCloud(payload: { name: string; version?: string }): Promise<string | null> {
     const session = await this.getCurrentSession();
     if (!session) return null;
-    return CloudApiClient.reportAchievementEvent(session.accessToken, eventType, metadata);
+    const res = await CloudApiClient.createInstanceRecord(session.accessToken, payload);
+    return res?.id ?? null;
+  }
+
+  public static async deleteInstanceCloud(id: string): Promise<boolean> {
+    const session = await this.getCurrentSession();
+    if (!session) return false;
+    return CloudApiClient.deleteInstanceRecord(session.accessToken, id);
   }
 
   // ─── Avatar ───

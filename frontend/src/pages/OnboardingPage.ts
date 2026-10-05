@@ -1,7 +1,6 @@
 import { api } from '../services/api';
 import { NotificationToast } from '../components/NotificationToast';
 import { MINECRAFT_AVATARS, getAvatarDataUrl } from '../assets/minecraftAvatars';
-import { COSMETIC_ITEMS, getCosmeticDef } from '../assets/cosmeticAssets';
 
 export interface OnboardingEvents {
   onComplete: () => void;
@@ -10,7 +9,7 @@ export interface OnboardingEvents {
 export class OnboardingPage {
   private mode: 'signup' | 'login' = 'signup';
   private currentStep: number = 1;
-  private totalSteps: number = 8;
+  private totalSteps: number = 7;
   private events: OnboardingEvents;
   private container: HTMLElement;
 
@@ -25,7 +24,6 @@ export class OnboardingPage {
   private customAvatarMime: string = '';
   private customAvatarPreviewUrl: string = '';
   private bio: string = '';
-  private selectedCosmeticId: string = 'dirt_block';
   private isPublic: boolean = true;
 
   // Login Form State
@@ -35,7 +33,6 @@ export class OnboardingPage {
   private isSubmitting: boolean = false;
   private errorMessage: string = '';
 
-  private cosmeticsPresets = COSMETIC_ITEMS;
 
   constructor(events: OnboardingEvents) {
     this.events = events;
@@ -549,75 +546,6 @@ export class OnboardingPage {
       };
 
     } else if (this.currentStep === 6) {
-      // Step 6: Initial Minecraft Cosmetic
-      card.innerHTML += `
-        <div>
-          <h3 style="font-size: 1.4rem; font-weight: 800; color: var(--text-primary);">Select Starter Cosmetic</h3>
-          <p style="font-size: 0.88rem; color: var(--text-secondary); margin-top: 4px;">
-            Choose a Minecraft-themed item to showcase on your player card. More unlock through achievements.
-          </p>
-        </div>
-
-        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; max-height: 280px; overflow-y: auto; padding-right: 4px;">
-          ${this.cosmeticsPresets.map(c => `
-            <div class="horizontal-card" data-cosmetic="${c.id}" style="
-              padding: 12px 14px;
-              border-radius: var(--radius-lg);
-              background: var(--bg-card);
-              border: 1px solid ${this.selectedCosmeticId === c.id ? 'var(--accent-primary)' : 'var(--border-subtle)'};
-              display: flex;
-              align-items: center;
-              gap: 12px;
-              cursor: pointer;
-            ">
-              <div style="
-                width: 44px;
-                height: 44px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                background: #090a0f;
-                border-radius: var(--radius-md);
-                border: 1px solid rgba(255,255,255,0.1);
-                flex-shrink: 0;
-              " class="${c.effectClass || ''}">
-                <img src="${c.textureUrl}" alt="${c.name}" style="width: 32px; height: 32px; object-fit: contain; image-rendering: pixelated;" />
-              </div>
-              <div style="min-width: 0;">
-                <div style="font-weight: 700; font-size: 0.92rem; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
-                  <span>${c.name}</span>
-                  <span class="badge" style="font-size: 0.65rem; padding: 2px 6px;">${c.rarity}</span>
-                </div>
-                <div style="font-size: 0.73rem; color: var(--text-muted); margin-top: 2px;">${c.description}</div>
-              </div>
-            </div>
-          `).join('')}
-        </div>
-
-        <div class="modal-footer" style="display: flex; justify-content: space-between; margin-top: 10px;">
-          <button class="btn btn-secondary" id="btn-back">← Back</button>
-          <button class="btn btn-primary" id="btn-next">Continue →</button>
-        </div>
-      `;
-
-      card.querySelectorAll('[data-cosmetic]').forEach(el => {
-        (el as HTMLElement).onclick = () => {
-          this.selectedCosmeticId = el.getAttribute('data-cosmetic') || 'dirt_block';
-          this.renderCurrentView();
-        };
-      });
-
-      (card.querySelector('#btn-back') as HTMLElement).onclick = () => {
-        this.currentStep = 5;
-        this.renderCurrentView();
-      };
-      (card.querySelector('#btn-next') as HTMLElement).onclick = () => {
-        this.errorMessage = '';
-        this.currentStep = 7;
-        this.renderCurrentView();
-      };
-
-    } else if (this.currentStep === 7) {
       // Step 7: Privacy & Directory Visibility
       card.innerHTML += `
         <div>
@@ -683,18 +611,17 @@ export class OnboardingPage {
       });
 
       (card.querySelector('#btn-back') as HTMLElement).onclick = () => {
-        this.currentStep = 6;
+        this.currentStep = 5;
         this.renderCurrentView();
       };
       (card.querySelector('#btn-next') as HTMLElement).onclick = () => {
         this.errorMessage = '';
-        this.currentStep = 8;
+        this.currentStep = 7;
         this.renderCurrentView();
       };
 
-    } else if (this.currentStep === 8) {
-      // Step 8: Review & Confirm
-      const chosenCosmetic = this.cosmeticsPresets.find(c => c.id === this.selectedCosmeticId);
+    } else if (this.currentStep === 7) {
+      // Step 7: Review & Confirm
 
       card.innerHTML += `
         <div>
@@ -737,11 +664,7 @@ export class OnboardingPage {
             <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">
               ${this.bio || 'Building with Voxel⁺'}
             </div>
-            <div style="display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 0.78rem; color: #93c5fd;">
-              <span>Starter Cosmetic:</span>
-              ${chosenCosmetic?.textureUrl ? `<img src="${chosenCosmetic.textureUrl}" style="width: 20px; height: 20px; object-fit: contain; image-rendering: pixelated;" />` : ''}
-              <span style="font-weight: 700;">${chosenCosmetic?.name || 'Grass Block'}</span>
-            </div>
+
           </div>
         </div>
 
@@ -755,7 +678,7 @@ export class OnboardingPage {
 
       (card.querySelector('#btn-back') as HTMLElement).onclick = () => {
         if (!this.isSubmitting) {
-          this.currentStep = 7;
+          this.currentStep = 6;
           this.renderCurrentView();
         }
       };
@@ -794,17 +717,8 @@ export class OnboardingPage {
         }
       }
 
-      // 3. Select starter cosmetic
-      try {
-        await api.selectCosmetic(this.selectedCosmeticId);
-      } catch (e) {
-        console.warn('[Onboarding] Starter cosmetic selection failed:', e);
-      }
-
-      // 4. Report ACCOUNT_CREATED achievement trigger
-      try {
-        await api.reportAchievementEvent('ACCOUNT_CREATED');
-      } catch {}
+      // No cosmetics, achievements or unlocks are granted during onboarding —
+      // acquisition is server-authoritative via rewarded ads / achievements.
 
       NotificationToast.show(`Account @${this.username} created successfully!`, 'success');
       this.events.onComplete();

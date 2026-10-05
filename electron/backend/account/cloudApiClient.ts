@@ -265,13 +265,12 @@ export class CloudApiClient {
   // ─── Cosmetics ───
 
   public static async fetchCosmeticsCatalog(): Promise<any[]> {
-    try {
-      const res = await fetch(`${this.apiBaseUrl}/api/cosmetics/catalog`);
-      if (!res.ok) return [];
-      return (await res.json()) as any[];
-    } catch {
-      return [];
+    const res = await fetch(`${this.apiBaseUrl}/api/cosmetics/catalog`);
+    if (!res.ok) {
+      const errJson = (await res.json().catch(() => ({}))) as any;
+      throw new Error(errJson.error || 'Cosmetics catalog is unavailable.');
     }
+    return (await res.json()) as any[];
   }
 
   public static async fetchUserCosmetics(accessToken: string): Promise<any[]> {
@@ -304,13 +303,13 @@ export class CloudApiClient {
   // ─── Achievements ───
 
   public static async fetchAchievementsCatalog(): Promise<any[]> {
-    try {
-      const res = await fetch(`${this.apiBaseUrl}/api/achievements/catalog`);
-      if (!res.ok) return [];
-      return (await res.json()) as any[];
-    } catch {
-      return [];
+    const res = await fetch(`${this.apiBaseUrl}/api/achievements/catalog`);
+    if (!res.ok) {
+      const err: any = new Error(`Cloud catalog error ${res.status}`);
+      err.code = 'CATALOG_ERROR';
+      throw err;
     }
+    return (await res.json()) as any[];
   }
 
   public static async fetchUserAchievements(accessToken: string): Promise<any[]> {
@@ -324,20 +323,134 @@ export class CloudApiClient {
     return (await res.json()) as any[];
   }
 
-  public static async reportAchievementEvent(accessToken: string, eventType: string, metadata?: any): Promise<any> {
-    const res = await fetch(`${this.apiBaseUrl}/api/achievements/event`, {
+  // ─── Rewarded ads ───
+
+  public static async fetchAdsStatus(): Promise<{ available: boolean; provider: string | null }> {
+    const res = await fetch(`${this.apiBaseUrl}/api/ads/status`);
+    if (!res.ok) return { available: false, provider: null };
+    return (await res.json()) as any;
+  }
+
+  public static async fetchAdProgress(accessToken: string): Promise<any[]> {
+    const res = await fetch(`${this.apiBaseUrl}/api/ads/progress`, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if (!res.ok) {
+      const errJson = (await res.json().catch(() => ({}))) as any;
+      throw new Error(errJson.error || 'Ad progress is unavailable.');
+    }
+    return (await res.json()) as any[];
+  }
+
+  public static async completeAd(
+    accessToken: string,
+    itemKind: 'cosmetic' | 'vpack',
+    itemId: string,
+    completionId: string,
+    proof: string
+  ): Promise<any> {
+    const res = await fetch(`${this.apiBaseUrl}/api/ads/complete`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${accessToken}`
       },
-      body: JSON.stringify({ eventType, metadata })
+      body: JSON.stringify({ itemKind, itemId, completionId, proof })
     });
     if (!res.ok) {
       const errJson = (await res.json().catch(() => ({}))) as any;
-      throw new Error(errJson.error || 'Achievement event reporting failed.');
+      const err: any = new Error(errJson.error || 'Ad completion failed.');
+      err.code = errJson.code;
+      throw err;
     }
     return await res.json();
+  }
+
+  // ─── VPacks ───
+
+  public static async fetchVpackCatalog(): Promise<any[]> {
+    const res = await fetch(`${this.apiBaseUrl}/api/vpacks/catalog`);
+    if (!res.ok) {
+      const errJson = (await res.json().catch(() => ({}))) as any;
+      throw new Error(errJson.error || 'VPack catalog is unavailable.');
+    }
+    return (await res.json()) as any[];
+  }
+
+  public static async fetchVpacks(accessToken: string): Promise<any[]> {
+    const res = await fetch(`${this.apiBaseUrl}/api/vpacks`, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if (!res.ok) {
+      const errJson = (await res.json().catch(() => ({}))) as any;
+      throw new Error(errJson.error || 'VPacks are unavailable.');
+    }
+    return (await res.json()) as any[];
+  }
+
+  public static async createVpack(accessToken: string, payload: { title: string; description?: string; contents?: any }): Promise<any> {
+    const res = await fetch(`${this.apiBaseUrl}/api/vpacks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const errJson = (await res.json().catch(() => ({}))) as any;
+      throw new Error(errJson.error || 'VPack creation failed.');
+    }
+    return await res.json();
+  }
+
+  public static async convertInstanceToVpack(accessToken: string, payload: { instanceId: string; title?: string; description?: string }): Promise<any> {
+    const res = await fetch(`${this.apiBaseUrl}/api/vpacks/convert`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const errJson = (await res.json().catch(() => ({}))) as any;
+      throw new Error(errJson.error || 'VPack conversion failed.');
+    }
+    return await res.json();
+  }
+
+  public static async installVpack(accessToken: string, vpackId: string): Promise<any> {
+    const res = await fetch(`${this.apiBaseUrl}/api/vpacks/${vpackId}/install`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if (!res.ok) {
+      const errJson = (await res.json().catch(() => ({}))) as any;
+      throw new Error(errJson.error || 'VPack install failed.');
+    }
+    return await res.json();
+  }
+
+  // ─── Instances (cloud record) ───
+
+  public static async createInstanceRecord(accessToken: string, payload: { name: string; version?: string }): Promise<{ id: string } | null> {
+    const res = await fetch(`${this.apiBaseUrl}/api/instances`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const errJson = (await res.json().catch(() => ({}))) as any;
+      throw new Error(errJson.error || 'Instance record failed.');
+    }
+    return (await res.json()) as { id: string } | null;
+  }
+
+  public static async deleteInstanceRecord(accessToken: string, id: string): Promise<boolean> {
+    const res = await fetch(`${this.apiBaseUrl}/api/instances/${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if (!res.ok) {
+      const errJson = (await res.json().catch(() => ({}))) as any;
+      throw new Error(errJson.error || 'Instance record deletion failed.');
+    }
+    return true;
   }
 
   // ─── Avatar ───

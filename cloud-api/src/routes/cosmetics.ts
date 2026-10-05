@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { authMiddleware, CloudApiEnv } from '../auth.js';
 import { getUserSupabaseClient, getAdminSupabaseClient } from '../supabase.js';
 import { logAuditEventServer } from '../audit.js';
+import { ADS_REQUIRED } from '../ads.js';
 
 export const cosmeticsRouter = new Hono<CloudApiEnv>();
 
@@ -80,12 +81,14 @@ cosmeticsRouter.put('/select', authMiddleware, async (c) => {
 });
 
 /**
- * GET /api/cosmetics/catalog — public list of all cosmetics (for onboarding/display)
+ * GET /api/cosmetics/catalog — public cosmetics catalog.
+ * Includes the server-authoritative ad cost per item; on backend failure
+ * returns 503 rather than an empty list pretending no cosmetics exist.
  */
 cosmeticsRouter.get('/catalog', async (c) => {
   const { getPublicSupabaseClient } = await import('../supabase.js');
   const supabase = getPublicSupabaseClient();
-  if (!supabase) return c.json([]);
+  if (!supabase) return c.json({ error: 'Catalog unavailable.' }, 503);
 
   const { data, error } = await supabase
     .from('voxel_cosmetics')
@@ -93,6 +96,9 @@ cosmeticsRouter.get('/catalog', async (c) => {
     .eq('enabled', true)
     .order('rarity');
 
-  if (error) return c.json([]);
-  return c.json(data || []);
+  if (error) return c.json({ error: 'Catalog unavailable.' }, 503);
+  return c.json((data || []).map((item: any) => ({
+    ...item,
+    adsRequired: ADS_REQUIRED.cosmetic(item)
+  })));
 });

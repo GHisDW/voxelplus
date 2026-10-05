@@ -115,8 +115,38 @@ export class CommandManager {
     return AccountManager.getUserAchievements();
   }
 
-  public static async reportAchievementEvent(eventType: string, metadata?: any) {
-    return AccountManager.reportAchievementEvent(eventType, metadata);
+  // Rewarded ads (provider-verified server-side; unavailable without provider)
+  public static async getAdsStatus() {
+    return AccountManager.getAdsStatus();
+  }
+
+  public static async getAdProgress() {
+    return AccountManager.getAdProgress();
+  }
+
+  public static async completeAd(itemKind: 'cosmetic' | 'vpack', itemId: string, completionId: string, proof: string) {
+    return AccountManager.completeAd(itemKind, itemId, completionId, proof);
+  }
+
+  // VPacks
+  public static async listVpackCatalog() {
+    return AccountManager.listVpackCatalog();
+  }
+
+  public static async listVpacks() {
+    return AccountManager.listVpacks();
+  }
+
+  public static async createVpack(payload: { title: string; description?: string; contents?: any }) {
+    return AccountManager.createVpack(payload);
+  }
+
+  public static async convertInstanceToVpack(payload: { instanceId: string; title?: string; description?: string }) {
+    return AccountManager.convertInstanceToVpack(payload);
+  }
+
+  public static async installVpack(vpackId: string) {
+    return AccountManager.installVpack(vpackId);
   }
 
   // Avatar
@@ -214,7 +244,20 @@ export class CommandManager {
   }
 
   public static async createInstance(payload: CreateInstancePayload): Promise<InstanceMetadata> {
-    return InstanceManager.createInstance(payload);
+    const meta = await InstanceManager.createInstance(payload);
+    // Record the instance server-side (authoritative lifetime metric).
+    // Best-effort: local creation still succeeds when cloud is unreachable,
+    // but only server-recorded instances count toward achievements.
+    try {
+      const cloudId = await AccountManager.recordInstanceCloud({
+        name: meta.name || payload.name,
+        version: payload.minecraftVersion
+      });
+      if (cloudId) (meta as any).cloudInstanceId = cloudId;
+    } catch (e) {
+      console.warn('[Voxel+] Cloud instance record failed:', e);
+    }
+    return meta;
   }
 
   public static async updateInstance(id: string, updates: Partial<InstanceMetadata>): Promise<InstanceMetadata | null> {
@@ -230,7 +273,13 @@ export class CommandManager {
   }
 
   public static async deleteInstance(id: string): Promise<boolean> {
-    return InstanceManager.deleteInstance(id);
+    const meta = await InstanceManager.getInstance(id);
+    const ok = await InstanceManager.deleteInstance(id);
+    const cloudId = (meta as any)?.cloudInstanceId;
+    if (ok && cloudId) {
+      try { await AccountManager.deleteInstanceCloud(cloudId); } catch {}
+    }
+    return ok;
   }
 
   public static async openInstanceFolder(id: string): Promise<boolean> {

@@ -10,6 +10,9 @@ import { achievementsRouter } from './routes/achievements.js';
 import { cosmeticsRouter } from './routes/cosmetics.js';
 import { ownerRouter } from './routes/owner.js';
 import { avatarRouter } from './routes/avatar.js';
+import { adsRouter } from './routes/ads.js';
+import { instancesRouter } from './routes/instances.js';
+import { vpacksRouter } from './routes/vpacks.js';
 
 const app = new Hono();
 
@@ -26,6 +29,9 @@ app.route('/api/achievements', achievementsRouter);
 app.route('/api/cosmetics', cosmeticsRouter);
 app.route('/api/owner', ownerRouter);
 app.route('/api/avatar', avatarRouter);
+app.route('/api/ads', adsRouter);
+app.route('/api/instances', instancesRouter);
+app.route('/api/vpacks', vpacksRouter);
 
 if (process.env.START_SERVER === 'true') {
   const port = Number(process.env.PORT) || 3001;

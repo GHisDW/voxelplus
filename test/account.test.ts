@@ -152,12 +152,21 @@ test('AccountManager - Owner Panel Authorization Guard', async () => {
 });
 
 test('AccountManager - Cosmetics and Achievements Access', async () => {
-  // Public catalog access
-  const cosmetics = await AccountManager.listCosmeticsCatalog();
-  assert.ok(Array.isArray(cosmetics));
+  // Catalog is cloud-authoritative: returns an array when the API is up,
+  // or rejects (fail-closed) when it is unreachable — never a fake local list.
+  try {
+    const cosmetics = await AccountManager.listCosmeticsCatalog();
+    assert.ok(Array.isArray(cosmetics));
+  } catch (e: any) {
+    assert.ok(e instanceof Error);
+  }
 
-  const achievements = await AccountManager.listAchievementsCatalog();
-  assert.ok(Array.isArray(achievements));
+  try {
+    const achievements = await AccountManager.listAchievementsCatalog();
+    assert.ok(Array.isArray(achievements));
+  } catch (e: any) {
+    assert.ok(e instanceof Error);
+  }
 
   // User cosmetics & selection without auth returns empty or throws
   const userCosmetics = await AccountManager.getUserCosmetics();

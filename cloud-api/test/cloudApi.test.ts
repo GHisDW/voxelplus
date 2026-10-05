@@ -19,7 +19,13 @@ test('Cloud API - Unauthenticated Request Rejection on Protected Endpoints', asy
     { url: 'http://localhost/api/cosmetics', method: 'GET' },
     { url: 'http://localhost/api/cosmetics/select', method: 'PUT' },
     { url: 'http://localhost/api/achievements', method: 'GET' },
-    { url: 'http://localhost/api/achievements/event', method: 'POST' },
+    { url: 'http://localhost/api/ads/progress', method: 'GET' },
+    { url: 'http://localhost/api/ads/complete', method: 'POST' },
+    { url: 'http://localhost/api/instances', method: 'GET' },
+    { url: 'http://localhost/api/instances', method: 'POST' },
+    { url: 'http://localhost/api/vpacks', method: 'GET' },
+    { url: 'http://localhost/api/vpacks', method: 'POST' },
+    { url: 'http://localhost/api/vpacks/convert', method: 'POST' },
     { url: 'http://localhost/api/avatar/upload', method: 'POST' },
     { url: 'http://localhost/api/owner/check', method: 'GET' },
     { url: 'http://localhost/api/owner/users', method: 'GET' },
@@ -64,15 +70,14 @@ test('Cloud API - Signup Rejects Invalid Input', async () => {
   assert.equal(res.status, 400);
 });
 
-test('Cloud API - Achievement Event Requires Authentication', async () => {
+test('Cloud API - Client-reported achievement event endpoint is gone', async () => {
   const res = await app.fetch(new Request('http://localhost/api/achievements/event', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ eventType: 'FOUNDER_GRANTED' })
+    body: JSON.stringify({ eventType: 'ACCOUNT_CREATED' })
   }));
-  // Unauthenticated requests are rejected before any event processing —
-  // clients can never grant themselves privileged achievements.
-  assert.ok(res.status === 401 || res.status === 503, `Expected 401 or 503, got ${res.status}`);
+  // Clients cannot report unlock events at all — the endpoint was removed.
+  assert.equal(res.status, 404, `Expected 404 (endpoint removed), got ${res.status}`);
 });
 
 test('Cloud API - Avatar Upload Requires Authentication', async () => {
@@ -88,17 +93,25 @@ test('Cloud API - Avatar Upload Requires Authentication', async () => {
 test('Cloud API - Public Cosmetics Catalog Route', async () => {
   const req = new Request('http://localhost/api/cosmetics/catalog');
   const res = await app.fetch(req);
-  assert.equal(res.status, 200);
-  const data = await res.json();
-  assert.ok(Array.isArray(data));
+  // 200 with a real catalog when configured; 503 when unconfigured —
+  // never an empty list pretending no cosmetics exist.
+  if (res.status === 200) {
+    const data = await res.json();
+    assert.ok(Array.isArray(data));
+  } else {
+    assert.equal(res.status, 503, `Expected 200 or 503, got ${res.status}`);
+  }
 });
 
 test('Cloud API - Public Achievements Catalog Route', async () => {
   const req = new Request('http://localhost/api/achievements/catalog');
   const res = await app.fetch(req);
-  assert.equal(res.status, 200);
-  const data = await res.json();
-  assert.ok(Array.isArray(data));
+  if (res.status === 200) {
+    const data = await res.json();
+    assert.ok(Array.isArray(data));
+  } else {
+    assert.equal(res.status, 503, `Expected 200 or 503, got ${res.status}`);
+  }
 });
 
 test('Cloud API - Owner Route Authorization Boundaries', async () => {

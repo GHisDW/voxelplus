@@ -52,7 +52,17 @@ export const api = {
   // Achievements
   listAchievementsCatalog: (): Promise<any[]> => getApi().listAchievementsCatalog(),
   getUserAchievements: (): Promise<any[]> => getApi().getUserAchievements(),
-  reportAchievementEvent: (eventType: string, metadata?: any): Promise<any> => getApi().reportAchievementEvent(eventType, metadata),
+
+  // Rewarded ads + VPacks
+  getAdsStatus: (): Promise<{ available: boolean; provider: string | null }> => getApi().getAdsStatus(),
+  getAdProgress: (): Promise<any[]> => getApi().getAdProgress(),
+  completeAd: (itemKind: 'cosmetic' | 'vpack', itemId: string, completionId: string, proof: string): Promise<any> =>
+    getApi().completeAd(itemKind, itemId, completionId, proof),
+  listVpackCatalog: (): Promise<any[]> => getApi().listVpackCatalog(),
+  listVpacks: (): Promise<any[]> => getApi().listVpacks(),
+  createVpack: (payload: { title: string; description?: string; contents?: any }): Promise<any> => getApi().createVpack(payload),
+  convertInstanceToVpack: (payload: { instanceId: string; title?: string; description?: string }): Promise<any> => getApi().convertInstanceToVpack(payload),
+  installVpack: (vpackId: string): Promise<any> => getApi().installVpack(vpackId),
 
   // Avatar
   uploadAvatar: (buffer: ArrayBuffer | Uint8Array, fileName: string, mimeType: string): Promise<{ avatarUrl: string }> =>

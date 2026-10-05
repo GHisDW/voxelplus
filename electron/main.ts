@@ -60,7 +60,16 @@ function registerIpcHandlers() {
   // Achievements
   handle('achievements:catalog', 'CONFIGURATION', async () => CommandManager.listAchievementsCatalog());
   handle('achievements:getUser', 'CONFIGURATION', async () => CommandManager.getUserAchievements());
-  handle('achievements:event', 'CONFIGURATION', async (_, eventType, metadata) => CommandManager.reportAchievementEvent(eventType, metadata));
+
+  // Rewarded ads + VPacks
+  handle('ads:status', 'CONFIGURATION', async () => CommandManager.getAdsStatus());
+  handle('ads:progress', 'CONFIGURATION', async () => CommandManager.getAdProgress());
+  handle('ads:complete', 'CONFIGURATION', async (_, itemKind, itemId, completionId, proof) => CommandManager.completeAd(itemKind, itemId, completionId, proof));
+  handle('vpacks:catalog', 'CONFIGURATION', async () => CommandManager.listVpackCatalog());
+  handle('vpacks:list', 'CONFIGURATION', async () => CommandManager.listVpacks());
+  handle('vpacks:create', 'CONFIGURATION', async (_, payload) => CommandManager.createVpack(payload));
+  handle('vpacks:convert', 'CONFIGURATION', async (_, payload) => CommandManager.convertInstanceToVpack(payload));
+  handle('vpacks:install', 'CONFIGURATION', async (_, vpackId) => CommandManager.installVpack(vpackId));
 
   // Avatar
   handle('avatar:upload', 'FILESYSTEM', async (_, buffer, fileName, mimeType) => CommandManager.uploadAvatar(buffer, fileName, mimeType));
