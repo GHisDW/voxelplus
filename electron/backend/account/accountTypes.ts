@@ -84,7 +84,6 @@ export interface CloudSyncPayload {
 
 export interface CreateAccountPayload {
   username: string;
-  password: string;
   avatar?: string;
   bio?: string;
   isPublic?: boolean;
@@ -96,9 +95,4 @@ export interface UpdateProfilePayload {
   bio?: string;
   isPublic?: boolean;
   syncEnabled?: boolean;
-}
-
-export interface ChangePasswordPayload {
-  oldPassword?: string;
-  newPassword: string;
 }

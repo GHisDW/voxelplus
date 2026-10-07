@@ -34,19 +34,4 @@ export class CryptoUtils {
     return { isValid: true };
   }
 
-  /**
-   * Validates password rules.
-   * Must be at least 6 characters long.
-   */
-  public static validatePassword(password: string): { isValid: boolean; error?: string } {
-    if (!password || typeof password !== 'string') {
-      return { isValid: false, error: 'Password is required.' };
-    }
-
-    if (password.length < 6) {
-      return { isValid: false, error: 'Password must be at least 6 characters long.' };
-    }
-
-    return { isValid: true };
-  }
 }

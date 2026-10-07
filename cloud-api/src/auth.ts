@@ -18,8 +18,8 @@ export type CloudApiEnv = {
 /**
  * Session validation middleware for Voxel+ accounts.
  *
- * Voxel+ uses username+password identities — no Supabase Auth, no email.
- * The Bearer token is an opaque Voxel+ session issued at signup/login; it is
+ * Voxel+ uses device-bound cryptographic identities — no Supabase Auth, no email.
+ * The Bearer token is an opaque Voxel+ session issued after signature verification; it is
  * resolved server-side against `voxel_sessions` (SHA-256 hashes, expiry
  * enforced). Fails closed on missing/malformed header, unavailable data
  * backend, unknown/expired token, or any thrown error.

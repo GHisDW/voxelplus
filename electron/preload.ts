@@ -23,13 +23,15 @@ import {
 
 const api = {
   // Accounts & Cloud Identity
+  createDeviceIdentity: () => ipcRenderer.invoke('account:createDeviceIdentity'),
+  getDeviceIdentityStatus: () => ipcRenderer.invoke('account:getDeviceIdentityStatus'),
+  signChallenge: (challenge: string) => ipcRenderer.invoke('account:signChallenge', challenge),
+  authenticateDevice: () => ipcRenderer.invoke('account:authenticate'),
   createAccount: (payload: any) => ipcRenderer.invoke('account:create', payload),
-  loginAccount: (username: string, password: string) => ipcRenderer.invoke('account:login', username, password),
   logoutAccount: () => ipcRenderer.invoke('account:logout'),
   getCurrentSession: () => ipcRenderer.invoke('account:getSession'),
   getCurrentUser: () => ipcRenderer.invoke('account:getUser'),
   updateProfile: (payload: any) => ipcRenderer.invoke('account:updateProfile', payload),
-  changePassword: (payload: any) => ipcRenderer.invoke('account:changePassword', payload),
   deleteAccount: () => ipcRenderer.invoke('account:delete'),
   listPublicProfiles: (query?: string) => ipcRenderer.invoke('account:listPublic', query),
   getPublicProfile: (idOrUsername: string) => ipcRenderer.invoke('account:getPublic', idOrUsername),
@@ -62,20 +64,6 @@ const api = {
   uploadAvatar: (buffer: ArrayBuffer | Uint8Array, fileName: string, mimeType: string) =>
     ipcRenderer.invoke('avatar:upload', buffer, fileName, mimeType),
   deleteAvatar: () => ipcRenderer.invoke('avatar:delete'),
-
-  // Owner Control Panel
-  checkOwnerStatus: () => ipcRenderer.invoke('owner:check'),
-  getOwnerUsers: (query?: string, limit?: number, offset?: number) =>
-    ipcRenderer.invoke('owner:getUsers', query, limit, offset),
-  getOwnerUserDetails: (userId: string) => ipcRenderer.invoke('owner:getUserDetails', userId),
-  grantTitle: (userId: string, titleId: string) => ipcRenderer.invoke('owner:grantTitle', userId, titleId),
-  revokeTitle: (userId: string, titleId: string) => ipcRenderer.invoke('owner:revokeTitle', userId, titleId),
-  grantBadge: (userId: string, badgeId: string) => ipcRenderer.invoke('owner:grantBadge', userId, badgeId),
-  revokeBadge: (userId: string, badgeId: string) => ipcRenderer.invoke('owner:revokeBadge', userId, badgeId),
-  setCreatorStatus: (userId: string, isCreator: boolean) => ipcRenderer.invoke('owner:setCreator', userId, isCreator),
-  ownerDeleteUser: (userId: string, confirmPhrase: string) => ipcRenderer.invoke('owner:deleteUser', userId, confirmPhrase),
-  ownerBulkDelete: (confirmPhrase: string) => ipcRenderer.invoke('owner:bulkDelete', confirmPhrase),
-  getOwnerAuditLog: (limit?: number, offset?: number) => ipcRenderer.invoke('owner:getAuditLog', limit, offset),
 
   // Settings
   getAppSettings: (): Promise<AppSettings> => ipcRenderer.invoke('settings:get'),

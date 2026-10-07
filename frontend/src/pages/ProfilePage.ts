@@ -718,16 +718,6 @@ export class ProfilePage {
         </div>
       </div>
 
-      <!-- Password Change -->
-      <div class="card-surface" style="padding: 20px; border-radius: var(--radius-lg); background: var(--bg-card); border: 1px solid var(--border-subtle);">
-        <h3 style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin-bottom: 12px;">Change Password</h3>
-        <div style="display: flex; flex-direction: column; gap: 12px;">
-          <input type="password" id="input-old-pass" class="input" placeholder="Current Password (optional)" style="padding: 10px;" />
-          <input type="password" id="input-new-pass" class="input" placeholder="New Password (min 6 chars)" style="padding: 10px;" />
-          <button class="btn btn-secondary" id="btn-change-pass" style="align-self: flex-start; padding: 10px 20px;">Update Password</button>
-        </div>
-      </div>
-
       <!-- Session & Deletion -->
       <div class="card-surface" style="padding: 20px; border-radius: var(--radius-lg); background: var(--bg-card); border: 1px solid #ef4444;">
         <h3 style="font-size: 1.1rem; font-weight: 700; color: #f87171; margin-bottom: 12px;">Session & Account Deletion</h3>
@@ -775,24 +765,6 @@ export class ProfilePage {
         await this.render();
       } catch (e: any) {
         NotificationToast.show(e.message || 'Reset failed.', 'error');
-      }
-    };
-
-    // Change password handler
-    (div.querySelector('#btn-change-pass') as HTMLElement).onclick = async () => {
-      const oldP = (div.querySelector('#input-old-pass') as HTMLInputElement).value;
-      const newP = (div.querySelector('#input-new-pass') as HTMLInputElement).value;
-      if (!newP) {
-        NotificationToast.show('Please enter a new password.', 'error');
-        return;
-      }
-      try {
-        await api.changePassword({ oldPassword: oldP, newPassword: newP });
-        NotificationToast.show('Password updated successfully!', 'success');
-        (div.querySelector('#input-old-pass') as HTMLInputElement).value = '';
-        (div.querySelector('#input-new-pass') as HTMLInputElement).value = '';
-      } catch (e: any) {
-        NotificationToast.show(e.message || 'Failed to update password.', 'error');
       }
     };
 

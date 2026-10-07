@@ -10,12 +10,11 @@ import { MemoryDataClient, sharedMemoryClient } from './memoryStore.js';
  *   - a real Supabase service-role client (production), when SUPABASE_URL +
  *     SUPABASE_SERVICE_ROLE_KEY are configured; or
  *   - the in-memory backend (development/contributors/tests), selected
- *     explicitly with VOXELPLUS_DATA_BACKEND=memory or automatically when no
- *     Supabase credentials exist. Seeded with the catalog so a fresh clone
+ *     explicitly with VOXELPLUS_DATA_BACKEND=memory. Seeded with the catalog so a fresh clone
  *     works end-to-end with ZERO secrets.
  *
  * There is intentionally no "user-scoped" or "anon" client any more: Voxel+
- * uses username+password accounts, not Supabase Auth JWTs, so ownership is
+ * uses Voxel+ device identities, not Supabase Auth JWTs, so ownership is
  * enforced by the server code (user_id filters + authMiddleware identity)
  * on top of a privileged data client that never leaves this process.
  */
@@ -25,10 +24,11 @@ let resolved: DataClient | null = null;
 
 export function isMemoryBackend(): boolean {
   const forced = (process.env.VOXELPLUS_DATA_BACKEND || '').toLowerCase();
-  if (forced === 'memory') return true;
+  if (forced === 'memory') return process.env.NODE_ENV !== 'production';
   if (forced === 'supabase') return false;
-  // Default: Supabase when fully configured, otherwise the mock backend.
-  return !(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+  // Memory is opt-in in every environment; production can never silently
+  // downgrade to an ephemeral backend.
+  return false;
 }
 
 export function getDataClient(): DataClient | null {
@@ -37,6 +37,7 @@ export function getDataClient(): DataClient | null {
     sharedMemoryClient.seedDevData();
     resolved = sharedMemoryClient;
   } else {
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) return null;
     resolved = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
       auth: { autoRefreshToken: false, persistSession: false }
     });

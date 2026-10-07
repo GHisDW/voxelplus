@@ -1,7 +1,6 @@
 import { AccountStore } from './accountStore';
 import {
   AccountSession,
-  ChangePasswordPayload,
   CloudSyncPayload,
   CreateAccountPayload,
   PublicUserProfile,
@@ -16,11 +15,9 @@ import { CloudApiClient } from './cloudApiClient';
 import { VoxelError } from '../diagnostics';
 import { ConfigStore } from '../storage/configStore';
 import { InstanceManager } from '../instances/instanceManager';
+import { createDeviceIdentity, getDeviceIdentityStatus, signChallenge } from './deviceIdentity';
 
 export class AccountManager {
-  /**
-   * Registers a new Voxel+ account backed strictly by cloud Supabase Auth engine and CloudApiClient.
-   */
   public static async createAccount(payload: CreateAccountPayload): Promise<AccountSession> {
     const userValidation = CryptoUtils.validateUsername(payload.username);
     if (!userValidation.isValid) {
@@ -33,36 +30,24 @@ export class AccountManager {
       });
     }
 
-    const passValidation = CryptoUtils.validatePassword(payload.password);
-    if (!passValidation.isValid) {
-      throw new VoxelError({
-        title: 'Account Creation Failed',
-        message: passValidation.error || 'Invalid password.',
-        category: 'CONFIGURATION',
-        severity: 'WARNING',
-        code: 'INVALID_PASSWORD'
-      });
-    }
-
-    // Voxel+ accounts are cloud-authoritative: signup MUST go through the
-    // Cloud API / Supabase Auth. There is no local/offline account creation.
     let session: AccountSession;
     try {
-      session = await CloudApiClient.signUpWithCloud(
-        payload.username,
-        payload.password,
-        payload.avatar,
-        payload.bio,
-        payload.isPublic
-      );
+      const identity = createDeviceIdentity();
+      const registration = await CloudApiClient.registerDeviceKey(identity.publicKey);
+      const challenge = await CloudApiClient.requestChallenge(identity.publicKeyId);
+      const signature = signChallenge(challenge.challenge);
+      session = await CloudApiClient.verifyChallenge(challenge.challengeId, identity.publicKeyId, signature);
+      session.user = registration.usernameClaimed
+        ? await CloudApiClient.validateCloudToken(session.accessToken)
+        : await CloudApiClient.claimUsername(session.accessToken, payload.username, payload.avatar, payload.bio, payload.isPublic);
     } catch (err: any) {
       if (err instanceof VoxelError) throw err;
       throw new VoxelError({
         title: 'Account Creation Failed',
-        message: err?.message || 'Cloud signup failed.',
+        message: err?.message || 'Cloud device registration failed.',
         category: 'NETWORK',
         severity: 'ERROR',
-        code: 'CLOUD_SIGNUP_FAILED'
+        code: 'CLOUD_DEVICE_REGISTRATION_FAILED'
       });
     }
 
@@ -72,7 +57,7 @@ export class AccountManager {
         message: 'Could not create account.',
         category: 'NETWORK',
         severity: 'ERROR',
-        code: 'CLOUD_SIGNUP_INCOMPLETE'
+        code: 'CLOUD_DEVICE_REGISTRATION_INCOMPLETE'
       });
     }
 
@@ -82,45 +67,32 @@ export class AccountManager {
     return session;
   }
 
-
-  /**
-   * Authenticates a user strictly via cloud Supabase Auth engine and CloudApiClient.
-   */
-  public static async login(username: string, password: string): Promise<AccountSession> {
-    if (!username || !password) {
-      throw new VoxelError({
-        title: 'Authentication Failed',
-        message: 'Username and password are required.',
-        category: 'CONFIGURATION',
-        severity: 'WARNING',
-        code: 'INVALID_CREDENTIALS'
-      });
-    }
-
-    // Cloud-authoritative login only: a valid session can only come from a
-    // successful Cloud API / Supabase Auth sign-in. Cached data is never used
-    // to authenticate.
+  public static async authenticateDevice(): Promise<AccountSession> {
+    const identity = getDeviceIdentityStatus();
+    if (!identity.exists || !identity.publicKeyId) throw new Error('No local device identity exists.');
     let session: AccountSession;
     try {
-      session = await CloudApiClient.signInWithCloud(username, password);
+      const challenge = await CloudApiClient.requestChallenge(identity.publicKeyId);
+      const signature = signChallenge(challenge.challenge);
+      session = await CloudApiClient.verifyChallenge(challenge.challengeId, identity.publicKeyId, signature);
     } catch (err: any) {
       if (err instanceof VoxelError) throw err;
       throw new VoxelError({
-        title: 'Authentication Failed',
-        message: err?.message || 'Invalid username or password.',
+        title: 'Device Authentication Failed',
+        message: err?.message || 'Device signature was rejected.',
         category: 'CONFIGURATION',
         severity: 'WARNING',
-        code: 'INVALID_CREDENTIALS'
+        code: 'DEVICE_SIGNATURE_REJECTED'
       });
     }
 
     if (!session.user || !session.accessToken) {
       throw new VoxelError({
         title: 'Authentication Failed',
-        message: 'Invalid username or password.',
+        message: 'Device signature was rejected.',
         category: 'CONFIGURATION',
         severity: 'WARNING',
-        code: 'INVALID_CREDENTIALS'
+        code: 'DEVICE_SIGNATURE_REJECTED'
       });
     }
 
@@ -227,33 +199,6 @@ export class AccountManager {
     AccountStore.setActiveSession(session);
 
     return updatedProfile;
-  }
-
-  public static async changePassword(payload: ChangePasswordPayload): Promise<boolean> {
-    const session = await this.getCurrentSession();
-    if (!session) {
-      throw new VoxelError({
-        title: 'Not Authenticated',
-        message: 'You must be signed in to change your password.',
-        category: 'CONFIGURATION',
-        severity: 'ERROR',
-        code: 'UNAUTHORIZED'
-      });
-    }
-
-    const passValidation = CryptoUtils.validatePassword(payload.newPassword);
-    if (!passValidation.isValid) {
-      throw new VoxelError({
-        title: 'Password Change Failed',
-        message: passValidation.error || 'Invalid new password.',
-        category: 'CONFIGURATION',
-        severity: 'WARNING',
-        code: 'INVALID_PASSWORD'
-      });
-    }
-
-    await CloudApiClient.updateCloudPassword(session.accessToken, payload.newPassword);
-    return true;
   }
 
   public static async deleteAccount(): Promise<boolean> {
@@ -621,71 +566,4 @@ export class AccountManager {
     return true;
   }
 
-  // ─── Owner Control Panel ───
-
-  public static async checkOwnerStatus(): Promise<{ isOwner: boolean; role: string | null }> {
-    const session = await this.getCurrentSession();
-    if (!session) return { isOwner: false, role: null };
-    return CloudApiClient.checkOwnerStatus(session.accessToken);
-  }
-
-  public static async getOwnerUsers(query?: string, limit?: number, offset?: number): Promise<any> {
-    const session = await this.getCurrentSession();
-    if (!session) throw new VoxelError({ title: 'Unauthorized', message: 'Authentication required', category: 'CONFIGURATION', code: 'UNAUTHORIZED' });
-    return CloudApiClient.getOwnerUsers(session.accessToken, query, limit, offset);
-  }
-
-  public static async getOwnerUserDetails(userId: string): Promise<any> {
-    const session = await this.getCurrentSession();
-    if (!session) throw new VoxelError({ title: 'Unauthorized', message: 'Authentication required', category: 'CONFIGURATION', code: 'UNAUTHORIZED' });
-    return CloudApiClient.getOwnerUserDetails(session.accessToken, userId);
-  }
-
-  public static async grantTitle(userId: string, titleId: string): Promise<boolean> {
-    const session = await this.getCurrentSession();
-    if (!session) throw new VoxelError({ title: 'Unauthorized', message: 'Authentication required', category: 'CONFIGURATION', code: 'UNAUTHORIZED' });
-    return CloudApiClient.grantTitle(session.accessToken, userId, titleId);
-  }
-
-  public static async revokeTitle(userId: string, titleId: string): Promise<boolean> {
-    const session = await this.getCurrentSession();
-    if (!session) throw new VoxelError({ title: 'Unauthorized', message: 'Authentication required', category: 'CONFIGURATION', code: 'UNAUTHORIZED' });
-    return CloudApiClient.revokeTitle(session.accessToken, userId, titleId);
-  }
-
-  public static async grantBadge(userId: string, badgeId: string): Promise<boolean> {
-    const session = await this.getCurrentSession();
-    if (!session) throw new VoxelError({ title: 'Unauthorized', message: 'Authentication required', category: 'CONFIGURATION', code: 'UNAUTHORIZED' });
-    return CloudApiClient.grantBadge(session.accessToken, userId, badgeId);
-  }
-
-  public static async revokeBadge(userId: string, badgeId: string): Promise<boolean> {
-    const session = await this.getCurrentSession();
-    if (!session) throw new VoxelError({ title: 'Unauthorized', message: 'Authentication required', category: 'CONFIGURATION', code: 'UNAUTHORIZED' });
-    return CloudApiClient.revokeBadge(session.accessToken, userId, badgeId);
-  }
-
-  public static async setCreatorStatus(userId: string, isCreator: boolean): Promise<boolean> {
-    const session = await this.getCurrentSession();
-    if (!session) throw new VoxelError({ title: 'Unauthorized', message: 'Authentication required', category: 'CONFIGURATION', code: 'UNAUTHORIZED' });
-    return CloudApiClient.setCreatorStatus(session.accessToken, userId, isCreator);
-  }
-
-  public static async ownerDeleteUser(userId: string, confirmPhrase: string): Promise<boolean> {
-    const session = await this.getCurrentSession();
-    if (!session) throw new VoxelError({ title: 'Unauthorized', message: 'Authentication required', category: 'CONFIGURATION', code: 'UNAUTHORIZED' });
-    return CloudApiClient.ownerDeleteUser(session.accessToken, userId, confirmPhrase);
-  }
-
-  public static async ownerBulkDelete(confirmPhrase: string): Promise<{ deleted: number }> {
-    const session = await this.getCurrentSession();
-    if (!session) throw new VoxelError({ title: 'Unauthorized', message: 'Authentication required', category: 'CONFIGURATION', code: 'UNAUTHORIZED' });
-    return CloudApiClient.ownerBulkDelete(session.accessToken, confirmPhrase);
-  }
-
-  public static async getOwnerAuditLog(limit?: number, offset?: number): Promise<any> {
-    const session = await this.getCurrentSession();
-    if (!session) throw new VoxelError({ title: 'Unauthorized', message: 'Authentication required', category: 'CONFIGURATION', code: 'UNAUTHORIZED' });
-    return CloudApiClient.getOwnerAuditLog(session.accessToken, limit, offset);
-  }
 }

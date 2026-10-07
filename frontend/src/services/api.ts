@@ -29,13 +29,14 @@ const getApi = () => (window as any).voxelApi || {};
 
 export const api = {
   // Accounts & Cloud Identity
+  createDeviceIdentity: (): Promise<{ publicKey: string; publicKeyId: string }> => getApi().createDeviceIdentity(),
+  getDeviceIdentityStatus: (): Promise<{ exists: boolean; publicKeyId: string | null }> => getApi().getDeviceIdentityStatus(),
+  authenticateDevice: (): Promise<VoxelAccountSession> => getApi().authenticateDevice(),
   createAccount: (payload: any): Promise<VoxelAccountSession> => getApi().createAccount(payload),
-  loginAccount: (username: string, password: string): Promise<VoxelAccountSession> => getApi().loginAccount(username, password),
   logoutAccount: (): Promise<boolean> => getApi().logoutAccount(),
   getCurrentSession: (): Promise<VoxelAccountSession | null> => getApi().getCurrentSession(),
   getCurrentUser: (): Promise<VoxelUserProfile | null> => getApi().getCurrentUser(),
   updateProfile: (payload: any): Promise<VoxelUserProfile> => getApi().updateProfile(payload),
-  changePassword: (payload: any): Promise<boolean> => getApi().changePassword(payload),
   deleteAccount: (): Promise<boolean> => getApi().deleteAccount(),
   listPublicProfiles: (query?: string): Promise<VoxelPublicUserProfile[]> => getApi().listPublicProfiles(query),
   getPublicProfile: (idOrUsername: string): Promise<VoxelPublicUserProfile | null> => getApi().getPublicProfile(idOrUsername),
@@ -68,20 +69,6 @@ export const api = {
   uploadAvatar: (buffer: ArrayBuffer | Uint8Array, fileName: string, mimeType: string): Promise<{ avatarUrl: string }> =>
     getApi().uploadAvatar(buffer, fileName, mimeType),
   deleteAvatar: (): Promise<boolean> => getApi().deleteAvatar(),
-
-  // Owner Control Panel
-  checkOwnerStatus: (): Promise<{ isOwner: boolean; role: string | null }> => getApi().checkOwnerStatus(),
-  getOwnerUsers: (query?: string, limit?: number, offset?: number): Promise<any> =>
-    getApi().getOwnerUsers(query, limit, offset),
-  getOwnerUserDetails: (userId: string): Promise<any> => getApi().getOwnerUserDetails(userId),
-  grantTitle: (userId: string, titleId: string): Promise<boolean> => getApi().grantTitle(userId, titleId),
-  revokeTitle: (userId: string, titleId: string): Promise<boolean> => getApi().revokeTitle(userId, titleId),
-  grantBadge: (userId: string, badgeId: string): Promise<boolean> => getApi().grantBadge(userId, badgeId),
-  revokeBadge: (userId: string, badgeId: string): Promise<boolean> => getApi().revokeBadge(userId, badgeId),
-  setCreatorStatus: (userId: string, isCreator: boolean): Promise<boolean> => getApi().setCreatorStatus(userId, isCreator),
-  ownerDeleteUser: (userId: string, confirmPhrase: string): Promise<boolean> => getApi().ownerDeleteUser(userId, confirmPhrase),
-  ownerBulkDelete: (confirmPhrase: string): Promise<{ deleted: number }> => getApi().ownerBulkDelete(confirmPhrase),
-  getOwnerAuditLog: (limit?: number, offset?: number): Promise<any> => getApi().getOwnerAuditLog(limit, offset),
 
   // Settings
   getAppSettings: (): Promise<AppSettings> => getApi().getAppSettings(),

@@ -61,25 +61,22 @@ export class CloudApiClient {
     return (await profileRes.json()) as UserProfile;
   }
 
-  /**
-   * Registers a new Voxel+ account via Cloud API endpoint.
-   */
-  public static async signUpWithCloud(
+  public static async registerDevice(
+    publicKey: string,
     username: string,
-    password: string,
     avatar: string = 'avatar_steve',
     bio: string = '',
     isPublic: boolean = true
   ): Promise<AccountSession> {
-    const res = await fetch(`${this.apiBaseUrl}/api/account/signup`, {
+    const res = await fetch(`${this.apiBaseUrl}/api/account/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, avatar, bio, isPublic })
+      body: JSON.stringify({ publicKey, username, avatar, bio, isPublic })
     });
 
     if (!res.ok) {
       const errJson = (await res.json().catch(() => ({}))) as any;
-      throw new Error(errJson.error || 'Cloud signup failed.');
+      throw new Error(errJson.error || 'Device registration failed.');
     }
 
     const data = (await res.json()) as any;
@@ -90,30 +87,47 @@ export class CloudApiClient {
     };
   }
 
-  /**
-   * Authenticates an existing Voxel+ account via Cloud API endpoint.
-   */
-  public static async signInWithCloud(
-    username: string,
-    password: string
-  ): Promise<AccountSession> {
-    const res = await fetch(`${this.apiBaseUrl}/api/account/login`, {
+  public static async registerDeviceKey(publicKey: string): Promise<{ userId: string; publicKeyId: string; createdAt: string; usernameClaimed: boolean }> {
+    const res = await fetch(`${this.apiBaseUrl}/api/account/register-key`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ publicKey })
+    });
+    if (!res.ok) { const err = await res.json().catch(() => ({})) as any; throw new Error(err.error || 'Device registration failed.'); }
+    return await res.json() as { userId: string; publicKeyId: string; createdAt: string; usernameClaimed: boolean };
+  }
+
+  public static async requestChallenge(publicKeyId: string): Promise<{ challengeId: string; challenge: string; expiresAt: string }> {
+    const res = await fetch(`${this.apiBaseUrl}/api/auth/challenge`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password })
+      body: JSON.stringify({ publicKeyId })
     });
 
     if (!res.ok) {
       const errJson = (await res.json().catch(() => ({}))) as any;
-      throw new Error(errJson.error || 'Invalid username or password.');
+      throw new Error(errJson.error || 'Challenge request failed.');
     }
 
     const data = (await res.json()) as any;
-    return {
-      accessToken: data.accessToken,
-      refreshToken: data.refreshToken,
-      user: data.profile
-    };
+    return data;
+  }
+
+  public static async verifyChallenge(challengeId: string, publicKeyId: string, signature: string): Promise<AccountSession> {
+    const res = await fetch(`${this.apiBaseUrl}/api/auth/verify`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ challengeId, publicKeyId, signature })
+    });
+    if (!res.ok) { const errJson = (await res.json().catch(() => ({}))) as any; throw new Error(errJson.error || 'Device authentication failed.'); }
+    const data = await res.json() as any;
+    return { accessToken: data.accessToken, refreshToken: data.refreshToken, user: data.profile, expiresAt: data.expiresAt };
+  }
+
+  public static async claimUsername(accessToken: string, username: string, avatar = 'avatar_steve', bio = '', isPublic = true): Promise<UserProfile> {
+    const res = await fetch(`${this.apiBaseUrl}/api/account/claim-username`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ username, avatar, bio, isPublic })
+    });
+    if (!res.ok) { const err = await res.json().catch(() => ({})) as any; throw new Error(err.error || 'Username claim failed.'); }
+    const data = await res.json() as any; return data.profile as UserProfile;
   }
 
   /**
@@ -138,24 +152,6 @@ export class CloudApiClient {
 
   public static async signOutCloud(): Promise<void> {
     // Client-side session teardown
-  }
-
-  public static async updateCloudPassword(accessToken: string, newPassword: string): Promise<boolean> {
-    const res = await fetch(`${this.apiBaseUrl}/api/account/password`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`
-      },
-      body: JSON.stringify({ newPassword })
-    });
-
-    if (!res.ok) {
-      const errJson = (await res.json().catch(() => ({}))) as any;
-      throw new Error(errJson.error || 'Password update failed.');
-    }
-
-    return true;
   }
 
   public static async syncProfileToCloud(accessToken: string, profile: UserProfile): Promise<boolean> {
@@ -507,167 +503,4 @@ export class CloudApiClient {
     return true;
   }
 
-  // ─── Owner Control Panel ───
-
-  public static async checkOwnerStatus(accessToken: string): Promise<{ isOwner: boolean; role: string | null }> {
-    const res = await fetch(`${this.apiBaseUrl}/api/owner/check`, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-    if (!res.ok) return { isOwner: false, role: null };
-    return (await res.json()) as { isOwner: boolean; role: string | null };
-  }
-
-  public static async getOwnerUsers(accessToken: string, query?: string, limit?: number, offset?: number): Promise<any> {
-    const params = new URLSearchParams();
-    if (query) params.set('q', query);
-    if (limit) params.set('limit', String(limit));
-    if (offset) params.set('offset', String(offset));
-
-    const res = await fetch(`${this.apiBaseUrl}/api/owner/users?${params.toString()}`, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({}))) as any;
-      throw new Error(err.error || 'Forbidden');
-    }
-    return await res.json();
-  }
-
-  public static async getOwnerUserDetails(accessToken: string, userId: string): Promise<any> {
-    const res = await fetch(`${this.apiBaseUrl}/api/owner/users/${userId}`, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({}))) as any;
-      throw new Error(err.error || 'User not found');
-    }
-    return await res.json();
-  }
-
-  public static async grantTitle(accessToken: string, userId: string, titleId: string): Promise<boolean> {
-    const res = await fetch(`${this.apiBaseUrl}/api/owner/users/${userId}/title`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`
-      },
-      body: JSON.stringify({ titleId })
-    });
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({}))) as any;
-      throw new Error(err.error || 'Failed to grant title');
-    }
-    return true;
-  }
-
-  public static async revokeTitle(accessToken: string, userId: string, titleId: string): Promise<boolean> {
-    const res = await fetch(`${this.apiBaseUrl}/api/owner/users/${userId}/title`, {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`
-      },
-      body: JSON.stringify({ titleId })
-    });
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({}))) as any;
-      throw new Error(err.error || 'Failed to revoke title');
-    }
-    return true;
-  }
-
-  public static async grantBadge(accessToken: string, userId: string, badgeId: string): Promise<boolean> {
-    const res = await fetch(`${this.apiBaseUrl}/api/owner/users/${userId}/badge`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`
-      },
-      body: JSON.stringify({ badgeId })
-    });
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({}))) as any;
-      throw new Error(err.error || 'Failed to grant badge');
-    }
-    return true;
-  }
-
-  public static async revokeBadge(accessToken: string, userId: string, badgeId: string): Promise<boolean> {
-    const res = await fetch(`${this.apiBaseUrl}/api/owner/users/${userId}/badge`, {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`
-      },
-      body: JSON.stringify({ badgeId })
-    });
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({}))) as any;
-      throw new Error(err.error || 'Failed to revoke badge');
-    }
-    return true;
-  }
-
-  public static async setCreatorStatus(accessToken: string, userId: string, isCreator: boolean): Promise<boolean> {
-    const res = await fetch(`${this.apiBaseUrl}/api/owner/users/${userId}/creator`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`
-      },
-      body: JSON.stringify({ isCreator })
-    });
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({}))) as any;
-      throw new Error(err.error || 'Failed to set creator status');
-    }
-    return true;
-  }
-
-  public static async ownerDeleteUser(accessToken: string, userId: string, confirmPhrase: string): Promise<boolean> {
-    const res = await fetch(`${this.apiBaseUrl}/api/owner/users/${userId}`, {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`
-      },
-      body: JSON.stringify({ confirmPhrase })
-    });
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({}))) as any;
-      throw new Error(err.error || 'Failed to delete user');
-    }
-    return true;
-  }
-
-  public static async ownerBulkDelete(accessToken: string, confirmPhrase: string): Promise<{ deleted: number }> {
-    const res = await fetch(`${this.apiBaseUrl}/api/owner/bulk`, {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`
-      },
-      body: JSON.stringify({ confirmPhrase })
-    });
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({}))) as any;
-      throw new Error(err.error || 'Bulk delete failed');
-    }
-    return (await res.json()) as { deleted: number };
-  }
-
-  public static async getOwnerAuditLog(accessToken: string, limit?: number, offset?: number): Promise<any> {
-    const params = new URLSearchParams();
-    if (limit) params.set('limit', String(limit));
-    if (offset) params.set('offset', String(offset));
-
-    const res = await fetch(`${this.apiBaseUrl}/api/owner/audit?${params.toString()}`, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-    if (!res.ok) {
-      const err = (await res.json().catch(() => ({}))) as any;
-      throw new Error(err.error || 'Audit log access forbidden');
-    }
-    return await res.json();
-  }
 }

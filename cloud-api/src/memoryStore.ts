@@ -30,6 +30,7 @@ function applyFilters(rows: Row[], filters: Filter[]): Row[] {
   for (const [op, col, val] of filters) {
     if (op === 'eq') out = out.filter(r => getField(r, col) === val);
     else if (op === 'neq') out = out.filter(r => getField(r, col) !== val);
+    else if (op === 'is') out = out.filter(r => val === null ? getField(r, col) === null || getField(r, col) === undefined : getField(r, col) === val);
     else if (op === 'in') out = out.filter(r => (val as any[]).includes(getField(r, col)));
     else if (op === 'ilike') {
       const needle = String(val).replace(/%/g, '').toLowerCase();
@@ -65,6 +66,7 @@ class QueryBuilder {
   select(_cols?: string, _opts?: any): this { return this; }
   eq(col: string, val: any): this { this.filters.push(['eq', col, val]); return this; }
   neq(col: string, val: any): this { this.filters.push(['neq', col, val]); return this; }
+  is(col: string, val: any): this { this.filters.push(['is', col, val]); return this; }
   in(col: string, vals: any[]): this { this.filters.push(['in', col, vals]); return this; }
   ilike(col: string, val: string): this { this.filters.push(['ilike', col, val]); return this; }
   not(col: string, op: string, val: any): this { this.filters.push(['not', col === 'in' ? 'in' : col, val]); return this; }
@@ -116,7 +118,11 @@ class QueryBuilder {
       for (const item of items) {
         const row = { ...item };
         if (!row.id) row.id = randomUUID();
-        if (table.some(r => r.id === row.id)) {
+        const duplicateAccountKey = this.table === 'voxel_accounts' && table.some(r =>
+          (row.public_key_id && r.public_key_id === row.public_key_id) ||
+          (row.username_normalized && r.username_normalized === row.username_normalized)
+        );
+        if (table.some(r => r.id === row.id) || duplicateAccountKey) {
           return Promise.resolve({ data: null, error: { code: '23505', message: `duplicate key value violates unique constraint "${this.table}_pkey"` } });
         }
         table.push(row);

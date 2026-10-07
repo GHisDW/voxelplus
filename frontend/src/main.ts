@@ -10,7 +10,6 @@ import { OnboardingPage } from './pages/OnboardingPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { DirectoryPage } from './pages/DirectoryPage';
 import { LibraryPage } from './pages/LibraryPage';
-import { OwnerPage } from './pages/OwnerPage';
 import { CreateInstanceModal } from './components/CreateInstanceModal';
 import { ThemeService } from './services/themeService';
 import { api } from './services/api';
@@ -29,7 +28,6 @@ class VoxelApp {
   private profilePage!: ProfilePage;
   private directoryPage!: DirectoryPage;
   private libraryPage!: LibraryPage;
-  private ownerPage!: OwnerPage;
 
   public async init(): Promise<void> {
     await ThemeService.initialize();
@@ -89,7 +87,6 @@ class VoxelApp {
     });
     this.directoryPage = new DirectoryPage();
     this.libraryPage = new LibraryPage();
-    this.ownerPage = new OwnerPage();
 
     // Initialize layout
     this.sidebar = new Sidebar({
@@ -156,8 +153,6 @@ class VoxelApp {
       pageContainer.appendChild(await this.directoryPage.render());
     } else if (this.activePage === 'profile') {
       pageContainer.appendChild(await this.profilePage.render());
-    } else if (this.activePage === 'owner') {
-      pageContainer.appendChild(await this.ownerPage.render());
     } else if (this.activePage === 'logs') {
       pageContainer.appendChild(await this.logsPage.render());
     } else if (this.activePage === 'settings') {

@@ -7,6 +7,7 @@ import { ProcessManager } from './backend/processes/processManager';
 import { DownloadManager } from './backend/modrinth/downloader';
 import { encodeVoxelIpcError } from './backend/diagnostics';
 import { VoxelErrorCategory } from './types';
+import { createDeviceIdentity, getDeviceIdentityStatus, signChallenge } from './backend/account/deviceIdentity';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -37,13 +38,15 @@ function registerIpcHandlers() {
   ) => ipcMain.handle(channel, wrapIpcHandler(channel, category, handler));
 
   // Account & Cloud Identity (Matching preload.ts channel names exactly)
+  handle('account:createDeviceIdentity', 'CONFIGURATION', async () => createDeviceIdentity());
+  handle('account:getDeviceIdentityStatus', 'CONFIGURATION', async () => getDeviceIdentityStatus());
+  handle('account:signChallenge', 'CONFIGURATION', async (_, challenge) => signChallenge(challenge));
   handle('account:create', 'CONFIGURATION', async (_, payload) => CommandManager.createAccount(payload));
-  handle('account:login', 'CONFIGURATION', async (_, u, p) => CommandManager.loginAccount(u, p));
+  handle('account:authenticate', 'CONFIGURATION', async () => CommandManager.authenticateDevice());
   handle('account:logout', 'CONFIGURATION', async () => CommandManager.logoutAccount());
   handle('account:getSession', 'CONFIGURATION', async () => CommandManager.getCurrentSession());
   handle('account:getUser', 'CONFIGURATION', async () => CommandManager.getCurrentUser());
   handle('account:updateProfile', 'CONFIGURATION', async (_, payload) => CommandManager.updateProfile(payload));
-  handle('account:changePassword', 'CONFIGURATION', async (_, payload) => CommandManager.changePassword(payload));
   handle('account:delete', 'CONFIGURATION', async () => CommandManager.deleteAccount());
   handle('account:listPublic', 'CONFIGURATION', async (_, q) => CommandManager.listPublicProfiles(q));
   handle('account:getPublic', 'CONFIGURATION', async (_, id) => CommandManager.getPublicProfile(id));
@@ -75,18 +78,6 @@ function registerIpcHandlers() {
   handle('avatar:upload', 'FILESYSTEM', async (_, buffer, fileName, mimeType) => CommandManager.uploadAvatar(buffer, fileName, mimeType));
   handle('avatar:delete', 'FILESYSTEM', async () => CommandManager.deleteAvatar());
 
-  // Owner Control Panel
-  handle('owner:check', 'CONFIGURATION', async () => CommandManager.checkOwnerStatus());
-  handle('owner:getUsers', 'CONFIGURATION', async (_, q, limit, offset) => CommandManager.getOwnerUsers(q, limit, offset));
-  handle('owner:getUserDetails', 'CONFIGURATION', async (_, userId) => CommandManager.getOwnerUserDetails(userId));
-  handle('owner:grantTitle', 'CONFIGURATION', async (_, userId, titleId) => CommandManager.grantTitle(userId, titleId));
-  handle('owner:revokeTitle', 'CONFIGURATION', async (_, userId, titleId) => CommandManager.revokeTitle(userId, titleId));
-  handle('owner:grantBadge', 'CONFIGURATION', async (_, userId, badgeId) => CommandManager.grantBadge(userId, badgeId));
-  handle('owner:revokeBadge', 'CONFIGURATION', async (_, userId, badgeId) => CommandManager.revokeBadge(userId, badgeId));
-  handle('owner:setCreator', 'CONFIGURATION', async (_, userId, isCreator) => CommandManager.setCreatorStatus(userId, isCreator));
-  handle('owner:deleteUser', 'CONFIGURATION', async (_, userId, confirm) => CommandManager.ownerDeleteUser(userId, confirm));
-  handle('owner:bulkDelete', 'CONFIGURATION', async (_, confirm) => CommandManager.ownerBulkDelete(confirm));
-  handle('owner:getAuditLog', 'CONFIGURATION', async (_, limit, offset) => CommandManager.getOwnerAuditLog(limit, offset));
 
   // Settings
   handle('settings:get', 'CONFIGURATION', async () => CommandManager.getAppSettings());

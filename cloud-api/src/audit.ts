@@ -15,7 +15,7 @@ export const VOXELPLUS_TENANT_ID =
 let tenantScaleInstance: TenantScale | null = null;
 
 /**
- * TenantScale is infrastructure: audit logging and IP signup rate limiting.
+ * TenantScale is infrastructure: audit logging and IP device-registration rate limiting.
  * It is only instantiated when Supabase credentials exist (it stores its
  * data in the same Postgres project) — never with Electron/renderer creds.
  */

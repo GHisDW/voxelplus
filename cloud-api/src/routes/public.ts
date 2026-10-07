@@ -3,160 +3,66 @@ import { getDataClient, DataClient } from '../store.js';
 
 export const publicRouter = new Hono();
 
-type PublicProfileRow = {
-  id: string;
-  username: string;
-  avatar: string;
-  avatar_url?: string | null;
-  bio: string | null;
-  created_at: string;
-  is_creator?: boolean | null;
-};
+type ProfileRow = { id: string; username: string; avatar?: string; avatar_url?: string | null; bio?: string | null; created_at: string; is_public?: boolean; is_creator?: boolean | null };
 
-/**
- * Builds PublicUserProfile DTOs for the given rows with REAL pack/skin counts
- * fetched from voxel_library. Counts only rows whose metadata explicitly
- * marks them public (metadata.isPublic = true) — the same semantics as the
- * SECURITY DEFINER RPC — so private library items are never counted or
- * exposed, even if RLS were misconfigured to be more permissive.
- * Throws when the library query fails — callers must surface an unavailable
- * state rather than fabricated zero counts.
- */
-export async function withLibraryCounts(db: DataClient, rows: PublicProfileRow[]) {
-  const counts = new Map<string, { packs: number; skins: number }>();
-  for (const row of rows) counts.set(row.id, { packs: 0, skins: 0 });
-
-  if (rows.length > 0) {
-    const { data: libRows, error: libErr } = await (db as any)
-      .from('voxel_library')
-      .select('user_id, type')
-      .in('user_id', rows.map(r => r.id))
-      .in('type', ['pack', 'skin'])
-      .eq('metadata->>isPublic', 'true');
-
-    if (libErr) throw libErr;
-
-    for (const l of libRows || []) {
-      const c = counts.get(l.user_id);
-      if (!c) continue;
-      if (l.type === 'pack') c.packs++;
-      else if (l.type === 'skin') c.skins++;
-    }
-  }
-
-  return rows.map(row => {
-    const c = counts.get(row.id)!;
+async function publicCards(db: DataClient, rows: ProfileRow[]) {
+  const cards = await Promise.all(rows.map(async (row) => {
+    const [library, unlocked, badges, titles, cosmetics] = await Promise.all([
+      (db as any).from('voxel_library').select('type, metadata').eq('user_id', row.id),
+      (db as any).from('voxel_user_achievements').select('achievement_id, unlocked_at').eq('user_id', row.id),
+      (db as any).from('voxel_user_badges').select('badge_id').eq('user_id', row.id),
+      (db as any).from('voxel_user_titles').select('title_id').eq('user_id', row.id),
+      (db as any).from('voxel_user_cosmetics').select('cosmetic_id').eq('user_id', row.id)
+    ]);
+    if ([library, unlocked, badges, titles, cosmetics].some(result => result.error)) throw new Error('public data unavailable');
+    const publicLibrary = (library.data || []).filter((item: any) => item.metadata?.isPublic === true || item.metadata?.isPublic === 'true');
+    const achievementIds = (unlocked.data || []).map((item: any) => item.achievement_id);
+    const badgeIds = (badges.data || []).map((item: any) => item.badge_id);
+    const titleIds = (titles.data || []).map((item: any) => item.title_id);
+    const cosmeticIds = (cosmetics.data || []).map((item: any) => item.cosmetic_id);
+    const [achievementCatalog, badgeCatalog, titleCatalog, cosmeticCatalog] = await Promise.all([
+      achievementIds.length ? (db as any).from('voxel_achievements').select('id, title, icon, rarity').in('id', achievementIds) : { data: [], error: null },
+      badgeIds.length ? (db as any).from('voxel_badges').select('id, name, icon').in('id', badgeIds) : { data: [], error: null },
+      titleIds.length ? (db as any).from('voxel_titles').select('id, name, color').in('id', titleIds) : { data: [], error: null },
+      cosmeticIds.length ? (db as any).from('voxel_cosmetics').select('id, name, icon, rarity').in('id', cosmeticIds).eq('enabled', true) : { data: [], error: null }
+    ]);
+    if ([achievementCatalog, badgeCatalog, titleCatalog, cosmeticCatalog].some(result => result.error)) throw new Error('public catalog unavailable');
+    const byId = (items: any[]) => new Map(items.map(item => [item.id, item]));
+    const achievementMap = byId(achievementCatalog.data || []);
+    const badgeMap = byId(badgeCatalog.data || []);
+    const titleMap = byId(titleCatalog.data || []);
+    const cosmeticMap = byId(cosmeticCatalog.data || []);
     return {
       id: row.id,
       username: row.username,
-      // Canonical avatar: an uploaded avatar (avatar_url) takes precedence
-      // over the preset id stored in `avatar`.
-      avatar: row.avatar_url || row.avatar,
+      avatar: row.avatar_url || row.avatar || 'avatar_steve',
       bio: row.bio || '',
       createdAt: row.created_at,
-      publicPacksCount: c.packs,
-      publicSkinsCount: c.skins,
-      isCreator: row.is_creator === true
+      publicPacksCount: publicLibrary.filter((item: any) => item.type === 'pack').length,
+      publicSkinsCount: publicLibrary.filter((item: any) => item.type === 'skin').length,
+      isCreator: row.is_creator === true,
+      achievements: (unlocked.data || []).map((item: any) => ({ ...achievementMap.get(item.achievement_id), unlockedAt: item.unlocked_at })).filter((item: any) => item.id),
+      badges: (badges.data || []).map((item: any) => badgeMap.get(item.badge_id)).filter(Boolean),
+      titles: (titles.data || []).map((item: any) => titleMap.get(item.title_id)).filter(Boolean),
+      cosmetics: (cosmetics.data || []).map((item: any) => cosmeticMap.get(item.cosmetic_id)).filter(Boolean)
     };
-  });
+  }));
+  return cards;
 }
 
 publicRouter.get('/profiles', async (c) => {
-  const query = c.req.query('q')?.toLowerCase();
-  const db = getDataClient();
-
-  if (!db) {
-    return c.json({ error: 'Data backend unconfigured.' }, 503);
-  }
-
-  const { data: rpcData, error: rpcError } = await (db as any).rpc('get_public_user_profiles');
-
-  if (!rpcError && rpcData && Array.isArray(rpcData)) {
-    let list = rpcData.map((row: any) => ({
-      id: row.id,
-      username: row.username,
-      avatar: row.avatar_url || row.avatar,
-      bio: row.bio || '',
-      createdAt: row.created_at,
-      publicPacksCount: Number(row.public_packs_count || 0),
-      publicSkinsCount: Number(row.public_skins_count || 0),
-      isCreator: row.is_creator === true
-    }));
-
-    if (query) {
-      list = list.filter(p => p.username.toLowerCase().includes(query) || p.bio.toLowerCase().includes(query));
-    }
-    return c.json(list);
-  }
-
-  // Equivalent safe query fallback: public profiles from voxel_users (public
-  // RLS) plus real public library counts. No fabricated zero counts.
-  const { data: users, error } = await (db as any)
-    .from('voxel_users')
-    .select('id, username, avatar, avatar_url, bio, created_at, is_creator')
-    .eq('is_public', true)
-    .limit(50);
-
-  if (error || !users) {
-    return c.json({ error: 'Public profiles are temporarily unavailable.' }, 503);
-  }
-
-  let list;
-  try {
-    list = await withLibraryCounts(db, users as PublicProfileRow[]);
-  } catch {
-    return c.json({ error: 'Public profiles are temporarily unavailable.' }, 503);
-  }
-
-  if (query) {
-    list = list.filter(p => p.username.toLowerCase().includes(query) || p.bio.toLowerCase().includes(query));
-  }
-
-  return c.json(list);
+  const db = getDataClient(); if (!db) return c.json({ error: 'Data backend unconfigured.' }, 503);
+  const query = c.req.query('q')?.trim().toLowerCase();
+  const { data, error } = await (db as any).from('voxel_users').select('id, username, avatar, avatar_url, bio, created_at, is_public, is_creator').eq('is_public', true).limit(50);
+  if (error) return c.json({ error: 'Public profiles are temporarily unavailable.' }, 503);
+  const rows = (data || []).filter((row: ProfileRow) => !query || row.username.toLowerCase().includes(query) || (row.bio || '').toLowerCase().includes(query));
+  try { return c.json(await publicCards(db, rows)); } catch { return c.json({ error: 'Public profiles are temporarily unavailable.' }, 503); }
 });
 
 publicRouter.get('/profiles/:username', async (c) => {
-  const username = c.req.param('username');
-  const db = getDataClient();
-
-  if (!db) {
-    return c.json({ error: 'Data backend unconfigured.' }, 503);
-  }
-
-  const { data: rpcData, error: rpcError } = await (db as any).rpc('get_public_user_profiles');
-
-  if (!rpcError && rpcData && Array.isArray(rpcData)) {
-    const match = rpcData.find((row: any) => row.username.toLowerCase() === username.toLowerCase());
-    if (match) {
-      return c.json({
-        id: match.id,
-        username: match.username,
-        avatar: match.avatar_url || match.avatar,
-        bio: match.bio || '',
-        createdAt: match.created_at,
-        publicPacksCount: Number(match.public_packs_count || 0),
-        publicSkinsCount: Number(match.public_skins_count || 0),
-        isCreator: match.is_creator === true
-      });
-    }
-  }
-
-  const { data: user, error } = await (db as any)
-    .from('voxel_users')
-    .select('id, username, avatar, avatar_url, bio, created_at, is_public, is_creator')
-    .ilike('username', username)
-    .single();
-
-  if (error || !user || !user.is_public) {
-    return c.json({ error: 'User not found or profile is private.' }, 404);
-  }
-
-  let list;
-  try {
-    list = await withLibraryCounts(db, [user as PublicProfileRow]);
-  } catch {
-    return c.json({ error: 'Public profile is temporarily unavailable.' }, 503);
-  }
-
-  return c.json(list[0]);
+  const db = getDataClient(); if (!db) return c.json({ error: 'Data backend unconfigured.' }, 503);
+  const username = c.req.param('username').trim().toLowerCase();
+  const { data, error } = await (db as any).from('voxel_users').select('id, username, avatar, avatar_url, bio, created_at, is_public, is_creator').ilike('username', username).maybeSingle();
+  if (error || !data || !data.is_public || data.username.toLowerCase() !== username) return c.json({ error: 'User not found or profile is private.' }, 404);
+  try { return c.json((await publicCards(db, [data]))[0]); } catch { return c.json({ error: 'Public profile is temporarily unavailable.' }, 503); }
 });

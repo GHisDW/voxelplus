@@ -27,7 +27,8 @@
     "build": "tsc -p electron/tsconfig.json && vite build",
     "app:dev": "vite",
     "start": "electron .",
-    "test": "tsc -p electron/tsconfig.json && tsx --test test/account.test.ts"
+    "test": "tsc -p electron/tsconfig.json && tsx --test test/account.test.ts",
+    "test:device-identity": "tsc -p electron/tsconfig.json && electron test/electronIdentityHarness.cjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",

@@ -39,7 +39,7 @@ export interface AchievementEvaluation {
 }
 
 /** Lifetime metric counters computed from authoritative DB state. */
-async function computeMetrics(admin: any, userId: string): Promise<Record<string, number>> {
+export async function computeMetrics(admin: any, userId: string): Promise<Record<string, number>> {
   const metrics: Record<string, number> = {
     instances_total: 0,
     versions_distinct: 0,
@@ -75,8 +75,8 @@ async function computeMetrics(admin: any, userId: string): Promise<Record<string
     .eq('user_id', userId);
   const rows = instances || [];
   metrics.versions_distinct = new Set(rows.map((r: any) => r.version).filter(Boolean)).size;
-  metrics.mods_installed = rows.some((r: any) => (r.mods_count ?? 0) > 0) ? 1 : 0;
-  metrics.shaders_installed = rows.some((r: any) => (r.shaders_count ?? 0) > 0) ? 1 : 0;
+  metrics.mods_installed = rows.reduce((sum: number, r: any) => sum + Math.max(0, Number(r.mods_count) || 0), 0);
+  metrics.shaders_installed = rows.reduce((sum: number, r: any) => sum + Math.max(0, Number(r.shaders_count) || 0), 0);
 
   const { data: owned } = await admin
     .from('voxel_user_cosmetics')
@@ -152,6 +152,18 @@ async function grantReward(
   }
 }
 
+/** Retries durable reward records created when a provider cannot use a transaction. */
+export async function reconcileAchievementRewards(admin: any, userId: string): Promise<void> {
+  const { data: pending, error } = await admin.from('voxel_achievement_reward_queue').select('*').eq('user_id', userId).in('status', ['pending', 'failed']);
+  if (error) throw error;
+  for (const row of pending || []) {
+    const { data: achievement } = await admin.from('voxel_achievements').select('id, reward_cosmetic_id, reward_title_id, reward_badge_id').eq('id', row.achievement_id).maybeSingle();
+    if (!achievement) continue;
+    const reward = await grantReward(admin, userId, achievement);
+    await admin.from('voxel_achievement_reward_queue').update({ status: reward.ok ? 'applied' : 'failed', error: reward.ok ? null : (reward.error || 'unknown'), resolved_at: reward.ok ? new Date().toISOString() : null }).eq('id', row.id);
+  }
+}
+
 /**
  * Evaluate every enabled, condition-based achievement for the user and unlock
  * whichever conditions are satisfied. Safe to call after any mutation and safe
@@ -160,6 +172,7 @@ async function grantReward(
 export async function evaluateAchievements(admin: any, userId: string): Promise<AchievementEvaluation> {
   const result: AchievementEvaluation = { userId, unlocked: [], rewardFailures: [] };
   try {
+    await reconcileAchievementRewards(admin, userId);
     const { data: catalog, error: catalogErr } = await admin
       .from('voxel_achievements')
       .select('id, condition_type, condition_value, reward_cosmetic_id, reward_title_id, reward_badge_id')
@@ -195,7 +208,7 @@ export async function evaluateAchievements(admin: any, userId: string): Promise<
       const { error: insertErr } = await admin
         .from('voxel_user_achievements')
         .upsert(
-          { user_id: userId, achievement_id: achievement.id },
+          { user_id: userId, achievement_id: achievement.id, unlocked_at: new Date().toISOString() },
           { onConflict: 'user_id,achievement_id', ignoreDuplicates: true }
         );
       if (insertErr) {
@@ -204,7 +217,13 @@ export async function evaluateAchievements(admin: any, userId: string): Promise<
       }
       result.unlocked.push(achievement.id);
 
+      // Persistence providers without multi-table transactions get a durable
+      // reconciliation record so an unlocked achievement can never silently
+      // lose its reward.
       const reward = await grantReward(admin, userId, achievement);
+      const rewardKind = (reward.reward || 'none').split(':')[0];
+      const rewardId = (reward.reward || '').split(':')[1] || null;
+      if (rewardKind !== 'none') await admin.from('voxel_achievement_reward_queue').upsert({ user_id: userId, achievement_id: achievement.id, reward_kind: rewardKind, reward_id: rewardId, status: reward.ok ? 'applied' : 'failed', error: reward.ok ? null : (reward.error || 'unknown'), resolved_at: reward.ok ? new Date().toISOString() : null }, { onConflict: 'user_id,achievement_id,reward_kind,reward_id' });
       if (!reward.ok) {
         result.rewardFailures.push({ achievementId: achievement.id, reward: reward.reward, error: reward.error || 'unknown' });
       }

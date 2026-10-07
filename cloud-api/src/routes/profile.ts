@@ -3,6 +3,7 @@ import { authMiddleware, CloudApiEnv } from '../auth.js';
 import { getDataClient } from '../store.js';
 import { logAuditEventServer } from '../audit.js';
 import { evaluateAchievements } from '../achievementEngine.js';
+import { normalizeUsername, validateUsername } from '../identity.js';
 
 export const profileRouter = new Hono<CloudApiEnv>();
 
@@ -49,35 +50,34 @@ profileRouter.put('/', authMiddleware, async (c) => {
   }
   const now = new Date().toISOString();
 
-  // Username IS the identity — validate format + uniqueness, then update the
-  // canonical credential row and profile together.
-  if (username && username.trim().toLowerCase() !== authUser.username.toLowerCase()) {
-    if (!/^[a-zA-Z0-9_]{3,20}$/.test(username.trim())) {
-      return c.json({ error: 'Username must be 3-20 characters, letters, numbers, or underscores only.' }, 400);
-    }
+  // Username is public profile data, never an authentication credential.
+  const normalizedUsername = typeof username === 'string' ? normalizeUsername(username) : authUser.username;
+  if (username && normalizedUsername !== normalizeUsername(authUser.username)) {
+    const validation = validateUsername(username);
+    if (validation) return c.json({ error: validation }, 400);
     const { data: taken } = await (db as any)
       .from('voxel_accounts')
-      .select('id, username')
-      .ilike('username', username.trim())
+      .select('id, username_normalized')
+      .eq('username_normalized', normalizedUsername)
       .maybeSingle();
-    if (taken && String(taken.username).toLowerCase() === username.trim().toLowerCase() && taken.id !== authUser.id) {
+    if (taken && taken.id !== authUser.id) {
       return c.json({ error: `Username "${username}" is already taken.`, code: 'USERNAME_TAKEN' }, 409);
     }
     const { error: credErr } = await (db as any)
       .from('voxel_accounts')
-      .update({ username: username.trim() })
+      .update({ username: normalizedUsername, username_normalized: normalizedUsername })
       .eq('id', authUser.id);
     if (credErr) {
       return c.json({ error: `Failed to update account username: ${credErr.message}`, code: 'USERNAME_UPDATE_FAILED' }, 400);
     }
-    authUser.username = username.trim();
+    authUser.username = normalizedUsername;
   }
 
   const profileUpdate: Record<string, any> = {
     updated_at: now
   };
 
-  if (username) profileUpdate.username = username.trim();
+  if (username) profileUpdate.username = normalizedUsername;
   if (avatar !== undefined) {
     profileUpdate.avatar = avatar;
     // Choosing a preset avatar makes it the canonical value again — clear

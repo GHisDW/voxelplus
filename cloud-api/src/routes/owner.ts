@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { authMiddleware, CloudApiEnv } from '../auth.js';
 import { getDataClient } from '../store.js';
-import { resolveSession } from '../identity.js';
+import { resolveSession, revokeAllSessions } from '../identity.js';
 import { logAuditEventServer } from '../audit.js';
 import { runTrackedDeletion } from '../deletion.js';
 
@@ -252,6 +252,46 @@ ownerRouter.delete('/users/:userId/badge', ownerAuthMiddleware, async (c) => {
   return c.json({ success: true });
 });
 
+// Privileged achievement and cosmetic mutations are deliberately available
+// only behind the server-side owner authorization middleware.
+ownerRouter.post('/users/:userId/achievement', ownerAuthMiddleware, async (c) => {
+  const actor = c.get('authUser'); const targetId = c.req.param('userId'); const { achievementId } = await c.req.json();
+  if (!achievementId) return c.json({ error: 'achievementId is required.' }, 400);
+  const db = getDataClient()!;
+  const { data: achievement } = await (db as any).from('voxel_achievements').select('id').eq('id', achievementId).maybeSingle();
+  if (!achievement) return c.json({ error: 'Achievement not found.' }, 404);
+  const { error } = await (db as any).from('voxel_user_achievements').upsert({ user_id: targetId, achievement_id: achievementId, unlocked_at: new Date().toISOString(), granted_by: actor.id }, { onConflict: 'user_id,achievement_id' });
+  if (error) return c.json({ error: error.message }, 400);
+  await logAuditEventServer({ actor_id: actor.id, actor_type: 'admin_api', action: 'owner.achievement_granted', resource: 'voxel_user_achievements', details: { targetId, achievementId } });
+  return c.json({ success: true });
+});
+ownerRouter.delete('/users/:userId/achievement', ownerAuthMiddleware, async (c) => {
+  const actor = c.get('authUser'); const targetId = c.req.param('userId'); const { achievementId } = await c.req.json();
+  if (!achievementId) return c.json({ error: 'achievementId is required.' }, 400);
+  const { error } = await (getDataClient() as any).from('voxel_user_achievements').delete().eq('user_id', targetId).eq('achievement_id', achievementId);
+  if (error) return c.json({ error: error.message }, 400);
+  await logAuditEventServer({ actor_id: actor.id, actor_type: 'admin_api', action: 'owner.achievement_revoked', resource: 'voxel_user_achievements', details: { targetId, achievementId } });
+  return c.json({ success: true });
+});
+ownerRouter.post('/users/:userId/cosmetic', ownerAuthMiddleware, async (c) => {
+  const actor = c.get('authUser'); const targetId = c.req.param('userId'); const { cosmeticId } = await c.req.json();
+  if (!cosmeticId) return c.json({ error: 'cosmeticId is required.' }, 400);
+  const db = getDataClient()!; const { data: cosmetic } = await (db as any).from('voxel_cosmetics').select('id').eq('id', cosmeticId).maybeSingle();
+  if (!cosmetic) return c.json({ error: 'Cosmetic not found.' }, 404);
+  const { error } = await (db as any).from('voxel_user_cosmetics').upsert({ user_id: targetId, cosmetic_id: cosmeticId, granted_by: actor.id }, { onConflict: 'user_id,cosmetic_id' });
+  if (error) return c.json({ error: error.message }, 400);
+  await logAuditEventServer({ actor_id: actor.id, actor_type: 'admin_api', action: 'owner.cosmetic_granted', resource: 'voxel_user_cosmetics', details: { targetId, cosmeticId } });
+  return c.json({ success: true });
+});
+ownerRouter.delete('/users/:userId/cosmetic', ownerAuthMiddleware, async (c) => {
+  const actor = c.get('authUser'); const targetId = c.req.param('userId'); const { cosmeticId } = await c.req.json();
+  if (!cosmeticId) return c.json({ error: 'cosmeticId is required.' }, 400);
+  const { error } = await (getDataClient() as any).from('voxel_user_cosmetics').delete().eq('user_id', targetId).eq('cosmetic_id', cosmeticId);
+  if (error) return c.json({ error: error.message }, 400);
+  await logAuditEventServer({ actor_id: actor.id, actor_type: 'admin_api', action: 'owner.cosmetic_revoked', resource: 'voxel_user_cosmetics', details: { targetId, cosmeticId } });
+  return c.json({ success: true });
+});
+
 /**
  * PATCH /api/owner/users/:userId/creator — toggle creator status
  */
@@ -279,6 +319,19 @@ ownerRouter.patch('/users/:userId/creator', ownerAuthMiddleware, async (c) => {
   });
 
   return c.json({ success: true });
+});
+
+ownerRouter.patch('/users/:userId/status', ownerAuthMiddleware, async (c) => {
+  const actor = c.get('authUser'); const targetId = c.req.param('userId'); const { status } = await c.req.json();
+  if (status !== 'active' && status !== 'disabled') return c.json({ error: 'status must be active or disabled.' }, 400);
+  const db = getDataClient()!;
+  const { data: targetRole } = await (db as any).from('voxel_owner_roles').select('role').eq('user_id', targetId).maybeSingle();
+  if (targetRole && c.get('ownerRole') !== 'owner') return c.json({ error: 'Only the platform owner can change an owner/admin account status.', code: 'FORBIDDEN' }, 403);
+  const { error } = await (db as any).from('voxel_accounts').update({ status }).eq('id', targetId);
+  if (error) return c.json({ error: error.message }, 400);
+  if (status === 'disabled') await revokeAllSessions(db, targetId);
+  await logAuditEventServer({ actor_id: actor.id, actor_type: 'admin_api', action: status === 'disabled' ? 'owner.account_disabled' : 'owner.account_enabled', resource: 'voxel_accounts', details: { targetId, status } });
+  return c.json({ success: true, status });
 });
 
 /**

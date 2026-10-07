@@ -30,8 +30,9 @@ export async function createVoxelProfile(
 
 /**
  * Compensation for a failed profile creation: removes the newly-created
- * `voxel_accounts` credential row (and any sessions) so the signup can be
- * cleanly retried. Returns whether cleanup succeeded.
+ * The account row becomes a deleted tombstone (and all sessions are revoked).
+ * Retaining the public-key tombstone prevents a deleted device key from being
+ * re-registered and accidentally associated with a new identity.
  */
 export async function removeAccountRecord(
   db: DataClient,
@@ -39,11 +40,8 @@ export async function removeAccountRecord(
 ): Promise<{ removed: boolean; error: string | null }> {
   const { error: sessErr } = await (db as any).from('voxel_sessions').delete().eq('user_id', userId);
   if (sessErr) return { removed: false, error: sessErr.message };
-  const { error } = await (db as any).from('voxel_accounts').delete().eq('id', userId);
-  if (error) {
-    const missing = /not found|does not exist|404/i.test(error.message || '');
-    return { removed: missing, error: missing ? null : error.message };
-  }
+  const { error } = await (db as any).from('voxel_accounts').update({ status: 'deleted', deleted_at: new Date().toISOString() }).eq('id', userId);
+  if (error) return { removed: false, error: error.message };
   return { removed: true, error: null };
 }
 
@@ -56,7 +54,7 @@ export async function removeAccountRecord(
  *
  * Statuses:
  *   'processing'               — job created, nothing done yet
- *   'account_deleted'          — voxel_accounts + voxel_sessions removed
+ *   'account_deleted'          — voxel_accounts tombstoned + sessions removed
  *   'voxel_cloud_sync_deleted' — cloud sync rows removed
  *   'voxel_library_deleted'    — library rows removed
  *   'voxel_user_data_deleted'  — cosmetics/achievements/titles/badges,
@@ -83,7 +81,8 @@ const USER_DATA_TABLES = [
   'voxel_instances',
   'voxel_ad_progress',
   'voxel_ad_completions',
-  'voxel_owner_roles'
+  'voxel_owner_roles',
+  'voxel_achievement_reward_queue'
 ] as const;
 
 /** Maps a completed step to the queue status recorded for it. */

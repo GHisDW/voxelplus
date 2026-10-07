@@ -38,11 +38,13 @@ import { AccountManager } from './account/accountManager';
 export class CommandManager {
   // Accounts & Cloud Identity
   public static async createAccount(payload: any) {
-    return AccountManager.createAccount(payload);
+    const session = await AccountManager.createAccount(payload);
+    return { user: session.user };
   }
 
-  public static async loginAccount(username: string, password: string) {
-    return AccountManager.login(username, password);
+  public static async authenticateDevice() {
+    const session = await AccountManager.authenticateDevice();
+    return { user: session.user };
   }
 
   public static async logoutAccount() {
@@ -50,7 +52,8 @@ export class CommandManager {
   }
 
   public static async getCurrentSession() {
-    return AccountManager.getCurrentSession();
+    const session = await AccountManager.getCurrentSession();
+    return session ? { user: session.user } : null;
   }
 
   public static async getCurrentUser() {
@@ -61,9 +64,6 @@ export class CommandManager {
     return AccountManager.updateProfile(payload);
   }
 
-  public static async changePassword(payload: any) {
-    return AccountManager.changePassword(payload);
-  }
 
   public static async deleteAccount() {
     return AccountManager.deleteAccount();
@@ -156,51 +156,6 @@ export class CommandManager {
 
   public static async deleteAvatar() {
     return AccountManager.deleteAvatar();
-  }
-
-  // Owner Control Panel
-  public static async checkOwnerStatus() {
-    return AccountManager.checkOwnerStatus();
-  }
-
-  public static async getOwnerUsers(query?: string, limit?: number, offset?: number) {
-    return AccountManager.getOwnerUsers(query, limit, offset);
-  }
-
-  public static async getOwnerUserDetails(userId: string) {
-    return AccountManager.getOwnerUserDetails(userId);
-  }
-
-  public static async grantTitle(userId: string, titleId: string) {
-    return AccountManager.grantTitle(userId, titleId);
-  }
-
-  public static async revokeTitle(userId: string, titleId: string) {
-    return AccountManager.revokeTitle(userId, titleId);
-  }
-
-  public static async grantBadge(userId: string, badgeId: string) {
-    return AccountManager.grantBadge(userId, badgeId);
-  }
-
-  public static async revokeBadge(userId: string, badgeId: string) {
-    return AccountManager.revokeBadge(userId, badgeId);
-  }
-
-  public static async setCreatorStatus(userId: string, isCreator: boolean) {
-    return AccountManager.setCreatorStatus(userId, isCreator);
-  }
-
-  public static async ownerDeleteUser(userId: string, confirmPhrase: string) {
-    return AccountManager.ownerDeleteUser(userId, confirmPhrase);
-  }
-
-  public static async ownerBulkDelete(confirmPhrase: string) {
-    return AccountManager.ownerBulkDelete(confirmPhrase);
-  }
-
-  public static async getOwnerAuditLog(limit?: number, offset?: number) {
-    return AccountManager.getOwnerAuditLog(limit, offset);
   }
 
   // Settings

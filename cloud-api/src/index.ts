@@ -13,6 +13,7 @@ import { avatarRouter } from './routes/avatar.js';
 import { adsRouter } from './routes/ads.js';
 import { instancesRouter } from './routes/instances.js';
 import { vpacksRouter } from './routes/vpacks.js';
+import { authRouter } from './routes/auth.js';
 
 const app = new Hono();
 
@@ -21,6 +22,8 @@ app.use('*', rateLimitMiddleware({ windowMs: 60 * 1000, maxRequests: 100 }));
 app.get('/health', (c) => c.json({ status: 'ok', service: 'Voxel+ Cloud API', version: '1.1.0' }));
 
 app.route('/api/account', accountRouter);
+app.route('/api/auth', authRouter);
+app.route('/auth', authRouter);
 app.route('/api/profile', profileRouter);
 app.route('/api/library', libraryRouter);
 app.route('/api/sync', syncRouter);

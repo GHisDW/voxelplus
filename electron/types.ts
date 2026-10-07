@@ -37,11 +37,7 @@ export interface VoxelPublicUserProfile {
 }
 
 export interface VoxelAccountSession {
-  accessToken: string;
-  refreshToken: string;
   user: VoxelUserProfile;
-  expiresAt?: number;
-  tokenType?: string;
 }
 
 export interface VoxelCloudSyncPayload {
