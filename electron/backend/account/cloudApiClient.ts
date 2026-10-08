@@ -87,9 +87,17 @@ export class CloudApiClient {
     };
   }
 
-  public static async registerDeviceKey(publicKey: string): Promise<{ userId: string; publicKeyId: string; createdAt: string; usernameClaimed: boolean }> {
-    const res = await fetch(`${this.apiBaseUrl}/api/account/register-key`, {
+  public static async requestRegistrationChallenge(publicKey: string): Promise<{ challengeId: string; challenge: string; expiresAt: string }> {
+    const res = await fetch(`${this.apiBaseUrl}/api/account/registration-challenge`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ publicKey })
+    });
+    if (!res.ok) { const err = await res.json().catch(() => ({})) as any; throw new Error(err.error || 'Registration challenge failed.'); }
+    return await res.json() as { challengeId: string; challenge: string; expiresAt: string };
+  }
+
+  public static async registerDeviceKey(publicKey: string, challengeId: string, signature: string): Promise<{ userId: string; publicKeyId: string; createdAt: string; usernameClaimed: boolean }> {
+    const res = await fetch(`${this.apiBaseUrl}/api/account/register-key`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ publicKey, challengeId, signature })
     });
     if (!res.ok) { const err = await res.json().catch(() => ({})) as any; throw new Error(err.error || 'Device registration failed.'); }
     return await res.json() as { userId: string; publicKeyId: string; createdAt: string; usernameClaimed: boolean };

@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { authMiddleware, CloudApiEnv } from '../auth.js';
-import { getDataClient } from '../store.js';
+import { getDataStore } from '../store.js';
 import { logAuditEventServer } from '../audit.js';
 import { evaluateAchievements } from '../achievementEngine.js';
 
@@ -8,14 +8,14 @@ export const libraryRouter = new Hono<CloudApiEnv>();
 
 libraryRouter.get('/', authMiddleware, async (c) => {
   const authUser = c.get('authUser');
-  const userSupabase = getDataClient();
+  const db = getDataStore();
 
-  if (!userSupabase) {
+  if (!db) {
     return c.json({ error: 'Cloud service unconfigured.' }, 503);
   }
 
-  const { data, error } = await userSupabase
-    .from('voxel_library')
+  const { data, error } = await db
+    .table('voxel_library')
     .select('*')
     .eq('user_id', authUser.id);
 
@@ -44,14 +44,14 @@ libraryRouter.post('/', authMiddleware, async (c) => {
     return c.json({ error: 'Title and type are required.' }, 400);
   }
 
-  const userSupabase = getDataClient();
-  if (!userSupabase) {
+  const db = getDataStore();
+  if (!db) {
     return c.json({ error: 'Cloud service unconfigured.' }, 503);
   }
   const now = new Date().toISOString();
 
-  const { data, error } = await userSupabase
-    .from('voxel_library')
+  const { data, error } = await db
+    .table('voxel_library')
     .upsert({
       id: id || undefined,
       user_id: authUser.id,
@@ -69,8 +69,7 @@ libraryRouter.post('/', authMiddleware, async (c) => {
   }
 
   // Library state changed — re-evaluate server-derived achievements.
-  const adminSupabase = getDataClient();
-  if (adminSupabase) await evaluateAchievements(adminSupabase, authUser.id);
+  await evaluateAchievements(db, authUser.id);
 
   await logAuditEventServer({
     actor_id: authUser.id,

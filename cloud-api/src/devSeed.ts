@@ -1,7 +1,7 @@
 /**
  * Dev/test seed data for the in-memory backend. Mirrors the catalog rows
  * deployed by migrations 002 + 006 so `VOXELPLUS_DATA_BACKEND=memory` (or
- * `npm run dev` with no Supabase env) produces a working product surface.
+ * `npm run dev` with no provider-specific backend env) produces a working product surface.
  * Keep in sync with the migrations.
  */
 export const DEV_SEED: Record<string, any[]> = {

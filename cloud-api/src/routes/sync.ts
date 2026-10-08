@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { authMiddleware, CloudApiEnv } from '../auth.js';
-import { getDataClient } from '../store.js';
+import { getDataStore } from '../store.js';
 import { logAuditEventServer } from '../audit.js';
 
 export const syncRouter = new Hono<CloudApiEnv>();
@@ -11,13 +11,13 @@ const MAX_SYNC_PAYLOAD_BYTES = 500 * 1024;
 syncRouter.get('/', authMiddleware, async (c) => {
   const authUser = c.get('authUser');
 
-  const db = getDataClient();
+  const db = getDataStore();
   if (!db) {
     return c.json({ error: 'Data backend unconfigured.' }, 503);
   }
 
   const { data, error } = await (db as any)
-    .from('voxel_cloud_sync')
+    .table('voxel_cloud_sync')
     .select('sync_payload, last_synced_at')
     .eq('user_id', authUser.id)
     .maybeSingle();
@@ -41,7 +41,7 @@ syncRouter.post('/', authMiddleware, async (c) => {
     }, 413);
   }
 
-  const db = getDataClient();
+  const db = getDataStore();
   if (!db) {
     return c.json({ error: 'Data backend unconfigured.' }, 503);
   }
@@ -55,7 +55,7 @@ syncRouter.post('/', authMiddleware, async (c) => {
   };
 
   const { error } = await (db as any)
-    .from('voxel_cloud_sync')
+    .table('voxel_cloud_sync')
     .upsert({
       user_id: authUser.id,
       sync_payload: syncPayload,

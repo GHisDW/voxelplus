@@ -1,4 +1,4 @@
-import type { DataClient } from './store.js';
+import type { DataStore } from './store.js';
 
 export interface VoxelProfileInsert {
   id: string;
@@ -17,13 +17,13 @@ export interface VoxelProfileInsert {
  * compensates (deletes the account row) on any error.
  */
 export async function createVoxelProfile(
-  db: DataClient,
+  db: DataStore,
   profile: VoxelProfileInsert
 ): Promise<{ error: string | null }> {
   // upsert (not insert): a signup retried after a partially-failed prior
   // deletion may find a stale voxel_users row for the same account id.
   const { error } = await (db as any)
-    .from('voxel_users')
+    .table('voxel_users')
     .upsert(profile, { onConflict: 'id' });
   return { error: error ? error.message : null };
 }
@@ -35,12 +35,12 @@ export async function createVoxelProfile(
  * re-registered and accidentally associated with a new identity.
  */
 export async function removeAccountRecord(
-  db: DataClient,
+  db: DataStore,
   userId: string
 ): Promise<{ removed: boolean; error: string | null }> {
-  const { error: sessErr } = await (db as any).from('voxel_sessions').delete().eq('user_id', userId);
+  const { error: sessErr } = await (db as any).table('voxel_sessions').delete().eq('user_id', userId);
   if (sessErr) return { removed: false, error: sessErr.message };
-  const { error } = await (db as any).from('voxel_accounts').update({ status: 'deleted', deleted_at: new Date().toISOString() }).eq('id', userId);
+  const { error } = await (db as any).table('voxel_accounts').update({ status: 'deleted', deleted_at: new Date().toISOString() }).eq('id', userId);
   if (error) return { removed: false, error: error.message };
   return { removed: true, error: null };
 }
@@ -133,7 +133,7 @@ export type DeletionResult =
  * retryable. Never reports success on a partial deletion.
  */
 export async function performAccountDeletion(
-  db: DataClient,
+  db: DataStore,
   userId: string,
   completed: Set<DeletionStep> = new Set()
 ): Promise<DeletionResult> {
@@ -146,7 +146,7 @@ export async function performAccountDeletion(
 
   for (const table of ['voxel_cloud_sync', 'voxel_library'] as const) {
     if (completed.has(table)) continue;
-    const { error } = await (db as any).from(table).delete().eq('user_id', userId);
+    const { error } = await (db as any).table(table).delete().eq('user_id', userId);
     if (error) {
       return { success: false, step: table, error: error.message };
     }
@@ -155,7 +155,7 @@ export async function performAccountDeletion(
   if (!completed.has('voxel_user_data')) {
     for (const table of USER_DATA_TABLES) {
       const col = 'user_id';
-      const { error } = await (db as any).from(table).delete().eq(col, userId);
+      const { error } = await (db as any).table(table).delete().eq(col, userId);
       if (error) {
         return { success: false, step: 'voxel_user_data', error: `${table}: ${error.message}` };
       }
@@ -163,7 +163,7 @@ export async function performAccountDeletion(
   }
 
   if (!completed.has('voxel_users')) {
-    const { error } = await (db as any).from('voxel_users').delete().eq('id', userId);
+    const { error } = await (db as any).table('voxel_users').delete().eq('id', userId);
     if (error) {
       return { success: false, step: 'voxel_users', error: error.message };
     }
@@ -183,11 +183,11 @@ export interface DeletionQueueRow {
  * must NOT proceed without verifiable tracking state.
  */
 export async function findLatestQueueRow(
-  db: DataClient,
+  db: DataStore,
   userId: string
 ): Promise<{ row: DeletionQueueRow | null; error: string | null }> {
   const { data, error } = await (db as any)
-    .from('voxel_account_deletion_queue')
+    .table('voxel_account_deletion_queue')
     .select('id, status')
     .eq('user_id', userId)
     .order('requested_at', { ascending: false })
@@ -203,7 +203,7 @@ export async function findLatestQueueRow(
  * deletion progress is only resumable when this returns a row.
  */
 export async function updateQueueRow(
-  db: DataClient,
+  db: DataStore,
   rowId: string | undefined,
   userId: string,
   status: string,
@@ -213,14 +213,14 @@ export async function updateQueueRow(
     const update: Record<string, any> = { status };
     if (completedAt) update.completed_at = completedAt;
     const { error } = await (db as any)
-      .from('voxel_account_deletion_queue')
+      .table('voxel_account_deletion_queue')
       .update(update)
       .eq('id', rowId);
     if (error) return { row: null, error: error.message };
     return { row: { id: rowId, status }, error: null };
   }
   const { data, error } = await (db as any)
-    .from('voxel_account_deletion_queue')
+    .table('voxel_account_deletion_queue')
     .insert({ user_id: userId, status })
     .select('id, status')
     .single();
@@ -248,7 +248,7 @@ export type TrackedDeletionOutcome =
  * Retries resume from the persisted step (idempotent).
  */
 export async function runTrackedDeletion(
-  db: DataClient,
+  db: DataStore,
   userId: string
 ): Promise<TrackedDeletionOutcome> {
   const found = await findLatestQueueRow(db, userId);

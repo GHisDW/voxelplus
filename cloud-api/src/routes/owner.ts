@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { authMiddleware, CloudApiEnv } from '../auth.js';
-import { getDataClient } from '../store.js';
+import { getDataStore } from '../store.js';
 import { resolveSession, revokeAllSessions } from '../identity.js';
 import { logAuditEventServer } from '../audit.js';
 import { runTrackedDeletion } from '../deletion.js';
@@ -8,7 +8,7 @@ import { runTrackedDeletion } from '../deletion.js';
 export const ownerRouter = new Hono<CloudApiEnv>();
 
 /**
- * Middleware: verifies caller is an owner or admin via service_role check.
+ * Middleware: verifies caller is an owner or admin via server credential check.
  * NEVER relies on client-supplied data for authorization.
  */
 async function ownerAuthMiddleware(c: any, next: any) {
@@ -18,7 +18,7 @@ async function ownerAuthMiddleware(c: any, next: any) {
   }
 
   const token = authHeader.substring(7).trim();
-  const db = getDataClient();
+  const db = getDataStore();
   if (!db) {
     return c.json({ error: 'Data backend unavailable.', code: 'UNAVAILABLE' }, 503);
   }
@@ -31,7 +31,7 @@ async function ownerAuthMiddleware(c: any, next: any) {
 
   // SERVER-SIDE check: is this user an owner or admin?
   const { data: roleRow } = await (db as any)
-    .from('voxel_owner_roles')
+    .table('voxel_owner_roles')
     .select('role')
     .eq('user_id', user.id)
     .in('role', ['owner', 'admin'])
@@ -52,13 +52,13 @@ async function ownerAuthMiddleware(c: any, next: any) {
  * GET /api/owner/users — list all users (for search/management)
  */
 ownerRouter.get('/users', ownerAuthMiddleware, async (c) => {
-  const adminSupabase = getDataClient()!;
+  const db = getDataStore()!;
   const query = c.req.query('q')?.toLowerCase();
   const limit = Math.min(Number(c.req.query('limit') || 50), 100);
   const offset = Number(c.req.query('offset') || 0);
 
-  let dbQuery = adminSupabase
-    .from('voxel_users')
+  let dbQuery = db
+    .table('voxel_users')
     .select('id, username, avatar, avatar_url, bio, is_public, is_creator, created_at, updated_at, selected_cosmetic, selected_title')
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
@@ -78,16 +78,18 @@ ownerRouter.get('/users', ownerAuthMiddleware, async (c) => {
  */
 ownerRouter.get('/users/:userId', ownerAuthMiddleware, async (c) => {
   const userId = c.req.param('userId');
-  const adminSupabase = getDataClient()!;
+  const db = getDataStore()!;
 
-  const { data, error } = await adminSupabase
-    .rpc('get_user_admin_profile', { target_user_id: userId });
-
-  if (error || !data) {
-    return c.json({ error: error?.message || 'User not found.' }, 404);
-  }
-
-  return c.json(data);
+  const { data: profile, error } = await db.table('voxel_users').select('*').eq('id', userId).maybeSingle();
+  if (error || !profile) return c.json({ error: error?.message || 'User not found.' }, 404);
+  const [titles, badges, achievements, library, role] = await Promise.all([
+    db.table('voxel_user_titles').select('title_id, granted_at').eq('user_id', userId),
+    db.table('voxel_user_badges').select('badge_id, granted_at').eq('user_id', userId),
+    db.table('voxel_user_achievements').select('achievement_id, unlocked_at').eq('user_id', userId),
+    db.table('voxel_library').select('id').eq('user_id', userId),
+    db.table('voxel_owner_roles').select('role').eq('user_id', userId).maybeSingle()
+  ]);
+  return c.json({ ...profile, titles: titles.data || [], badges: badges.data || [], achievements: achievements.data || [], library_count: (library.data || []).length, role: role.data?.role || null });
 });
 
 /**
@@ -101,25 +103,25 @@ ownerRouter.post('/users/:userId/title', ownerAuthMiddleware, async (c) => {
 
   if (!titleId) return c.json({ error: 'titleId is required.' }, 400);
 
-  const adminSupabase = getDataClient()!;
+  const db = getDataStore()!;
 
   // Verify title exists
-  const { data: title } = await adminSupabase
-    .from('voxel_titles')
+  const { data: title } = await db
+    .table('voxel_titles')
     .select('id, name')
     .eq('id', titleId)
     .single();
 
   if (!title) return c.json({ error: 'Title not found.' }, 404);
 
-  const { error } = await adminSupabase
-    .from('voxel_user_titles')
+  const { error } = await db
+    .table('voxel_user_titles')
     .upsert({ user_id: targetId, title_id: titleId, granted_by: actorUser.id }, { onConflict: 'user_id,title_id' });
 
   if (error) return c.json({ error: error.message }, 400);
 
   // Log to owner audit
-  await adminSupabase.from('voxel_owner_audit_log').insert({
+  await db.table('voxel_owner_audit_log').insert({
     actor_id: actorUser.id,
     actor_role: c.get('ownerRole'),
     action: 'TITLE_GRANTED',
@@ -149,15 +151,15 @@ ownerRouter.delete('/users/:userId/title', ownerAuthMiddleware, async (c) => {
 
   if (!titleId) return c.json({ error: 'titleId is required.' }, 400);
 
-  const adminSupabase = getDataClient()!;
+  const db = getDataStore()!;
 
-  await adminSupabase
-    .from('voxel_user_titles')
+  await db
+    .table('voxel_user_titles')
     .delete()
     .eq('user_id', targetId)
     .eq('title_id', titleId);
 
-  await adminSupabase.from('voxel_owner_audit_log').insert({
+  await db.table('voxel_owner_audit_log').insert({
     actor_id: actorUser.id,
     actor_role: c.get('ownerRole'),
     action: 'TITLE_REVOKED',
@@ -187,23 +189,23 @@ ownerRouter.post('/users/:userId/badge', ownerAuthMiddleware, async (c) => {
 
   if (!badgeId) return c.json({ error: 'badgeId is required.' }, 400);
 
-  const adminSupabase = getDataClient()!;
+  const db = getDataStore()!;
 
-  const { data: badge } = await adminSupabase
-    .from('voxel_badges')
+  const { data: badge } = await db
+    .table('voxel_badges')
     .select('id, name')
     .eq('id', badgeId)
     .single();
 
   if (!badge) return c.json({ error: 'Badge not found.' }, 404);
 
-  const { error } = await adminSupabase
-    .from('voxel_user_badges')
+  const { error } = await db
+    .table('voxel_user_badges')
     .upsert({ user_id: targetId, badge_id: badgeId, granted_by: actorUser.id }, { onConflict: 'user_id,badge_id' });
 
   if (error) return c.json({ error: error.message }, 400);
 
-  await adminSupabase.from('voxel_owner_audit_log').insert({
+  await db.table('voxel_owner_audit_log').insert({
     actor_id: actorUser.id,
     actor_role: c.get('ownerRole'),
     action: 'BADGE_GRANTED',
@@ -233,15 +235,15 @@ ownerRouter.delete('/users/:userId/badge', ownerAuthMiddleware, async (c) => {
 
   if (!badgeId) return c.json({ error: 'badgeId is required.' }, 400);
 
-  const adminSupabase = getDataClient()!;
+  const db = getDataStore()!;
 
-  await adminSupabase
-    .from('voxel_user_badges')
+  await db
+    .table('voxel_user_badges')
     .delete()
     .eq('user_id', targetId)
     .eq('badge_id', badgeId);
 
-  await adminSupabase.from('voxel_owner_audit_log').insert({
+  await db.table('voxel_owner_audit_log').insert({
     actor_id: actorUser.id,
     actor_role: c.get('ownerRole'),
     action: 'BADGE_REVOKED',
@@ -257,10 +259,10 @@ ownerRouter.delete('/users/:userId/badge', ownerAuthMiddleware, async (c) => {
 ownerRouter.post('/users/:userId/achievement', ownerAuthMiddleware, async (c) => {
   const actor = c.get('authUser'); const targetId = c.req.param('userId'); const { achievementId } = await c.req.json();
   if (!achievementId) return c.json({ error: 'achievementId is required.' }, 400);
-  const db = getDataClient()!;
-  const { data: achievement } = await (db as any).from('voxel_achievements').select('id').eq('id', achievementId).maybeSingle();
+  const db = getDataStore()!;
+  const { data: achievement } = await (db as any).table('voxel_achievements').select('id').eq('id', achievementId).maybeSingle();
   if (!achievement) return c.json({ error: 'Achievement not found.' }, 404);
-  const { error } = await (db as any).from('voxel_user_achievements').upsert({ user_id: targetId, achievement_id: achievementId, unlocked_at: new Date().toISOString(), granted_by: actor.id }, { onConflict: 'user_id,achievement_id' });
+  const { error } = await (db as any).table('voxel_user_achievements').upsert({ user_id: targetId, achievement_id: achievementId, unlocked_at: new Date().toISOString(), granted_by: actor.id }, { onConflict: 'user_id,achievement_id' });
   if (error) return c.json({ error: error.message }, 400);
   await logAuditEventServer({ actor_id: actor.id, actor_type: 'admin_api', action: 'owner.achievement_granted', resource: 'voxel_user_achievements', details: { targetId, achievementId } });
   return c.json({ success: true });
@@ -268,7 +270,7 @@ ownerRouter.post('/users/:userId/achievement', ownerAuthMiddleware, async (c) =>
 ownerRouter.delete('/users/:userId/achievement', ownerAuthMiddleware, async (c) => {
   const actor = c.get('authUser'); const targetId = c.req.param('userId'); const { achievementId } = await c.req.json();
   if (!achievementId) return c.json({ error: 'achievementId is required.' }, 400);
-  const { error } = await (getDataClient() as any).from('voxel_user_achievements').delete().eq('user_id', targetId).eq('achievement_id', achievementId);
+  const { error } = await (getDataStore() as any).table('voxel_user_achievements').delete().eq('user_id', targetId).eq('achievement_id', achievementId);
   if (error) return c.json({ error: error.message }, 400);
   await logAuditEventServer({ actor_id: actor.id, actor_type: 'admin_api', action: 'owner.achievement_revoked', resource: 'voxel_user_achievements', details: { targetId, achievementId } });
   return c.json({ success: true });
@@ -276,9 +278,9 @@ ownerRouter.delete('/users/:userId/achievement', ownerAuthMiddleware, async (c) 
 ownerRouter.post('/users/:userId/cosmetic', ownerAuthMiddleware, async (c) => {
   const actor = c.get('authUser'); const targetId = c.req.param('userId'); const { cosmeticId } = await c.req.json();
   if (!cosmeticId) return c.json({ error: 'cosmeticId is required.' }, 400);
-  const db = getDataClient()!; const { data: cosmetic } = await (db as any).from('voxel_cosmetics').select('id').eq('id', cosmeticId).maybeSingle();
+  const db = getDataStore()!; const { data: cosmetic } = await (db as any).table('voxel_cosmetics').select('id').eq('id', cosmeticId).maybeSingle();
   if (!cosmetic) return c.json({ error: 'Cosmetic not found.' }, 404);
-  const { error } = await (db as any).from('voxel_user_cosmetics').upsert({ user_id: targetId, cosmetic_id: cosmeticId, granted_by: actor.id }, { onConflict: 'user_id,cosmetic_id' });
+  const { error } = await (db as any).table('voxel_user_cosmetics').upsert({ user_id: targetId, cosmetic_id: cosmeticId, granted_by: actor.id }, { onConflict: 'user_id,cosmetic_id' });
   if (error) return c.json({ error: error.message }, 400);
   await logAuditEventServer({ actor_id: actor.id, actor_type: 'admin_api', action: 'owner.cosmetic_granted', resource: 'voxel_user_cosmetics', details: { targetId, cosmeticId } });
   return c.json({ success: true });
@@ -286,7 +288,7 @@ ownerRouter.post('/users/:userId/cosmetic', ownerAuthMiddleware, async (c) => {
 ownerRouter.delete('/users/:userId/cosmetic', ownerAuthMiddleware, async (c) => {
   const actor = c.get('authUser'); const targetId = c.req.param('userId'); const { cosmeticId } = await c.req.json();
   if (!cosmeticId) return c.json({ error: 'cosmeticId is required.' }, 400);
-  const { error } = await (getDataClient() as any).from('voxel_user_cosmetics').delete().eq('user_id', targetId).eq('cosmetic_id', cosmeticId);
+  const { error } = await (getDataStore() as any).table('voxel_user_cosmetics').delete().eq('user_id', targetId).eq('cosmetic_id', cosmeticId);
   if (error) return c.json({ error: error.message }, 400);
   await logAuditEventServer({ actor_id: actor.id, actor_type: 'admin_api', action: 'owner.cosmetic_revoked', resource: 'voxel_user_cosmetics', details: { targetId, cosmeticId } });
   return c.json({ success: true });
@@ -301,16 +303,16 @@ ownerRouter.patch('/users/:userId/creator', ownerAuthMiddleware, async (c) => {
   const body = await c.req.json();
   const { isCreator } = body;
 
-  const adminSupabase = getDataClient()!;
+  const db = getDataStore()!;
 
-  const { error } = await adminSupabase
-    .from('voxel_users')
+  const { error } = await db
+    .table('voxel_users')
     .update({ is_creator: isCreator, updated_at: new Date().toISOString() })
     .eq('id', targetId);
 
   if (error) return c.json({ error: error.message }, 400);
 
-  await adminSupabase.from('voxel_owner_audit_log').insert({
+  await db.table('voxel_owner_audit_log').insert({
     actor_id: actorUser.id,
     actor_role: c.get('ownerRole'),
     action: isCreator ? 'CREATOR_GRANTED' : 'CREATOR_REVOKED',
@@ -324,10 +326,10 @@ ownerRouter.patch('/users/:userId/creator', ownerAuthMiddleware, async (c) => {
 ownerRouter.patch('/users/:userId/status', ownerAuthMiddleware, async (c) => {
   const actor = c.get('authUser'); const targetId = c.req.param('userId'); const { status } = await c.req.json();
   if (status !== 'active' && status !== 'disabled') return c.json({ error: 'status must be active or disabled.' }, 400);
-  const db = getDataClient()!;
-  const { data: targetRole } = await (db as any).from('voxel_owner_roles').select('role').eq('user_id', targetId).maybeSingle();
+  const db = getDataStore()!;
+  const { data: targetRole } = await (db as any).table('voxel_owner_roles').select('role').eq('user_id', targetId).maybeSingle();
   if (targetRole && c.get('ownerRole') !== 'owner') return c.json({ error: 'Only the platform owner can change an owner/admin account status.', code: 'FORBIDDEN' }, 403);
-  const { error } = await (db as any).from('voxel_accounts').update({ status }).eq('id', targetId);
+  const { error } = await (db as any).table('voxel_accounts').update({ status }).eq('id', targetId);
   if (error) return c.json({ error: error.message }, 400);
   if (status === 'disabled') await revokeAllSessions(db, targetId);
   await logAuditEventServer({ actor_id: actor.id, actor_type: 'admin_api', action: status === 'disabled' ? 'owner.account_disabled' : 'owner.account_enabled', resource: 'voxel_accounts', details: { targetId, status } });
@@ -354,18 +356,18 @@ ownerRouter.delete('/users/:userId', ownerAuthMiddleware, async (c) => {
     return c.json({ error: 'Cannot delete your own owner account via the control panel.', code: 'SELF_DELETE_FORBIDDEN' }, 403);
   }
 
-  const adminSupabase = getDataClient()!;
+  const db = getDataStore()!;
 
   // Get target user info for audit log
-  const { data: targetUser } = await adminSupabase
-    .from('voxel_users')
+  const { data: targetUser } = await db
+    .table('voxel_users')
     .select('username')
     .eq('id', targetId)
     .maybeSingle();
 
   // Prevent deleting another owner (only owner can delete owner accounts)
-  const { data: targetRole } = await adminSupabase
-    .from('voxel_owner_roles')
+  const { data: targetRole } = await db
+    .table('voxel_owner_roles')
     .select('role')
     .eq('user_id', targetId)
     .maybeSingle();
@@ -376,7 +378,7 @@ ownerRouter.delete('/users/:userId', ownerAuthMiddleware, async (c) => {
 
   // Tracked, resumable deletion: no destructive step runs unless queue
   // state is durable; failures surface with their resume position.
-  const outcome = await runTrackedDeletion(adminSupabase, targetId);
+  const outcome = await runTrackedDeletion(db, targetId);
 
   if (outcome.kind === 'queue_unavailable' || outcome.kind === 'unpersisted') {
     return c.json({
@@ -398,7 +400,7 @@ ownerRouter.delete('/users/:userId', ownerAuthMiddleware, async (c) => {
   }
 
   // Audit only after the deletion fully succeeded.
-  await adminSupabase.from('voxel_owner_audit_log').insert({
+  await db.table('voxel_owner_audit_log').insert({
     actor_id: actorUser.id,
     actor_role: actorRole,
     action: 'ACCOUNT_DELETED',
@@ -436,17 +438,17 @@ ownerRouter.delete('/bulk', ownerAuthMiddleware, async (c) => {
     return c.json({ error: 'Confirmation phrase "DELETE_ALL_ACCOUNTS_PERMANENTLY" required.', code: 'CONFIRMATION_REQUIRED' }, 400);
   }
 
-  const adminSupabase = getDataClient()!;
+  const db = getDataStore()!;
 
   // Get all non-owner users (PostgREST does not support subqueries inside
   // .not('in', ...), so resolve owner-role ids explicitly first).
-  const { data: roleRows } = await adminSupabase
-    .from('voxel_owner_roles')
+  const { data: roleRows } = await db
+    .table('voxel_owner_roles')
     .select('user_id');
   const protectedIds = new Set((roleRows || []).map((r: any) => r.user_id));
 
-  const { data: userRows } = await adminSupabase
-    .from('voxel_users')
+  const { data: userRows } = await db
+    .table('voxel_users')
     .select('id, username');
 
   const allUsers = (userRows || []).filter((u: any) => !protectedIds.has(u.id));
@@ -456,7 +458,7 @@ ownerRouter.delete('/bulk', ownerAuthMiddleware, async (c) => {
   }
 
   // Audit bulk delete
-  await adminSupabase.from('voxel_owner_audit_log').insert({
+  await db.table('voxel_owner_audit_log').insert({
     actor_id: actorUser.id,
     actor_role: actorRole,
     action: 'BULK_ACCOUNTS_DELETED',
@@ -467,7 +469,7 @@ ownerRouter.delete('/bulk', ownerAuthMiddleware, async (c) => {
     actor_id: actorUser.id,
     actor_type: 'admin_api',
     action: 'owner.bulk_accounts_deleted',
-    resource: 'auth.users',
+    resource: 'voxel_accounts',
     details: { count: allUsers.length }
   });
 
@@ -478,7 +480,7 @@ ownerRouter.delete('/bulk', ownerAuthMiddleware, async (c) => {
   const deleted: string[] = [];
   const failed: { id: string; step?: string; error: string }[] = [];
   for (const u of allUsers) {
-    const outcome = await runTrackedDeletion(adminSupabase, u.id);
+    const outcome = await runTrackedDeletion(db, u.id);
 
     if (outcome.kind === 'success' || outcome.kind === 'already_complete') {
       deleted.push(u.id);
@@ -510,12 +512,12 @@ ownerRouter.delete('/bulk', ownerAuthMiddleware, async (c) => {
  * GET /api/owner/audit — owner audit log
  */
 ownerRouter.get('/audit', ownerAuthMiddleware, async (c) => {
-  const adminSupabase = getDataClient()!;
+  const db = getDataStore()!;
   const limit = Math.min(Number(c.req.query('limit') || 50), 200);
   const offset = Number(c.req.query('offset') || 0);
 
-  const { data, error } = await adminSupabase
-    .from('voxel_owner_audit_log')
+  const { data, error } = await db
+    .table('voxel_owner_audit_log')
     .select('*')
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
@@ -530,11 +532,11 @@ ownerRouter.get('/audit', ownerAuthMiddleware, async (c) => {
  */
 ownerRouter.get('/check', authMiddleware, async (c) => {
   const authUser = c.get('authUser');
-  const adminSupabase = getDataClient();
-  if (!adminSupabase) return c.json({ isOwner: false, role: null });
+  const db = getDataStore();
+  if (!db) return c.json({ isOwner: false, role: null });
 
-  const { data: roleRow } = await adminSupabase
-    .from('voxel_owner_roles')
+  const { data: roleRow } = await db
+    .table('voxel_owner_roles')
     .select('role')
     .eq('user_id', authUser.id)
     .maybeSingle();

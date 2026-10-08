@@ -61,9 +61,9 @@ Voxel⁺ includes a custom Voxel⁺ Account and Cloud Identity system.
 ### Features
 * 👤 **Custom Identity:** Username, salted PBKDF2 SHA-256 password, preset/custom avatars, and optional bio.
 * 🚀 **First-Launch Onboarding:** 9-step account setup flow during application initialization.
-* 📊 **Profile & Settings:** Overview, My Packs, My Skins, Public Profile preview, password change, and permanent account deletion.
+* 📊 **Profile & Settings:** Overview, My Packs, My Skins, public Player Card preview, device identity status, and permanent account deletion.
 * 🌐 **Community Directory:** Discover public Voxel⁺ user profiles and community content.
-* ☁ **Cloud Sync & Library:** Synchronize launcher settings, instance metadata, packs, and skin metadata with TenantScale / Supabase cloud backend.
+* ☁ **Cloud Sync & Library:** Synchronize launcher settings, instance metadata, packs, and skin metadata through the provider-agnostic Voxel+ Cloud API.
 
 ### Testing
 

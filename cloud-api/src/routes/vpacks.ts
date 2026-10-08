@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { authMiddleware, CloudApiEnv } from '../auth.js';
-import { getDataClient } from '../store.js';
+import { getDataStore } from '../store.js';
 import { evaluateAchievements } from '../achievementEngine.js';
 import { logAuditEventServer } from '../audit.js';
 
@@ -10,10 +10,10 @@ export const vpacksRouter = new Hono<CloudApiEnv>();
  * GET /api/vpacks/catalog — the Shop's VPack catalog.
  */
 vpacksRouter.get('/catalog', async (c) => {
-  const admin = getDataClient();
+  const admin = getDataStore();
   if (!admin) return c.json({ error: 'Catalog unavailable.' }, 503);
   const { data, error } = await admin
-    .from('voxel_vpack_catalog')
+    .table('voxel_vpack_catalog')
     .select('id, name, description, icon, contents')
     .eq('enabled', true);
   if (error) return c.json({ error: 'Catalog unavailable.' }, 503);
@@ -25,11 +25,11 @@ vpacksRouter.get('/catalog', async (c) => {
  */
 vpacksRouter.get('/', authMiddleware, async (c) => {
   const authUser = c.get('authUser');
-  const admin = getDataClient();
+  const admin = getDataStore();
   if (!admin) return c.json({ error: 'Privileged admin client unconfigured.' }, 503);
 
   const { data, error } = await admin
-    .from('voxel_library')
+    .table('voxel_library')
     .select('id, title, metadata, created_at')
     .eq('user_id', authUser.id)
     .eq('type', 'vpack')
@@ -48,11 +48,11 @@ vpacksRouter.post('/', authMiddleware, async (c) => {
   const { title, description, contents } = body;
   if (!title || typeof title !== 'string') return c.json({ error: 'title is required.' }, 400);
 
-  const admin = getDataClient();
+  const admin = getDataStore();
   if (!admin) return c.json({ error: 'Privileged admin client unconfigured.' }, 503);
 
   const { data, error } = await admin
-    .from('voxel_library')
+    .table('voxel_library')
     .insert({
       user_id: authUser.id,
       title: String(title).slice(0, 200),
@@ -87,11 +87,11 @@ vpacksRouter.post('/convert', authMiddleware, async (c) => {
   const { instanceId, title, description } = body;
   if (!instanceId) return c.json({ error: 'instanceId is required.' }, 400);
 
-  const admin = getDataClient();
+  const admin = getDataStore();
   if (!admin) return c.json({ error: 'Privileged admin client unconfigured.' }, 503);
 
   const { data: instance, error: instErr } = await admin
-    .from('voxel_instances')
+    .table('voxel_instances')
     .select('id, name, version, mods_count, resourcepacks_count, shaders_count')
     .eq('id', instanceId)
     .eq('user_id', authUser.id)
@@ -99,7 +99,7 @@ vpacksRouter.post('/convert', authMiddleware, async (c) => {
   if (instErr || !instance) return c.json({ error: 'Instance not found.' }, 404);
 
   const { data, error } = await admin
-    .from('voxel_library')
+    .table('voxel_library')
     .insert({
       user_id: authUser.id,
       title: String(title || `${instance.name} VPack`).slice(0, 200),
@@ -135,11 +135,11 @@ vpacksRouter.post('/convert', authMiddleware, async (c) => {
 vpacksRouter.post('/:id/install', authMiddleware, async (c) => {
   const authUser = c.get('authUser');
   const id = c.req.param('id');
-  const admin = getDataClient();
+  const admin = getDataStore();
   if (!admin) return c.json({ error: 'Privileged admin client unconfigured.' }, 503);
 
   const { data: row, error } = await admin
-    .from('voxel_library')
+    .table('voxel_library')
     .select('id, metadata')
     .eq('id', id)
     .eq('user_id', authUser.id)
@@ -149,7 +149,7 @@ vpacksRouter.post('/:id/install', authMiddleware, async (c) => {
 
   if (row.metadata?.installed !== true) {
     const { error: updateErr } = await admin
-      .from('voxel_library')
+      .table('voxel_library')
       .update({ metadata: { ...row.metadata, installed: true } })
       .eq('id', id)
       .eq('user_id', authUser.id);

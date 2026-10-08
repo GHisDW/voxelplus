@@ -1,5 +1,5 @@
 import { Context, Next } from 'hono';
-import { getDataClient } from './store.js';
+import { getDataStore } from './store.js';
 import { resolveSession } from './identity.js';
 
 export interface AuthenticatedUser {
@@ -18,19 +18,15 @@ export type CloudApiEnv = {
 /**
  * Session validation middleware for Voxel+ accounts.
  *
- * Voxel+ uses device-bound cryptographic identities — no Supabase Auth, no email.
+ * Voxel+ uses device-bound cryptographic identities — no provider-specific backend Auth, no email.
  * The Bearer token is an opaque Voxel+ session issued after signature verification; it is
  * resolved server-side against `voxel_sessions` (SHA-256 hashes, expiry
  * enforced). Fails closed on missing/malformed header, unavailable data
  * backend, unknown/expired token, or any thrown error.
  *
- * TenantScale `validateSession()` is deliberately NOT used for identity:
- * it validates TenantScale tenant membership, and Voxel+ is a single-tenant
- * B2C product whose players are Voxel+ accounts, not tenant members — it
- * would reject every legitimate user. TenantScale remains used where it
- * genuinely applies: audit logging and IP-based signup rate limiting
- * (see audit.ts). Ownership/authorization below this layer is enforced by
- * server-side user_id scoping on the privileged data client.
+ * B2B tenant-session helpers are deliberately not used for identity: Voxel+
+ * players are device-bound accounts, not members of a tenant. Ownership and
+ * authorization below this layer are enforced by server-side user_id scoping.
  */
 export async function authMiddleware(c: Context<CloudApiEnv>, next: Next) {
   const authHeader = c.req.header('Authorization');
@@ -44,7 +40,7 @@ export async function authMiddleware(c: Context<CloudApiEnv>, next: Next) {
   }
 
   try {
-    const db = getDataClient();
+    const db = getDataStore();
     if (!db) {
       return c.json({ error: 'Data backend unconfigured.', code: 'UNAVAILABLE' }, 503);
     }

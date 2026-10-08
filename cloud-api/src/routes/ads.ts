@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { authMiddleware, CloudApiEnv } from '../auth.js';
-import { getDataClient } from '../store.js';
+import { getDataStore } from '../store.js';
 import { getAdProvider, ADS_REQUIRED } from '../ads.js';
 import { evaluateAchievements } from '../achievementEngine.js';
 import { logAuditEventServer } from '../audit.js';
@@ -22,11 +22,11 @@ adsRouter.get('/status', async (c) => {
  */
 adsRouter.get('/progress', authMiddleware, async (c) => {
   const authUser = c.get('authUser');
-  const admin = getDataClient();
+  const admin = getDataStore();
   if (!admin) return c.json({ error: 'Privileged admin client unconfigured.' }, 503);
 
   const { data, error } = await admin
-    .from('voxel_ad_progress')
+    .table('voxel_ad_progress')
     .select('item_kind, item_id, completed_count')
     .eq('user_id', authUser.id);
   if (error) return c.json({ error: 'Ad progress unavailable.' }, 503);
@@ -67,7 +67,7 @@ adsRouter.post('/complete', authMiddleware, async (c) => {
     return c.json({ error: 'Rewarded ads are not configured.', code: 'ADS_UNAVAILABLE' }, 503);
   }
 
-  const admin = getDataClient();
+  const admin = getDataStore();
   if (!admin) return c.json({ error: 'Privileged admin client unconfigured.' }, 503);
 
   // 1. Verify the completion cryptographically with the provider.
@@ -84,7 +84,7 @@ adsRouter.post('/complete', authMiddleware, async (c) => {
 
   // 3. Anti-replay barrier: each provider completion counts once, ever.
   const { error: completionErr } = await admin
-    .from('voxel_ad_completions')
+    .table('voxel_ad_completions')
     .insert({
       user_id: authUser.id,
       provider: provider.name,
@@ -102,7 +102,7 @@ adsRouter.post('/complete', authMiddleware, async (c) => {
 
   // 4. Increment progress (idempotent-safe: completions are unique).
   const { data: progressRow } = await admin
-    .from('voxel_ad_progress')
+    .table('voxel_ad_progress')
     .select('completed_count')
     .eq('user_id', authUser.id)
     .eq('item_kind', itemKind)
@@ -110,7 +110,7 @@ adsRouter.post('/complete', authMiddleware, async (c) => {
     .maybeSingle();
   const completed = (progressRow?.completed_count ?? 0) + 1;
   const { error: progressErr } = await admin
-    .from('voxel_ad_progress')
+    .table('voxel_ad_progress')
     .upsert({
       user_id: authUser.id,
       item_kind: itemKind,
@@ -141,10 +141,10 @@ adsRouter.post('/complete', authMiddleware, async (c) => {
 
 async function resolveItem(admin: any, itemKind: string, itemId: string): Promise<any | null> {
   if (itemKind === 'cosmetic') {
-    const { data } = await admin.from('voxel_cosmetics').select('id, rarity').eq('id', itemId).eq('enabled', true).maybeSingle();
+    const { data } = await admin.table('voxel_cosmetics').select('id, rarity').eq('id', itemId).eq('enabled', true).maybeSingle();
     return data;
   }
-  const { data } = await admin.from('voxel_vpack_catalog').select('id').eq('id', itemId).eq('enabled', true).maybeSingle();
+  const { data } = await admin.table('voxel_vpack_catalog').select('id').eq('id', itemId).eq('enabled', true).maybeSingle();
   return data;
 }
 
@@ -157,13 +157,13 @@ async function requiredFor(admin: any, itemKind: 'cosmetic' | 'vpack', itemId: s
 async function grantItem(admin: any, userId: string, itemKind: string, itemId: string): Promise<boolean> {
   if (itemKind === 'cosmetic') {
     const { error } = await admin
-      .from('voxel_user_cosmetics')
+      .table('voxel_user_cosmetics')
       .upsert({ user_id: userId, cosmetic_id: itemId }, { onConflict: 'user_id,cosmetic_id', ignoreDuplicates: true });
     return !error;
   }
   // VPacks land in the user's library with an authoritative shop origin.
-  const { data: vpack } = await admin.from('voxel_vpack_catalog').select('name, description, icon').eq('id', itemId).maybeSingle();
-  const { error } = await admin.from('voxel_library').insert({
+  const { data: vpack } = await admin.table('voxel_vpack_catalog').select('name, description, icon').eq('id', itemId).maybeSingle();
+  const { error } = await admin.table('voxel_library').insert({
     user_id: userId,
     title: vpack?.name || itemId,
     type: 'vpack',

@@ -1,7 +1,7 @@
 /**
  * In-memory development backend for the Voxel+ Cloud API.
  *
- * Implements the subset of the @supabase/supabase-js client surface the API
+ * Implements the subset of the @provider backend/provider backend-js client surface the API
  * uses (from().select/insert/update/upsert/delete with eq/in/ilike filters,
  * order/limit/range, maybeSingle/single, rpc, and a stubbed storage bucket)
  * so the entire cloud service — identity, profiles, library, cosmetics,
@@ -9,7 +9,7 @@
  * credentials. Contributors clone, `npm run dev`, done.
  *
  * This module is dev/test infrastructure only; production uses the real
- * Supabase Postgres backend selected in store.ts. No data persists between
+ * provider-specific backend Postgres backend selected in store.ts. No data persists between
  * restarts — that is the point of the mock mode.
  */
 import { randomUUID } from 'node:crypto';
@@ -56,7 +56,7 @@ class QueryBuilder {
   private singleMode: 'none' | 'single' | 'maybeSingle' = 'none';
 
   constructor(
-    private store: MemoryDataClient,
+    private store: MemoryDataStore,
     private table: string,
     private op: 'read' | 'insert' | 'update' | 'upsert' | 'delete',
     private payload?: any,
@@ -199,11 +199,11 @@ class MemoryStorageBucket {
 }
 
 /**
- * In-memory stand-in for the service-role Supabase client. Same object
+ * In-memory stand-in for the service-role provider-specific backend client. Same object
  * shape — from(), rpc(), storage — so route code is identical in dev and
  * production.
  */
-export class MemoryDataClient {
+export class MemoryDataStore {
   private tables = new Map<string, Row[]>();
   private buckets = new Map<string, MemoryStorageBucket>();
 
@@ -213,7 +213,7 @@ export class MemoryDataClient {
     return t;
   }
 
-  from(table: string) {
+  table(table: string) {
     const self = this;
     return {
       select: (cols?: string, opts?: any) => new QueryBuilder(self, table, 'read').select(cols, opts),
@@ -222,6 +222,11 @@ export class MemoryDataClient {
       update: (payload: any) => new QueryBuilder(self, table, 'update', payload),
       delete: () => new QueryBuilder(self, table, 'delete')
     };
+  }
+
+  async transaction<T>(work: (store: MemoryDataStore) => Promise<T>): Promise<T> {
+    // Tests use a single event loop; the SQL backends provide real transactions.
+    return work(this);
   }
 
   /** JS implementations of the deployed Postgres RPCs. */
@@ -292,4 +297,4 @@ export class MemoryDataClient {
 }
 
 /** A shared client for `VOXELPLUS_DATA_BACKEND=memory` (and tests). */
-export const sharedMemoryClient = new MemoryDataClient();
+export const sharedMemoryStore = new MemoryDataStore();

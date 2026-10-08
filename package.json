@@ -31,8 +31,6 @@
     "test:device-identity": "tsc -p electron/tsconfig.json && electron test/electronIdentityHarness.cjs"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.117.2",
-    "@tenantscale/sdk": "^0.4.1",
     "adm-zip": "^0.5.16",
     "skinview3d": "^3.4.2"
   },

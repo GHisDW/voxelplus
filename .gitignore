@@ -39,6 +39,10 @@ test-instances/
 test-gradle-env/
 test-runclient-env/
 test-e2e-data/
+data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
 
 # Temporary files
 *.tmp

@@ -33,7 +33,9 @@ export class AccountManager {
     let session: AccountSession;
     try {
       const identity = createDeviceIdentity();
-      const registration = await CloudApiClient.registerDeviceKey(identity.publicKey);
+      const registrationChallenge = await CloudApiClient.requestRegistrationChallenge(identity.publicKey);
+      const registrationSignature = signChallenge(registrationChallenge.challenge);
+      const registration = await CloudApiClient.registerDeviceKey(identity.publicKey, registrationChallenge.challengeId, registrationSignature);
       const challenge = await CloudApiClient.requestChallenge(identity.publicKeyId);
       const signature = signChallenge(challenge.challenge);
       session = await CloudApiClient.verifyChallenge(challenge.challengeId, identity.publicKeyId, signature);

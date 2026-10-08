@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { authMiddleware, CloudApiEnv } from '../auth.js';
-import { getDataClient } from '../store.js';
+import { getDataStore } from '../store.js';
 import { evaluateAchievements } from '../achievementEngine.js';
 
 export const achievementsRouter = new Hono<CloudApiEnv>();
@@ -12,11 +12,11 @@ export const achievementsRouter = new Hono<CloudApiEnv>();
  * Returns 503 on backend failure — never an empty list pretending nothing exists.
  */
 achievementsRouter.get('/catalog', async (c) => {
-  const db = getDataClient();
+  const db = getDataStore();
   if (!db) return c.json({ error: 'Catalog unavailable.' }, 503);
 
   const { data, error } = await (db as any)
-    .from('voxel_achievements')
+    .table('voxel_achievements')
     .select('id, title, description, icon, requirement, category, rarity, hidden, reward_cosmetic_id, reward_title_id, reward_badge_id')
     .eq('enabled', true)
     .order('rarity');
@@ -33,7 +33,7 @@ achievementsRouter.get('/catalog', async (c) => {
  */
 achievementsRouter.get('/', authMiddleware, async (c) => {
   const authUser = c.get('authUser');
-  const db = getDataClient();
+  const db = getDataStore();
 
   if (!db) return c.json({ error: 'Data backend unconfigured.' }, 503);
 
@@ -41,14 +41,14 @@ achievementsRouter.get('/', authMiddleware, async (c) => {
   await evaluateAchievements(db, authUser.id);
 
   const { data: allAchievements, error: achErr } = await (db as any)
-    .from('voxel_achievements')
+    .table('voxel_achievements')
     .select('*')
     .eq('enabled', true)
     .order('rarity');
   if (achErr) return c.json({ error: 'Achievements unavailable.' }, 503);
 
   const { data: userAchievements, error: uaErr } = await (db as any)
-    .from('voxel_user_achievements')
+    .table('voxel_user_achievements')
     .select('achievement_id, unlocked_at')
     .eq('user_id', authUser.id);
   if (uaErr) return c.json({ error: 'Achievements unavailable.' }, 503);

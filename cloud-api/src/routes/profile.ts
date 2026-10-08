@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { authMiddleware, CloudApiEnv } from '../auth.js';
-import { getDataClient } from '../store.js';
+import { getDataStore } from '../store.js';
 import { logAuditEventServer } from '../audit.js';
 import { evaluateAchievements } from '../achievementEngine.js';
 import { normalizeUsername, validateUsername } from '../identity.js';
@@ -10,14 +10,14 @@ export const profileRouter = new Hono<CloudApiEnv>();
 // Authenticated Get Current Profile Endpoint
 profileRouter.get('/', authMiddleware, async (c) => {
   const authUser = c.get('authUser');
-  const db = getDataClient();
+  const db = getDataStore();
 
   if (!db) {
     return c.json({ error: 'Data backend unconfigured.' }, 503);
   }
 
   const { data, error } = await (db as any)
-    .from('voxel_users')
+    .table('voxel_users')
     .select('*')
     .eq('id', authUser.id)
     .single();
@@ -44,7 +44,7 @@ profileRouter.put('/', authMiddleware, async (c) => {
   const body = await c.req.json();
   const { username, avatar, bio, isPublic, syncEnabled } = body;
 
-  const db = getDataClient();
+  const db = getDataStore();
   if (!db) {
     return c.json({ error: 'Data backend unconfigured.' }, 503);
   }
@@ -56,7 +56,7 @@ profileRouter.put('/', authMiddleware, async (c) => {
     const validation = validateUsername(username);
     if (validation) return c.json({ error: validation }, 400);
     const { data: taken } = await (db as any)
-      .from('voxel_accounts')
+      .table('voxel_accounts')
       .select('id, username_normalized')
       .eq('username_normalized', normalizedUsername)
       .maybeSingle();
@@ -64,7 +64,7 @@ profileRouter.put('/', authMiddleware, async (c) => {
       return c.json({ error: `Username "${username}" is already taken.`, code: 'USERNAME_TAKEN' }, 409);
     }
     const { error: credErr } = await (db as any)
-      .from('voxel_accounts')
+      .table('voxel_accounts')
       .update({ username: normalizedUsername, username_normalized: normalizedUsername })
       .eq('id', authUser.id);
     if (credErr) {
@@ -89,7 +89,7 @@ profileRouter.put('/', authMiddleware, async (c) => {
   if (isPublic !== undefined) profileUpdate.is_public = isPublic;
 
   const { data, error } = await (db as any)
-    .from('voxel_users')
+    .table('voxel_users')
     .update(profileUpdate)
     .eq('id', authUser.id)
     .select()
@@ -97,21 +97,6 @@ profileRouter.put('/', authMiddleware, async (c) => {
 
   if (error) {
     return c.json({ error: error.message }, 400);
-  }
-
-  // After a preset switch, remove orphaned uploaded avatar files.
-  if (avatar !== undefined) {
-    try {
-      const { data: files } = await (db as any).storage.from('avatars').list(authUser.id);
-      if (files && files.length > 0) {
-        const { error: rmErr } = await (db as any).storage
-          .from('avatars')
-          .remove(files.map((f: any) => `${authUser.id}/${f.name}`));
-        if (rmErr) console.warn('[CloudAPI Profile] Avatar file cleanup failed:', rmErr.message);
-      }
-    } catch (e: any) {
-      console.warn('[CloudAPI Profile] Avatar file cleanup failed:', e?.message);
-    }
   }
 
   // Profile state changed (e.g. is_public) — re-evaluate achievements.

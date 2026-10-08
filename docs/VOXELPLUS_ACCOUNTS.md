@@ -1,36 +1,127 @@
-# Voxel+ Account and Cloud Identity
+# Voxel+ Account and Cloud Architecture
 
-Voxel+ accounts are device-bound cryptographic identities. On first launch the Electron main process generates an Ed25519 keypair, encrypts the PKCS#8 private key with Windows DPAPI through Electron `safeStorage`, and stores only the encrypted blob under the Electron user-data directory. The renderer receives only status, a public key identifier, and the result of narrowly scoped operations.
+Voxel+ accounts are device-bound cryptographic identities. On first launch,
+Electron creates an Ed25519 keypair and protects the private key with
+`safeStorage`/Windows DPAPI. Only the public Ed25519 key is sent to the Cloud
+API. The API creates an immutable `VoxelAccountId`; the user then claims a
+globally unique normalized username and public Player Card.
 
-The public SPKI key is registered with the Cloud API. The server creates an immutable UUID `VoxelAccountId`; the user then chooses a globally unique normalized username and public Player Card. A second installation generates a different keypair and therefore receives a different account. Opaque session tokens remain in the Electron main process and are not returned to renderer state. There is no password, email, phone, OAuth, Supabase Auth identity, hardware fingerprint, account transfer, or cross-device recovery. Losing the private device identity permanently loses access to that VoxelAccountId.
+There is no password, email login, phone login, OAuth, social login, password
+reset, account transfer, or cross-device recovery. A second installation gets
+a different keypair and a different account. Losing the private device key
+means losing access to that identity. Deleted accounts remain tombstones and
+their old public keys cannot authenticate or re-register.
+
+## Local development
+
+```powershell
+npm install
+npm run dev
+```
+
+Cloud API local development automatically creates and migrates
+`cloud-api/data/voxelplus.sqlite` using Node's built-in SQLite runtime. It
+requires no Supabase, cloud database, API key, production credential, `.env`,
+manually-created database, or manual SQL execution. SQLite files are ignored
+by Git. The in-memory store is reserved for tests and must be selected
+explicitly with `VOXELPLUS_DATA_BACKEND=memory`.
+
+## Production datastore
+
+The production application datastore is PostgreSQL. The selected hosted
+candidate is Neon Free because it is PostgreSQL-compatible with Node's `pg`
+driver, supports transactions, unique constraints, indexes, SQL migrations,
+concurrent requests, server-side credentials, scale-to-zero, and terminal/API
+provisioning. Neon requires an external Neon account and project; its current
+Free plan does not require a credit card. Current limits must be rechecked at
+deployment time because the provider can change them; the currently verified
+documentation advertises 1 GB storage per project, 100 CU-hours per project
+per month, up to 100 projects, 10 branches, and a six-hour instant-restore
+window. Exceeding free limits requires waiting for reset or moving to a paid
+plan; this service never silently changes backend or loses data.
+
+Other candidates investigated:
+
+* Cloudflare D1 is free within Workers limits, supports SQLite SQL, indexes,
+  and migrations, and is provisioned with Wrangler. It requires a Cloudflare
+  account and a Worker deployment, so it would require moving the current Node
+  server to the Workers runtime. Its free limits are enforced and queries fail
+  after daily row limits are reached.
+* Turso Cloud is SQLite/libSQL-compatible, has a free no-card plan, and offers
+  CLI/API provisioning and Node drivers. It introduces libSQL/replication
+  behavior and a service-specific operational model; Neon gives this current
+  Node API a more direct PostgreSQL path.
+* Render Free PostgreSQL is unsuitable for durable production because its free
+  database expires after 30 days, has no backups, and is intended for testing.
+
+Required production configuration is server-only:
+
+```text
+VOXELPLUS_DATA_BACKEND=postgres
+DATABASE_URL=postgresql://...
+DATABASE_SSL=true
+DATABASE_POOL_MAX=10
+```
+
+Run `scripts/setup-production.ps1` on the server. It verifies Node/npm and
+`DATABASE_URL`, builds the API, applies `cloud-api/schema/postgres.sql` inside
+a transaction, and verifies required tables and indexes. The unavoidable
+manual step is creating the Neon account/project and obtaining its server
+connection string. The script never prints or commits that credential.
+
+Backups, restore drills, connection monitoring, and a paid plan are required
+before treating the free tier as a durable public production service.
+
+## Provider boundary
+
+```text
+Voxel+ Cloud API
+       │
+       ├── DataStore
+       │     ├── Local SQLite
+       │     ├── Production PostgreSQL/Neon
+       │     └── MemoryStore (tests only)
+       │
+       └── TenantScale boundary
+```
+
+The installed `@tenantscale/sdk@0.4.1` was inspected directly. Its verified
+exports are `TenantScale`, `PlanStore`, `RateLimiter`, `WebhookDispatcher`,
+`StripeClient`, API-key/session helpers, and audit helpers. Its declarations
+and runtime require a Supabase client; its rate limiter uses Supabase tables
+and an `increment_rate_limit` RPC, while audit, plans, webhooks, sessions, and
+API-key operations also use Supabase-shaped queries. It exposes no
+provider-neutral arbitrary datastore, transaction, migration, schema,
+relational, blob, provisioning, or observability transport.
+
+Because that SDK would violate the no-Supabase requirement, it is not an
+active Voxel+ runtime dependency. The Cloud API keeps its own durable audit
+records and server-side rate limits behind the DataStore boundary. A future
+TenantScale integration can be added only when TenantScale provides a
+provider-neutral transport; no undocumented TenantScale API is invented here.
 
 ## Authentication
 
-1. `POST /api/account/register-key` registers only the public key and creates the immutable account tombstone.
-2. `POST /api/auth/challenge` accepts `publicKeyId` and returns a random five-minute challenge.
-3. The main process signs the challenge with the local private key.
-4. `POST /api/auth/verify` accepts `challengeId`, `publicKeyId`, and the signature, including for a pending username claim.
-5. `POST /api/account/claim-username` validates and atomically claims the globally unique username and creates the public profile.
-6. The server checks account status, expiry, single-use consumption, key match, and the Ed25519 signature, then issues an opaque session.
+The Cloud API issues a short-lived challenge, verifies an Ed25519 signature
+against the registered public key, consumes the challenge atomically, rejects
+disabled/deleted identities, and issues opaque access/refresh sessions. Access
+and refresh tokens remain in Electron's main process. The renderer receives
+only sanitized account data.
 
-Challenges are server-generated, short-lived, single-use, replay-protected, and rate-limited. Session and refresh tokens are random, opaque, rotated, and stored only as hashes server-side.
+Registration with a public key alone is rejected unless the registration proof
+challenge is signed by the matching private key. Account and profile creation
+uses a datastore transaction where supported; SQLite uses `BEGIN IMMEDIATE`,
+and PostgreSQL uses a transaction with unique constraints.
 
-## Data and authorization
+## Security and data ownership
 
-`voxel_accounts.id` is the immutable VoxelAccountId. `public_key` and `public_key_id` identify the installation; `username_normalized` is unique and is not a credential. The API derives ownership from the authenticated session and ignores client-supplied account identifiers for authorization.
+The Electron launcher contains no database credentials, TenantScale secrets,
+service-role keys, or admin bypass. Admin operations are authorized by the
+server and audited. The separate Python/Tkinter console at
+`D:\voxelplus-private-console` is only an authenticated administrative client;
+it never writes production tables directly.
 
-Player Card queries expose only explicitly public username, avatar, bio, achievements, badges, titles, cosmetics, and public counts. They never expose private keys, sessions, hardware information, IP addresses, local instances, credentials, or administrative metadata.
-
-Normal achievements are evaluated server-side. Grant/revoke operations are admin API operations only, require server authorization, and create audit records. Reward writes must be transactionally consistent or represented by durable reconciliation state.
-
-Deletion is server-authoritative and resumable. It invalidates sessions, retains a deleted account tombstone, removes public profile, achievements, cosmetics, badges, titles, instances, ad state, ownership records, and cloud data. A deleted public key cannot authenticate or register again, so it cannot restore the old account.
-
-## Provider boundary and local development
-
-Domain identity logic depends on the `DataClient` provider boundary. Supabase is a persistence implementation only; it is not an identity provider. `VOXELPLUS_DATA_BACKEND=memory` is explicit development/test mode. Production requires explicit Supabase credentials and never silently falls back to memory.
-
-Migration `008_device_identity_auth.sql` is corrective and leaves prior migration history intact. Legacy credential rows are not converted or accepted; the new API requires a registered public key.
-
-## Private administration
-
-The Python console in `D:\voxelplus-private-console` is an authenticated administrative client, never a database client or security boundary. It uses an admin API session, server-side authorization, and audit logging. It contains no service-role keys, database credentials, hardcoded passwords, or direct production-table writes.
+Supabase is not required for a fresh installation. Historical Supabase
+migrations remain only as migration-history artifacts and are not part of a
+fresh setup. New installations use the standalone SQLite/PostgreSQL schemas
+under `cloud-api/schema`.

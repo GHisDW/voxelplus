@@ -59,7 +59,7 @@ export async function computeMetrics(admin: any, userId: string): Promise<Record
 
   // Lifetime instance counter maintained on the profile row.
   const { data: profile } = await admin
-    .from('voxel_users')
+    .table('voxel_users')
     .select('instances_created_total, is_public, avatar_url')
     .eq('id', userId)
     .maybeSingle();
@@ -70,7 +70,7 @@ export async function computeMetrics(admin: any, userId: string): Promise<Record
   }
 
   const { data: instances } = await admin
-    .from('voxel_instances')
+    .table('voxel_instances')
     .select('version, mods_count, shaders_count')
     .eq('user_id', userId);
   const rows = instances || [];
@@ -79,13 +79,13 @@ export async function computeMetrics(admin: any, userId: string): Promise<Record
   metrics.shaders_installed = rows.reduce((sum: number, r: any) => sum + Math.max(0, Number(r.shaders_count) || 0), 0);
 
   const { data: owned } = await admin
-    .from('voxel_user_cosmetics')
+    .table('voxel_user_cosmetics')
     .select('cosmetic_id')
     .eq('user_id', userId);
   const ownedIds = (owned || []).map((o: any) => o.cosmetic_id);
   if (ownedIds.length) {
     const { data: cosmeticRows } = await admin
-      .from('voxel_cosmetics')
+      .table('voxel_cosmetics')
       .select('id, type, rarity')
       .in('id', ownedIds);
     const list = cosmeticRows || [];
@@ -95,7 +95,7 @@ export async function computeMetrics(admin: any, userId: string): Promise<Record
   }
 
   const { data: library } = await admin
-    .from('voxel_library')
+    .table('voxel_library')
     .select('type, metadata')
     .eq('user_id', userId);
   const lib = library || [];
@@ -118,7 +118,7 @@ async function grantReward(
   try {
     if (achievement.reward_cosmetic_id) {
       const { error } = await admin
-        .from('voxel_user_cosmetics')
+        .table('voxel_user_cosmetics')
         .upsert(
           { user_id: userId, cosmetic_id: achievement.reward_cosmetic_id },
           { onConflict: 'user_id,cosmetic_id', ignoreDuplicates: true }
@@ -128,7 +128,7 @@ async function grantReward(
     }
     if (achievement.reward_title_id) {
       const { error } = await admin
-        .from('voxel_user_titles')
+        .table('voxel_user_titles')
         .upsert(
           { user_id: userId, title_id: achievement.reward_title_id },
           { onConflict: 'user_id,title_id', ignoreDuplicates: true }
@@ -138,7 +138,7 @@ async function grantReward(
     }
     if (achievement.reward_badge_id) {
       const { error } = await admin
-        .from('voxel_user_badges')
+        .table('voxel_user_badges')
         .upsert(
           { user_id: userId, badge_id: achievement.reward_badge_id },
           { onConflict: 'user_id,badge_id', ignoreDuplicates: true }
@@ -154,13 +154,13 @@ async function grantReward(
 
 /** Retries durable reward records created when a provider cannot use a transaction. */
 export async function reconcileAchievementRewards(admin: any, userId: string): Promise<void> {
-  const { data: pending, error } = await admin.from('voxel_achievement_reward_queue').select('*').eq('user_id', userId).in('status', ['pending', 'failed']);
+  const { data: pending, error } = await admin.table('voxel_achievement_reward_queue').select('*').eq('user_id', userId).in('status', ['pending', 'failed']);
   if (error) throw error;
   for (const row of pending || []) {
-    const { data: achievement } = await admin.from('voxel_achievements').select('id, reward_cosmetic_id, reward_title_id, reward_badge_id').eq('id', row.achievement_id).maybeSingle();
+    const { data: achievement } = await admin.table('voxel_achievements').select('id, reward_cosmetic_id, reward_title_id, reward_badge_id').eq('id', row.achievement_id).maybeSingle();
     if (!achievement) continue;
     const reward = await grantReward(admin, userId, achievement);
-    await admin.from('voxel_achievement_reward_queue').update({ status: reward.ok ? 'applied' : 'failed', error: reward.ok ? null : (reward.error || 'unknown'), resolved_at: reward.ok ? new Date().toISOString() : null }).eq('id', row.id);
+    await admin.table('voxel_achievement_reward_queue').update({ status: reward.ok ? 'applied' : 'failed', error: reward.ok ? null : (reward.error || 'unknown'), resolved_at: reward.ok ? new Date().toISOString() : null }).eq('id', row.id);
   }
 }
 
@@ -174,7 +174,7 @@ export async function evaluateAchievements(admin: any, userId: string): Promise<
   try {
     await reconcileAchievementRewards(admin, userId);
     const { data: catalog, error: catalogErr } = await admin
-      .from('voxel_achievements')
+      .table('voxel_achievements')
       .select('id, condition_type, condition_value, reward_cosmetic_id, reward_title_id, reward_badge_id')
       .eq('enabled', true);
     if (catalogErr) {
@@ -187,7 +187,7 @@ export async function evaluateAchievements(admin: any, userId: string): Promise<
     if (!conditionAchievements.length) return result;
 
     const { data: unlockedRows, error: unlockedErr } = await admin
-      .from('voxel_user_achievements')
+      .table('voxel_user_achievements')
       .select('achievement_id')
       .eq('user_id', userId);
     if (unlockedErr) {
@@ -206,7 +206,7 @@ export async function evaluateAchievements(admin: any, userId: string): Promise<
       // Upsert: concurrent evaluations collapse to a single row via the
       // UNIQUE(user_id, achievement_id) constraint.
       const { error: insertErr } = await admin
-        .from('voxel_user_achievements')
+        .table('voxel_user_achievements')
         .upsert(
           { user_id: userId, achievement_id: achievement.id, unlocked_at: new Date().toISOString() },
           { onConflict: 'user_id,achievement_id', ignoreDuplicates: true }
@@ -223,7 +223,7 @@ export async function evaluateAchievements(admin: any, userId: string): Promise<
       const reward = await grantReward(admin, userId, achievement);
       const rewardKind = (reward.reward || 'none').split(':')[0];
       const rewardId = (reward.reward || '').split(':')[1] || null;
-      if (rewardKind !== 'none') await admin.from('voxel_achievement_reward_queue').upsert({ user_id: userId, achievement_id: achievement.id, reward_kind: rewardKind, reward_id: rewardId, status: reward.ok ? 'applied' : 'failed', error: reward.ok ? null : (reward.error || 'unknown'), resolved_at: reward.ok ? new Date().toISOString() : null }, { onConflict: 'user_id,achievement_id,reward_kind,reward_id' });
+      if (rewardKind !== 'none') await admin.table('voxel_achievement_reward_queue').upsert({ user_id: userId, achievement_id: achievement.id, reward_kind: rewardKind, reward_id: rewardId, status: reward.ok ? 'applied' : 'failed', error: reward.ok ? null : (reward.error || 'unknown'), resolved_at: reward.ok ? new Date().toISOString() : null }, { onConflict: 'user_id,achievement_id,reward_kind,reward_id' });
       if (!reward.ok) {
         result.rewardFailures.push({ achievementId: achievement.id, reward: reward.reward, error: reward.error || 'unknown' });
       }
