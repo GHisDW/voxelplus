@@ -17,86 +17,132 @@ import {
   SkinMetadata,
   SkinSearchResult,
   SkinValidationResult,
-  SystemScanResult
+  SystemScanResult,
+  VoxelAccountSession,
+  VoxelCloudSyncPayload,
+  VoxelPublicUserProfile,
+  VoxelUserProfile
 } from '../../../electron/types';
 
-// Access the contextBridge exposed API
-const electronApi = (window as any).voxelApi;
+// Access the contextBridge exposed API dynamically to handle early initialization safely
+const getApi = () => (window as any).voxelApi || {};
 
 export const api = {
+  // Accounts & Cloud Identity
+  createDeviceIdentity: (): Promise<{ publicKey: string; publicKeyId: string }> => getApi().createDeviceIdentity(),
+  getDeviceIdentityStatus: (): Promise<{ exists: boolean; publicKeyId: string | null }> => getApi().getDeviceIdentityStatus(),
+  authenticateDevice: (): Promise<VoxelAccountSession> => getApi().authenticateDevice(),
+  createAccount: (payload: any): Promise<VoxelAccountSession> => getApi().createAccount(payload),
+  logoutAccount: (): Promise<boolean> => getApi().logoutAccount(),
+  getCurrentSession: (): Promise<VoxelAccountSession | null> => getApi().getCurrentSession(),
+  getCurrentUser: (): Promise<VoxelUserProfile | null> => getApi().getCurrentUser(),
+  updateProfile: (payload: any): Promise<VoxelUserProfile> => getApi().updateProfile(payload),
+  deleteAccount: (): Promise<boolean> => getApi().deleteAccount(),
+  listPublicProfiles: (query?: string): Promise<VoxelPublicUserProfile[]> => getApi().listPublicProfiles(query),
+  getPublicProfile: (idOrUsername: string): Promise<VoxelPublicUserProfile | null> => getApi().getPublicProfile(idOrUsername),
+  syncCloudData: (): Promise<VoxelCloudSyncPayload> => getApi().syncCloudData(),
+  getLibrary: (): Promise<any[]> => getApi().getLibrary(),
+  savePackToAccount: (pack: any): Promise<any> => getApi().savePackToAccount(pack),
+  saveSkinToAccount: (skin: any): Promise<any> => getApi().saveSkinToAccount(skin),
+
+  // Cosmetics
+  listCosmeticsCatalog: (): Promise<any[]> => getApi().listCosmeticsCatalog(),
+  getUserCosmetics: (): Promise<any[]> => getApi().getUserCosmetics(),
+  selectCosmetic: (cosmeticId: string | null): Promise<boolean> => getApi().selectCosmetic(cosmeticId),
+
+  // Achievements
+  listAchievementsCatalog: (): Promise<any[]> => getApi().listAchievementsCatalog(),
+  getUserAchievements: (): Promise<any[]> => getApi().getUserAchievements(),
+
+  // Rewarded ads + VPacks
+  getAdsStatus: (): Promise<{ available: boolean; provider: string | null }> => getApi().getAdsStatus(),
+  getAdProgress: (): Promise<any[]> => getApi().getAdProgress(),
+  completeAd: (itemKind: 'cosmetic' | 'vpack', itemId: string, completionId: string, proof: string): Promise<any> =>
+    getApi().completeAd(itemKind, itemId, completionId, proof),
+  listVpackCatalog: (): Promise<any[]> => getApi().listVpackCatalog(),
+  listVpacks: (): Promise<any[]> => getApi().listVpacks(),
+  createVpack: (payload: { title: string; description?: string; contents?: any }): Promise<any> => getApi().createVpack(payload),
+  convertInstanceToVpack: (payload: { instanceId: string; title?: string; description?: string }): Promise<any> => getApi().convertInstanceToVpack(payload),
+  installVpack: (vpackId: string): Promise<any> => getApi().installVpack(vpackId),
+
+  // Avatar
+  uploadAvatar: (buffer: ArrayBuffer | Uint8Array, fileName: string, mimeType: string): Promise<{ avatarUrl: string }> =>
+    getApi().uploadAvatar(buffer, fileName, mimeType),
+  deleteAvatar: (): Promise<boolean> => getApi().deleteAvatar(),
+
   // Settings
-  getAppSettings: (): Promise<AppSettings> => electronApi.getAppSettings(),
-  setAppSettings: (settings: Partial<AppSettings>): Promise<AppSettings> => electronApi.setAppSettings(settings),
+  getAppSettings: (): Promise<AppSettings> => getApi().getAppSettings(),
+  setAppSettings: (settings: Partial<AppSettings>): Promise<AppSettings> => getApi().setAppSettings(settings),
 
   // System & Environment
-  scanSystem: (): Promise<SystemScanResult> => electronApi.scanSystem(),
-  runEnvironmentCheck: (): Promise<EnvironmentCheckResult> => electronApi.runEnvironmentCheck(),
+  scanSystem: (): Promise<SystemScanResult> => getApi().scanSystem(),
+  runEnvironmentCheck: (): Promise<EnvironmentCheckResult> => getApi().runEnvironmentCheck(),
 
   // Java
-  scanJava: (): Promise<JavaRuntime[]> => electronApi.scanJava(),
-  testJava: (path: string): Promise<JavaRuntime | null> => electronApi.testJava(path),
-  installJava: (version: 21 | 17 = 21): Promise<{ success: boolean; runtime?: JavaRuntime; error?: string }> => electronApi.installJava(version),
+  scanJava: (): Promise<JavaRuntime[]> => getApi().scanJava(),
+  testJava: (path: string): Promise<JavaRuntime | null> => getApi().testJava(path),
+  installJava: (version: 21 | 17 = 21): Promise<{ success: boolean; runtime?: JavaRuntime; error?: string }> => getApi().installJava(version),
 
   // Instances
-  listInstances: (): Promise<InstanceMetadata[]> => electronApi.listInstances(),
-  getInstance: (id: string): Promise<InstanceMetadata | null> => electronApi.getInstance(id),
-  createInstance: (payload: CreateInstancePayload): Promise<InstanceMetadata> => electronApi.createInstance(payload),
-  updateInstance: (id: string, updates: Partial<InstanceMetadata>): Promise<InstanceMetadata | null> => electronApi.updateInstance(id, updates),
-  duplicateInstance: (id: string): Promise<InstanceMetadata | null> => electronApi.duplicateInstance(id),
-  deleteInstance: (id: string): Promise<boolean> => electronApi.deleteInstance(id),
-  openInstanceFolder: (id: string): Promise<boolean> => electronApi.openInstanceFolder(id),
-  setInstanceSkin: (id: string, skinId: string | null): Promise<InstanceMetadata | null> => electronApi.setInstanceSkin(id, skinId),
+  listInstances: (): Promise<InstanceMetadata[]> => getApi().listInstances(),
+  getInstance: (id: string): Promise<InstanceMetadata | null> => getApi().getInstance(id),
+  createInstance: (payload: CreateInstancePayload): Promise<InstanceMetadata> => getApi().createInstance(payload),
+  updateInstance: (id: string, updates: Partial<InstanceMetadata>): Promise<InstanceMetadata | null> => getApi().updateInstance(id, updates),
+  duplicateInstance: (id: string): Promise<InstanceMetadata | null> => getApi().duplicateInstance(id),
+  deleteInstance: (id: string): Promise<boolean> => getApi().deleteInstance(id),
+  openInstanceFolder: (id: string): Promise<boolean> => getApi().openInstanceFolder(id),
+  setInstanceSkin: (id: string, skinId: string | null): Promise<InstanceMetadata | null> => getApi().setInstanceSkin(id, skinId),
 
   // Process Controls (PLAY / STOP)
-  launchInstance: (id: string): Promise<LaunchResult> => electronApi.launchInstance(id),
-  stopInstance: (id: string): Promise<boolean> => electronApi.stopInstance(id),
-  getInstanceStatus: (id: string): Promise<ProcessStatus> => electronApi.getInstanceStatus(id),
+  launchInstance: (id: string): Promise<LaunchResult> => getApi().launchInstance(id),
+  stopInstance: (id: string): Promise<boolean> => getApi().stopInstance(id),
+  getInstanceStatus: (id: string): Promise<ProcessStatus> => getApi().getInstanceStatus(id),
 
   // Content (Mods, Resource Packs, Shaders)
-  scanMods: (instanceId: string): Promise<ModInfo[]> => electronApi.scanMods(instanceId),
-  toggleMod: (instanceId: string, filename: string, enable: boolean): Promise<boolean> => electronApi.toggleMod(instanceId, filename, enable),
-  removeMod: (instanceId: string, filename: string): Promise<boolean> => electronApi.removeMod(instanceId, filename),
-  scanResourcePacks: (instanceId: string): Promise<ResourcePackInfo[]> => electronApi.scanResourcePacks(instanceId),
-  removeResourcePack: (instanceId: string, filename: string): Promise<boolean> => electronApi.removeResourcePack(instanceId, filename),
-  scanShaders: (instanceId: string): Promise<ShaderPackInfo[]> => electronApi.scanShaders(instanceId),
-  removeShader: (instanceId: string, filename: string): Promise<boolean> => electronApi.removeShader(instanceId, filename),
-  importFile: (instanceId: string, filePath: string, type: 'mod' | 'resourcepack' | 'shader'): Promise<{ success: boolean; filename: string; error?: string }> => electronApi.importFile(instanceId, filePath, type),
+  scanMods: (instanceId: string): Promise<ModInfo[]> => getApi().scanMods(instanceId),
+  toggleMod: (instanceId: string, filename: string, enable: boolean): Promise<boolean> => getApi().toggleMod(instanceId, filename, enable),
+  removeMod: (instanceId: string, filename: string): Promise<boolean> => getApi().removeMod(instanceId, filename),
+  scanResourcePacks: (instanceId: string): Promise<ResourcePackInfo[]> => getApi().scanResourcePacks(instanceId),
+  removeResourcePack: (instanceId: string, filename: string): Promise<boolean> => getApi().removeResourcePack(instanceId, filename),
+  scanShaders: (instanceId: string): Promise<ShaderPackInfo[]> => getApi().scanShaders(instanceId),
+  removeShader: (instanceId: string, filename: string): Promise<boolean> => getApi().removeShader(instanceId, filename),
+  importFile: (instanceId: string, filePath: string, type: 'mod' | 'resourcepack' | 'shader'): Promise<{ success: boolean; filename: string; error?: string }> => getApi().importFile(instanceId, filePath, type),
 
   // Modrinth
-  searchModrinth: (params: any): Promise<{ hits: ModrinthProject[]; total_hits: number }> => electronApi.searchModrinth(params),
-  getModrinthProject: (slugOrId: string): Promise<ModrinthProject | null> => electronApi.getModrinthProject(slugOrId),
-  getModrinthVersions: (slugOrId: string, loaders?: string[], gameVersions?: string[]): Promise<ModrinthVersion[]> => electronApi.getModrinthVersions(slugOrId, loaders, gameVersions),
-  installModrinthContent: (instanceId: string, fileUrl: string, filename: string, title: string, type: 'mod' | 'resourcepack' | 'shader'): Promise<{ success: boolean; filename: string; error?: string }> => electronApi.installModrinthContent(instanceId, fileUrl, filename, title, type),
+  searchModrinth: (params: any): Promise<{ hits: ModrinthProject[]; total_hits: number }> => getApi().searchModrinth(params),
+  getModrinthProject: (slugOrId: string): Promise<ModrinthProject | null> => getApi().getModrinthProject(slugOrId),
+  getModrinthVersions: (slugOrId: string, loaders?: string[], gameVersions?: string[]): Promise<ModrinthVersion[]> => getApi().getModrinthVersions(slugOrId, loaders, gameVersions),
+  installModrinthContent: (instanceId: string, fileUrl: string, filename: string, title: string, type: 'mod' | 'resourcepack' | 'shader'): Promise<{ success: boolean; filename: string; error?: string }> => getApi().installModrinthContent(instanceId, fileUrl, filename, title, type),
 
   // Logs
-  getLogs: (instanceId?: string, levelFilter?: string, query?: string): Promise<LogEntry[]> => electronApi.getLogs(instanceId, levelFilter, query),
-  clearLogs: (instanceId?: string): Promise<void> => electronApi.clearLogs(instanceId),
-  exportLogs: (instanceId?: string): Promise<string> => electronApi.exportLogs(instanceId),
+  getLogs: (instanceId?: string, levelFilter?: string, query?: string): Promise<LogEntry[]> => getApi().getLogs(instanceId, levelFilter, query),
+  clearLogs: (instanceId?: string): Promise<void> => getApi().clearLogs(instanceId),
+  exportLogs: (instanceId?: string): Promise<string> => getApi().exportLogs(instanceId),
 
   // Import / Export
-  exportInstance: (instanceId: string, targetZipPath: string): Promise<boolean> => electronApi.exportInstance(instanceId, targetZipPath),
-  importInstance: (zipPath: string, customName?: string): Promise<InstanceMetadata | null> => electronApi.importInstance(zipPath, customName),
+  exportInstance: (instanceId: string, targetZipPath: string): Promise<boolean> => getApi().exportInstance(instanceId, targetZipPath),
+  importInstance: (zipPath: string, customName?: string): Promise<InstanceMetadata | null> => getApi().importInstance(zipPath, customName),
 
   // Dialogs
-  selectFolderDialog: (): Promise<string | null> => electronApi.selectFolderDialog(),
-  selectFileDialog: (filters?: any): Promise<string | null> => electronApi.selectFileDialog(filters),
-  selectSaveFileDialog: (defaultName: string, filters?: any): Promise<string | null> => electronApi.selectSaveFileDialog(defaultName, filters),
+  selectFolderDialog: (): Promise<string | null> => getApi().selectFolderDialog(),
+  selectFileDialog: (filters?: any): Promise<string | null> => getApi().selectFileDialog(filters),
+  selectSaveFileDialog: (defaultName: string, filters?: any): Promise<string | null> => getApi().selectSaveFileDialog(defaultName, filters),
 
   // Skins
-  listSkins: (): Promise<SkinMetadata[]> => electronApi.listSkins(),
-  getSkin: (skinId: string): Promise<SkinMetadata | null> => electronApi.getSkin(skinId),
-  getActiveSkin: (): Promise<SkinMetadata | null> => electronApi.getActiveSkin(),
-  importSkin: (filePath: string, customName?: string): Promise<{ success: boolean; skin?: SkinMetadata; error?: string }> => electronApi.importSkin(filePath, customName),
-  downloadSkin: (username: string, customName?: string): Promise<{ success: boolean; skin?: SkinMetadata; error?: string }> => electronApi.downloadSkin(username, customName),
-  searchPlayer: (username: string): Promise<{ success: boolean; result?: SkinSearchResult; error?: string }> => electronApi.searchPlayer(username),
-  setActiveSkin: (skinId: string): Promise<{ success: boolean; error?: string }> => electronApi.setActiveSkin(skinId),
-  renameSkin: (skinId: string, newName: string): Promise<{ success: boolean; error?: string }> => electronApi.renameSkin(skinId, newName),
-  deleteSkin: (skinId: string): Promise<{ success: boolean; error?: string }> => electronApi.deleteSkin(skinId),
-  validateSkin: (filePath: string): Promise<SkinValidationResult> => electronApi.validateSkin(filePath),
-  clearSkins: (): Promise<void> => electronApi.clearSkins(),
+  listSkins: (): Promise<SkinMetadata[]> => getApi().listSkins(),
+  getSkin: (skinId: string): Promise<SkinMetadata | null> => getApi().getSkin(skinId),
+  getActiveSkin: (): Promise<SkinMetadata | null> => getApi().getActiveSkin(),
+  importSkin: (filePath: string, customName?: string): Promise<{ success: boolean; skin?: SkinMetadata; error?: string }> => getApi().importSkin(filePath, customName),
+  downloadSkin: (username: string, customName?: string): Promise<{ success: boolean; skin?: SkinMetadata; error?: string }> => getApi().downloadSkin(username, customName),
+  searchPlayer: (username: string): Promise<{ success: boolean; result?: SkinSearchResult; error?: string }> => getApi().searchPlayer(username),
+  setActiveSkin: (skinId: string): Promise<{ success: boolean; error?: string }> => getApi().setActiveSkin(skinId),
+  renameSkin: (skinId: string, newName: string): Promise<{ success: boolean; error?: string }> => getApi().renameSkin(skinId, newName),
+  deleteSkin: (skinId: string): Promise<{ success: boolean; error?: string }> => getApi().deleteSkin(skinId),
+  validateSkin: (filePath: string): Promise<SkinValidationResult> => getApi().validateSkin(filePath),
+  clearSkins: (): Promise<void> => getApi().clearSkins(),
 
   // Real-time Event Subscriptions
-  onLog: (callback: (entry: LogEntry) => void) => electronApi.onLog(callback),
-  onProcessStatus: (callback: (event: ProcessStatusEvent) => void) => electronApi.onProcessStatus(callback),
-  onDownloadProgress: (callback: (event: DownloadProgressEvent) => void) => electronApi.onDownloadProgress(callback)
+  onLog: (callback: (entry: LogEntry) => void) => getApi().onLog ? getApi().onLog(callback) : () => {},
+  onProcessStatus: (callback: (event: ProcessStatusEvent) => void) => getApi().onProcessStatus ? getApi().onProcessStatus(callback) : () => {},
+  onDownloadProgress: (callback: (event: DownloadProgressEvent) => void) => getApi().onDownloadProgress ? getApi().onDownloadProgress(callback) : () => {}
 };

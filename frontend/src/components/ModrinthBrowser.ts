@@ -164,13 +164,33 @@ export class ModrinthBrowser {
           </p>
         </div>
 
-        <!-- Install Button -->
-        <div style="flex-shrink: 0;">
-          <button class="btn btn-primary btn-install" style="min-width: 110px;">
+        <!-- Actions -->
+        <div style="flex-shrink: 0; display: flex; gap: 8px;">
+          <button class="btn btn-secondary btn-save-lib" title="Save metadata to your Voxel⁺ Library">
+            + Library
+          </button>
+          <button class="btn btn-primary btn-install" style="min-width: 100px;">
             Install
           </button>
         </div>
       `;
+
+      const saveLibBtn = card.querySelector('.btn-save-lib') as HTMLButtonElement;
+      saveLibBtn.onclick = async () => {
+        try {
+          await api.savePackToAccount({
+            name: project.title,
+            version: '1.0.0',
+            description: project.description,
+            icon: project.icon_url || undefined,
+            isPublic: true
+          });
+          NotificationToast.show(`Saved "${project.title}" to your Voxel⁺ Library!`, 'success');
+          saveLibBtn.textContent = '✓ Saved';
+        } catch (e: any) {
+          NotificationToast.show(e.message || 'Please sign in to save items to Library.', 'warning');
+        }
+      };
 
       const installBtn = card.querySelector('.btn-install') as HTMLButtonElement;
       installBtn.onclick = async () => {

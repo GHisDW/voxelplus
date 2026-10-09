@@ -7,6 +7,7 @@ import { ProcessManager } from './backend/processes/processManager';
 import { DownloadManager } from './backend/modrinth/downloader';
 import { encodeVoxelIpcError } from './backend/diagnostics';
 import { VoxelErrorCategory } from './types';
+import { createDeviceIdentity, getDeviceIdentityStatus, signChallenge } from './backend/account/deviceIdentity';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -14,14 +15,6 @@ let mainWindow: BrowserWindow | null = null;
  * Wraps an IPC handler so that any thrown error is serialized into an
  * IPC-safe, structured payload instead of Electron's default raw
  * "Error invoking remote method 'channel': ..." exception text.
- *
- * The renderer receives a rejected promise carrying an Error whose message
- * embeds the structured payload as `...VOXEL_ERROR::{json}` — Electron only
- * forwards the error `message` across IPC (custom properties are stripped
- * and the channel name is prefixed), so the payload travels inside the
- * message; frontend/src/services/errors.ts parses it back into a
- * VoxelIpcError. Result values pass through untouched, so successful calls
- * behave exactly as before.
  */
 function wrapIpcHandler<TResult>(
   channel: string,
@@ -43,6 +36,48 @@ function registerIpcHandlers() {
     category: VoxelErrorCategory,
     handler: (...args: any[]) => Promise<TResult>
   ) => ipcMain.handle(channel, wrapIpcHandler(channel, category, handler));
+
+  // Account & Cloud Identity (Matching preload.ts channel names exactly)
+  handle('account:createDeviceIdentity', 'CONFIGURATION', async () => createDeviceIdentity());
+  handle('account:getDeviceIdentityStatus', 'CONFIGURATION', async () => getDeviceIdentityStatus());
+  handle('account:signChallenge', 'CONFIGURATION', async (_, challenge) => signChallenge(challenge));
+  handle('account:create', 'CONFIGURATION', async (_, payload) => CommandManager.createAccount(payload));
+  handle('account:authenticate', 'CONFIGURATION', async () => CommandManager.authenticateDevice());
+  handle('account:logout', 'CONFIGURATION', async () => CommandManager.logoutAccount());
+  handle('account:getSession', 'CONFIGURATION', async () => CommandManager.getCurrentSession());
+  handle('account:getUser', 'CONFIGURATION', async () => CommandManager.getCurrentUser());
+  handle('account:updateProfile', 'CONFIGURATION', async (_, payload) => CommandManager.updateProfile(payload));
+  handle('account:delete', 'CONFIGURATION', async () => CommandManager.deleteAccount());
+  handle('account:listPublic', 'CONFIGURATION', async (_, q) => CommandManager.listPublicProfiles(q));
+  handle('account:getPublic', 'CONFIGURATION', async (_, id) => CommandManager.getPublicProfile(id));
+  handle('cloud:sync', 'NETWORK', async () => CommandManager.syncCloudData());
+  handle('cloud:getLibrary', 'CONFIGURATION', async () => CommandManager.getLibrary());
+  handle('cloud:savePack', 'CONFIGURATION', async (_, pack) => CommandManager.savePackToAccount(pack));
+  handle('cloud:saveSkin', 'CONFIGURATION', async (_, skin) => CommandManager.saveSkinToAccount(skin));
+
+  // Cosmetics
+  handle('cosmetics:catalog', 'CONFIGURATION', async () => CommandManager.listCosmeticsCatalog());
+  handle('cosmetics:getUser', 'CONFIGURATION', async () => CommandManager.getUserCosmetics());
+  handle('cosmetics:select', 'CONFIGURATION', async (_, cosmeticId) => CommandManager.selectCosmetic(cosmeticId));
+
+  // Achievements
+  handle('achievements:catalog', 'CONFIGURATION', async () => CommandManager.listAchievementsCatalog());
+  handle('achievements:getUser', 'CONFIGURATION', async () => CommandManager.getUserAchievements());
+
+  // Rewarded ads + VPacks
+  handle('ads:status', 'CONFIGURATION', async () => CommandManager.getAdsStatus());
+  handle('ads:progress', 'CONFIGURATION', async () => CommandManager.getAdProgress());
+  handle('ads:complete', 'CONFIGURATION', async (_, itemKind, itemId, completionId, proof) => CommandManager.completeAd(itemKind, itemId, completionId, proof));
+  handle('vpacks:catalog', 'CONFIGURATION', async () => CommandManager.listVpackCatalog());
+  handle('vpacks:list', 'CONFIGURATION', async () => CommandManager.listVpacks());
+  handle('vpacks:create', 'CONFIGURATION', async (_, payload) => CommandManager.createVpack(payload));
+  handle('vpacks:convert', 'CONFIGURATION', async (_, payload) => CommandManager.convertInstanceToVpack(payload));
+  handle('vpacks:install', 'CONFIGURATION', async (_, vpackId) => CommandManager.installVpack(vpackId));
+
+  // Avatar
+  handle('avatar:upload', 'FILESYSTEM', async (_, buffer, fileName, mimeType) => CommandManager.uploadAvatar(buffer, fileName, mimeType));
+  handle('avatar:delete', 'FILESYSTEM', async () => CommandManager.deleteAvatar());
+
 
   // Settings
   handle('settings:get', 'CONFIGURATION', async () => CommandManager.getAppSettings());
@@ -134,10 +169,8 @@ function createWindow() {
     }
   });
 
-  // Remove default menu for clean launcher look
   mainWindow.setMenuBarVisibility(false);
 
-  // Hook event streamers to send live events to renderer
   LogStreamer.onLog((entry) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('event:log', entry);
@@ -156,7 +189,6 @@ function createWindow() {
     }
   });
 
-  // Load URL
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
   } else {
@@ -167,7 +199,6 @@ function createWindow() {
     mainWindow = null;
   });
 }
-
 
 app.whenReady().then(() => {
   PathManager.initialize();
@@ -186,4 +217,3 @@ app.on('window-all-closed', () => {
     app.quit();
   }
 });
-

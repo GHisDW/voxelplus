@@ -2,10 +2,14 @@ import { PageId, Sidebar } from './components/Sidebar';
 import { Header, HeaderFilters } from './components/Header';
 import { InstancesPage } from './pages/InstancesPage';
 import { ContentPage } from './pages/ContentPage';
+import { ShopPage } from './pages/ShopPage';
 import { SkinsPage } from './pages/SkinsPage';
 import { LogsPage } from './pages/LogsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { OnboardingPage } from './pages/OnboardingPage';
+import { ProfilePage } from './pages/ProfilePage';
+import { DirectoryPage } from './pages/DirectoryPage';
+import { LibraryPage } from './pages/LibraryPage';
 import { CreateInstanceModal } from './components/CreateInstanceModal';
 import { ThemeService } from './services/themeService';
 import { api } from './services/api';
@@ -17,16 +21,20 @@ class VoxelApp {
   private sidebar!: Sidebar;
   private header!: Header;
   private instancesPage!: InstancesPage;
-  private contentPage!: ContentPage;
+  private shopPage!: ShopPage;
   private skinsPage!: SkinsPage;
   private logsPage!: LogsPage;
   private settingsPage!: SettingsPage;
+  private profilePage!: ProfilePage;
+  private directoryPage!: DirectoryPage;
+  private libraryPage!: LibraryPage;
 
   public async init(): Promise<void> {
     await ThemeService.initialize();
     const settings = await api.getAppSettings();
+    const session = await api.getCurrentSession();
 
-    if (!settings.firstRunCompleted) {
+    if (!settings.firstRunCompleted || !session) {
       this.showOnboarding();
     } else {
       this.showMainApp();
@@ -50,7 +58,7 @@ class VoxelApp {
         this.showMainApp();
       }
     });
-    onboarding.render().then(el => appEl.appendChild(el));
+    onboarding.render().then((el) => appEl.appendChild(el));
   }
 
   private showMainApp(): void {
@@ -59,21 +67,26 @@ class VoxelApp {
 
     // Initialize pages
     this.instancesPage = new InstancesPage({
-      onOpenModrinthForInstance: (inst: InstanceMetadata) => {
-        this.contentPage = new ContentPage(inst);
-        this.navigateTo('content');
+      onOpenModrinthForInstance: (_inst: InstanceMetadata) => {
+        this.shopPage = new ShopPage();
+        this.navigateTo('shop');
       },
       onViewLogs: (instanceId: string) => {
         this.logsPage = new LogsPage(instanceId);
         this.navigateTo('logs');
       }
     });
-    this.contentPage = new ContentPage();
+    this.shopPage = new ShopPage();
     this.skinsPage = new SkinsPage();
     this.logsPage = new LogsPage();
     this.settingsPage = new SettingsPage({
       onRedoOnboarding: () => this.showOnboarding()
     });
+    this.profilePage = new ProfilePage({
+      onLogout: () => this.showOnboarding()
+    });
+    this.directoryPage = new DirectoryPage();
+    this.libraryPage = new LibraryPage();
 
     // Initialize layout
     this.sidebar = new Sidebar({
@@ -92,6 +105,9 @@ class VoxelApp {
           this.navigateTo('instances');
           this.instancesPage.render();
         }
+      },
+      onOpenProfile: () => {
+        this.navigateTo('profile');
       }
     });
 
@@ -129,10 +145,14 @@ class VoxelApp {
 
     if (this.activePage === 'instances') {
       pageContainer.appendChild(await this.instancesPage.render());
-    } else if (this.activePage === 'content') {
-      pageContainer.appendChild(await this.contentPage.render());
-    } else if (this.activePage === 'skins') {
-      pageContainer.appendChild(await this.skinsPage.render());
+    } else if (this.activePage === 'shop') {
+      pageContainer.appendChild(await this.shopPage.render());
+    } else if (this.activePage === 'library') {
+      pageContainer.appendChild(await this.libraryPage.render());
+    } else if (this.activePage === 'directory') {
+      pageContainer.appendChild(await this.directoryPage.render());
+    } else if (this.activePage === 'profile') {
+      pageContainer.appendChild(await this.profilePage.render());
     } else if (this.activePage === 'logs') {
       pageContainer.appendChild(await this.logsPage.render());
     } else if (this.activePage === 'settings') {

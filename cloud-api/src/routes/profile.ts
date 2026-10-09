@@ -1,0 +1,123 @@
+import { Hono } from 'hono';
+import { authMiddleware, CloudApiEnv } from '../auth.js';
+import { getDataStore } from '../store.js';
+import { logAuditEventServer } from '../audit.js';
+import { evaluateAchievements } from '../achievementEngine.js';
+import { normalizeUsername, validateUsername } from '../identity.js';
+
+export const profileRouter = new Hono<CloudApiEnv>();
+
+// Authenticated Get Current Profile Endpoint
+profileRouter.get('/', authMiddleware, async (c) => {
+  const authUser = c.get('authUser');
+  const db = getDataStore();
+
+  if (!db) {
+    return c.json({ error: 'Data backend unconfigured.' }, 503);
+  }
+
+  const { data, error } = await (db as any)
+    .table('voxel_users')
+    .select('*')
+    .eq('id', authUser.id)
+    .single();
+
+  if (error || !data) {
+    return c.json({ error: 'Profile not found.' }, 404);
+  }
+
+  return c.json({
+    id: data.id,
+    username: data.username,
+    // Canonical avatar: uploaded avatar_url wins over the `avatar` preset.
+    avatar: data.avatar_url || data.avatar || 'avatar_steve',
+    bio: data.bio || '',
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+    isPublic: data.is_public,
+    syncEnabled: true
+  });
+});
+
+profileRouter.put('/', authMiddleware, async (c) => {
+  const authUser = c.get('authUser');
+  const body = await c.req.json();
+  const { username, avatar, bio, isPublic, syncEnabled } = body;
+
+  const db = getDataStore();
+  if (!db) {
+    return c.json({ error: 'Data backend unconfigured.' }, 503);
+  }
+  const now = new Date().toISOString();
+
+  // Username is public profile data, never an authentication credential.
+  const normalizedUsername = typeof username === 'string' ? normalizeUsername(username) : authUser.username;
+  if (username && normalizedUsername !== normalizeUsername(authUser.username)) {
+    const validation = validateUsername(username);
+    if (validation) return c.json({ error: validation }, 400);
+    const { data: taken } = await (db as any)
+      .table('voxel_accounts')
+      .select('id, username_normalized')
+      .eq('username_normalized', normalizedUsername)
+      .maybeSingle();
+    if (taken && taken.id !== authUser.id) {
+      return c.json({ error: `Username "${username}" is already taken.`, code: 'USERNAME_TAKEN' }, 409);
+    }
+    const { error: credErr } = await (db as any)
+      .table('voxel_accounts')
+      .update({ username: normalizedUsername, username_normalized: normalizedUsername })
+      .eq('id', authUser.id);
+    if (credErr) {
+      return c.json({ error: `Failed to update account username: ${credErr.message}`, code: 'USERNAME_UPDATE_FAILED' }, 400);
+    }
+    authUser.username = normalizedUsername;
+  }
+
+  const profileUpdate: Record<string, any> = {
+    updated_at: now
+  };
+
+  if (username) profileUpdate.username = normalizedUsername;
+  if (avatar !== undefined) {
+    profileUpdate.avatar = avatar;
+    // Choosing a preset avatar makes it the canonical value again — clear
+    // the uploaded avatar override and remove its stored files so no stale
+    // URL remains.
+    profileUpdate.avatar_url = null;
+  }
+  if (bio !== undefined) profileUpdate.bio = bio.trim();
+  if (isPublic !== undefined) profileUpdate.is_public = isPublic;
+
+  const { data, error } = await (db as any)
+    .table('voxel_users')
+    .update(profileUpdate)
+    .eq('id', authUser.id)
+    .select()
+    .single();
+
+  if (error) {
+    return c.json({ error: error.message }, 400);
+  }
+
+  // Profile state changed (e.g. is_public) — re-evaluate achievements.
+  await evaluateAchievements(db, authUser.id);
+
+  await logAuditEventServer({
+    actor_id: authUser.id,
+    actor_type: 'user',
+    action: 'profile.update',
+    resource: 'voxel_users',
+    details: { username: data.username, isPublic: data.is_public }
+  });
+
+  return c.json({
+    id: data.id,
+    username: data.username,
+    avatar: data.avatar_url || data.avatar,
+    bio: data.bio || '',
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+    isPublic: data.is_public,
+    syncEnabled: syncEnabled !== undefined ? syncEnabled : true
+  });
+});

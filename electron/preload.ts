@@ -22,6 +22,49 @@ import {
 } from './types';
 
 const api = {
+  // Accounts & Cloud Identity
+  createDeviceIdentity: () => ipcRenderer.invoke('account:createDeviceIdentity'),
+  getDeviceIdentityStatus: () => ipcRenderer.invoke('account:getDeviceIdentityStatus'),
+  signChallenge: (challenge: string) => ipcRenderer.invoke('account:signChallenge', challenge),
+  authenticateDevice: () => ipcRenderer.invoke('account:authenticate'),
+  createAccount: (payload: any) => ipcRenderer.invoke('account:create', payload),
+  logoutAccount: () => ipcRenderer.invoke('account:logout'),
+  getCurrentSession: () => ipcRenderer.invoke('account:getSession'),
+  getCurrentUser: () => ipcRenderer.invoke('account:getUser'),
+  updateProfile: (payload: any) => ipcRenderer.invoke('account:updateProfile', payload),
+  deleteAccount: () => ipcRenderer.invoke('account:delete'),
+  listPublicProfiles: (query?: string) => ipcRenderer.invoke('account:listPublic', query),
+  getPublicProfile: (idOrUsername: string) => ipcRenderer.invoke('account:getPublic', idOrUsername),
+  syncCloudData: () => ipcRenderer.invoke('cloud:sync'),
+  getLibrary: () => ipcRenderer.invoke('cloud:getLibrary'),
+  savePackToAccount: (pack: any) => ipcRenderer.invoke('cloud:savePack', pack),
+  saveSkinToAccount: (skin: any) => ipcRenderer.invoke('cloud:saveSkin', skin),
+
+  // Cosmetics
+  listCosmeticsCatalog: () => ipcRenderer.invoke('cosmetics:catalog'),
+  getUserCosmetics: () => ipcRenderer.invoke('cosmetics:getUser'),
+  selectCosmetic: (cosmeticId: string | null) => ipcRenderer.invoke('cosmetics:select', cosmeticId),
+
+  // Achievements
+  listAchievementsCatalog: () => ipcRenderer.invoke('achievements:catalog'),
+  getUserAchievements: () => ipcRenderer.invoke('achievements:getUser'),
+
+  // Rewarded ads + VPacks
+  getAdsStatus: () => ipcRenderer.invoke('ads:status'),
+  getAdProgress: () => ipcRenderer.invoke('ads:progress'),
+  completeAd: (itemKind: 'cosmetic' | 'vpack', itemId: string, completionId: string, proof: string) =>
+    ipcRenderer.invoke('ads:complete', itemKind, itemId, completionId, proof),
+  listVpackCatalog: () => ipcRenderer.invoke('vpacks:catalog'),
+  listVpacks: () => ipcRenderer.invoke('vpacks:list'),
+  createVpack: (payload: { title: string; description?: string; contents?: any }) => ipcRenderer.invoke('vpacks:create', payload),
+  convertInstanceToVpack: (payload: { instanceId: string; title?: string; description?: string }) => ipcRenderer.invoke('vpacks:convert', payload),
+  installVpack: (vpackId: string) => ipcRenderer.invoke('vpacks:install', vpackId),
+
+  // Avatar
+  uploadAvatar: (buffer: ArrayBuffer | Uint8Array, fileName: string, mimeType: string) =>
+    ipcRenderer.invoke('avatar:upload', buffer, fileName, mimeType),
+  deleteAvatar: () => ipcRenderer.invoke('avatar:delete'),
+
   // Settings
   getAppSettings: (): Promise<AppSettings> => ipcRenderer.invoke('settings:get'),
   setAppSettings: (settings: Partial<AppSettings>): Promise<AppSettings> => ipcRenderer.invoke('settings:set', settings),

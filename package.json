@@ -26,7 +26,9 @@
     "dev": "vite",
     "build": "tsc -p electron/tsconfig.json && vite build",
     "app:dev": "vite",
-    "start": "electron ."
+    "start": "electron .",
+    "test": "tsc -p electron/tsconfig.json && tsx --test test/account.test.ts",
+    "test:device-identity": "tsc -p electron/tsconfig.json && electron test/electronIdentityHarness.cjs"
   },
   "dependencies": {
     "adm-zip": "^0.5.16",
@@ -36,6 +38,8 @@
     "@types/adm-zip": "^0.5.5",
     "@types/node": "^22.10.2",
     "electron": "^33.2.1",
+    "playwright": "^1.63.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.7.2",
     "vite": "^6.0.3"
   },

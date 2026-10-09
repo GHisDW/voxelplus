@@ -33,8 +33,131 @@ import { ModrinthClient } from './modrinth/modrinthClient';
 import { DownloadManager } from './modrinth/downloader';
 import { LogStreamer } from './processes/logStreamer';
 import { SkinManager } from './skins/skinManager';
+import { AccountManager } from './account/accountManager';
 
 export class CommandManager {
+  // Accounts & Cloud Identity
+  public static async createAccount(payload: any) {
+    const session = await AccountManager.createAccount(payload);
+    return { user: session.user };
+  }
+
+  public static async authenticateDevice() {
+    const session = await AccountManager.authenticateDevice();
+    return { user: session.user };
+  }
+
+  public static async logoutAccount() {
+    return AccountManager.logout();
+  }
+
+  public static async getCurrentSession() {
+    const session = await AccountManager.getCurrentSession();
+    return session ? { user: session.user } : null;
+  }
+
+  public static async getCurrentUser() {
+    return AccountManager.getCurrentUser();
+  }
+
+  public static async updateProfile(payload: any) {
+    return AccountManager.updateProfile(payload);
+  }
+
+
+  public static async deleteAccount() {
+    return AccountManager.deleteAccount();
+  }
+
+  public static async listPublicProfiles(query?: string) {
+    return AccountManager.listPublicProfiles(query);
+  }
+
+  public static async getPublicProfile(idOrUsername: string) {
+    return AccountManager.getPublicProfile(idOrUsername);
+  }
+
+  public static async syncCloudData() {
+    return AccountManager.syncCloudData();
+  }
+
+  public static async getLibrary() {
+    return AccountManager.getLibrary();
+  }
+
+  public static async savePackToAccount(pack: any) {
+    return AccountManager.savePackToAccount(pack);
+  }
+
+  public static async saveSkinToAccount(skin: any) {
+    return AccountManager.saveSkinToAccount(skin);
+  }
+
+  // Cosmetics
+  public static async listCosmeticsCatalog() {
+    return AccountManager.listCosmeticsCatalog();
+  }
+
+  public static async getUserCosmetics() {
+    return AccountManager.getUserCosmetics();
+  }
+
+  public static async selectCosmetic(cosmeticId: string | null) {
+    return AccountManager.selectCosmetic(cosmeticId);
+  }
+
+  // Achievements
+  public static async listAchievementsCatalog() {
+    return AccountManager.listAchievementsCatalog();
+  }
+
+  public static async getUserAchievements() {
+    return AccountManager.getUserAchievements();
+  }
+
+  // Rewarded ads (provider-verified server-side; unavailable without provider)
+  public static async getAdsStatus() {
+    return AccountManager.getAdsStatus();
+  }
+
+  public static async getAdProgress() {
+    return AccountManager.getAdProgress();
+  }
+
+  public static async completeAd(itemKind: 'cosmetic' | 'vpack', itemId: string, completionId: string, proof: string) {
+    return AccountManager.completeAd(itemKind, itemId, completionId, proof);
+  }
+
+  // VPacks
+  public static async listVpackCatalog() {
+    return AccountManager.listVpackCatalog();
+  }
+
+  public static async listVpacks() {
+    return AccountManager.listVpacks();
+  }
+
+  public static async createVpack(payload: { title: string; description?: string; contents?: any }) {
+    return AccountManager.createVpack(payload);
+  }
+
+  public static async convertInstanceToVpack(payload: { instanceId: string; title?: string; description?: string }) {
+    return AccountManager.convertInstanceToVpack(payload);
+  }
+
+  public static async installVpack(vpackId: string) {
+    return AccountManager.installVpack(vpackId);
+  }
+
+  // Avatar
+  public static async uploadAvatar(buffer: ArrayBuffer | Uint8Array, fileName: string, mimeType: string) {
+    return AccountManager.uploadAvatar(buffer, fileName, mimeType);
+  }
+
+  public static async deleteAvatar() {
+    return AccountManager.deleteAvatar();
+  }
+
   // Settings
   public static async getAppSettings(): Promise<AppSettings> {
     return ConfigStore.getSettings();
@@ -76,7 +199,20 @@ export class CommandManager {
   }
 
   public static async createInstance(payload: CreateInstancePayload): Promise<InstanceMetadata> {
-    return InstanceManager.createInstance(payload);
+    const meta = await InstanceManager.createInstance(payload);
+    // Record the instance server-side (authoritative lifetime metric).
+    // Best-effort: local creation still succeeds when cloud is unreachable,
+    // but only server-recorded instances count toward achievements.
+    try {
+      const cloudId = await AccountManager.recordInstanceCloud({
+        name: meta.name || payload.name,
+        version: payload.minecraftVersion
+      });
+      if (cloudId) (meta as any).cloudInstanceId = cloudId;
+    } catch (e) {
+      console.warn('[Voxel+] Cloud instance record failed:', e);
+    }
+    return meta;
   }
 
   public static async updateInstance(id: string, updates: Partial<InstanceMetadata>): Promise<InstanceMetadata | null> {
@@ -92,7 +228,13 @@ export class CommandManager {
   }
 
   public static async deleteInstance(id: string): Promise<boolean> {
-    return InstanceManager.deleteInstance(id);
+    const meta = await InstanceManager.getInstance(id);
+    const ok = await InstanceManager.deleteInstance(id);
+    const cloudId = (meta as any)?.cloudInstanceId;
+    if (ok && cloudId) {
+      try { await AccountManager.deleteInstanceCloud(cloudId); } catch {}
+    }
+    return ok;
   }
 
   public static async openInstanceFolder(id: string): Promise<boolean> {

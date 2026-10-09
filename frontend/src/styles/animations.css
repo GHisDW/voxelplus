@@ -82,3 +82,124 @@
   border-color: var(--accent-primary);
   box-shadow: 0 0 0 1px var(--accent-primary), var(--shadow-glow);
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Authentic Minecraft Enchantment Glint & Cosmetic Effects
+   ───────────────────────────────────────────────────────────── */
+
+@keyframes glint-shimmer {
+  0% {
+    transform: rotate(25deg) translateY(-140%);
+    opacity: 0;
+  }
+  30% {
+    opacity: 0.85;
+  }
+  60% {
+    opacity: 0.95;
+  }
+  100% {
+    transform: rotate(25deg) translateY(220%);
+    opacity: 0;
+  }
+}
+
+.effect-enchantment-glint {
+  position: relative !important;
+  overflow: hidden !important;
+  box-shadow: 0 0 16px rgba(168, 85, 247, 0.6), 0 0 28px rgba(147, 51, 234, 0.35) !important;
+  border-color: #a855f7 !important;
+}
+
+.effect-enchantment-glint::after {
+  content: '';
+  position: absolute;
+  inset: -60%;
+  background: linear-gradient(
+    135deg,
+    transparent 20%,
+    rgba(168, 85, 247, 0.2) 35%,
+    rgba(236, 72, 153, 0.65) 45%,
+    rgba(168, 85, 247, 0.85) 50%,
+    rgba(192, 132, 252, 0.7) 55%,
+    rgba(99, 102, 241, 0.3) 65%,
+    transparent 80%
+  );
+  mix-blend-mode: screen;
+  pointer-events: none;
+  animation: glint-shimmer 2.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes gold-shine-shimmer {
+  0% {
+    transform: rotate(-35deg) translateX(-150%);
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: rotate(-35deg) translateX(250%);
+    opacity: 0;
+  }
+}
+
+.effect-golden-radiance {
+  position: relative !important;
+  overflow: hidden !important;
+  box-shadow: 0 0 18px rgba(234, 179, 8, 0.7), 0 0 30px rgba(245, 158, 11, 0.4) !important;
+  border-color: #facc15 !important;
+}
+
+.effect-golden-radiance::after {
+  content: '';
+  position: absolute;
+  inset: -60%;
+  background: linear-gradient(
+    45deg,
+    transparent 25%,
+    rgba(250, 204, 21, 0.3) 40%,
+    rgba(255, 255, 255, 0.9) 50%,
+    rgba(245, 158, 11, 0.45) 60%,
+    transparent 75%
+  );
+  mix-blend-mode: overlay;
+  pointer-events: none;
+  animation: gold-shine-shimmer 2.0s ease-in-out infinite;
+}
+
+@keyframes prismatic-sweep {
+  0% {
+    filter: hue-rotate(0deg);
+  }
+  100% {
+    filter: hue-rotate(360deg);
+  }
+}
+
+.effect-prismatic-shimmer {
+  position: relative !important;
+  overflow: hidden !important;
+  box-shadow: 0 0 18px rgba(56, 189, 248, 0.7), 0 0 30px rgba(168, 85, 247, 0.4) !important;
+  border-color: #38bdf8 !important;
+  animation: prismatic-sweep 5s linear infinite;
+}
+
+.effect-prismatic-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: -60%;
+  background: linear-gradient(
+    120deg,
+    transparent 20%,
+    rgba(239, 68, 68, 0.45) 30%,
+    rgba(245, 158, 11, 0.55) 40%,
+    rgba(16, 185, 129, 0.65) 50%,
+    rgba(59, 130, 246, 0.55) 60%,
+    rgba(168, 85, 247, 0.45) 70%,
+    transparent 80%
+  );
+  mix-blend-mode: screen;
+  pointer-events: none;
+  animation: glint-shimmer 2.6s ease-in-out infinite;
+}
