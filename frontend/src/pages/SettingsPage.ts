@@ -3,6 +3,7 @@ import { api } from '../services/api';
 import { ThemeService } from '../services/themeService';
 import { JavaManagerModal } from '../components/JavaManagerModal';
 import { NotificationToast } from '../components/NotificationToast';
+import { getItemDataUrl } from '../assets/items';
 
 export interface SettingsPageEvents {
   onRedoOnboarding?: () => void;
@@ -29,12 +30,30 @@ export class SettingsPage {
         <div style="display: flex; flex-direction: column; gap: 6px;">
           <h3 style="font-size: 1.2rem; font-weight: 800; color: var(--text-primary); margin-bottom: 12px;">Settings</h3>
 
-          <button class="btn ${this.activeSection === 'general' ? 'btn-primary' : 'btn-secondary'}" data-sec="general" style="justify-content: flex-start;">⚙ General</button>
-          <button class="btn ${this.activeSection === 'minecraft' ? 'btn-primary' : 'btn-secondary'}" data-sec="minecraft" style="justify-content: flex-start;">⛏ Minecraft</button>
-          <button class="btn ${this.activeSection === 'java' ? 'btn-primary' : 'btn-secondary'}" data-sec="java" style="justify-content: flex-start;">☕ Java Runtimes</button>
-          <button class="btn ${this.activeSection === 'appearance' ? 'btn-primary' : 'btn-secondary'}" data-sec="appearance" style="justify-content: flex-start;">◐ Appearance</button>
-          <button class="btn ${this.activeSection === 'advanced' ? 'btn-primary' : 'btn-secondary'}" data-sec="advanced" style="justify-content: flex-start;">⚡ Advanced</button>
-          <button class="btn ${this.activeSection === 'about' ? 'btn-primary' : 'btn-secondary'}" data-sec="about" style="justify-content: flex-start;">ℹ About</button>
+          <button class="btn ${this.activeSection === 'general' ? 'btn-primary' : 'btn-secondary'}" data-sec="general" style="justify-content: flex-start; gap: 8px;">
+            <img src="${getItemDataUrl('minecraft:command_block')}" style="width: 16px; height: 16px; image-rendering: pixelated;" />
+            <span>General</span>
+          </button>
+          <button class="btn ${this.activeSection === 'minecraft' ? 'btn-primary' : 'btn-secondary'}" data-sec="minecraft" style="justify-content: flex-start; gap: 8px;">
+            <img src="${getItemDataUrl('minecraft:grass_block')}" style="width: 16px; height: 16px; image-rendering: pixelated;" />
+            <span>Minecraft</span>
+          </button>
+          <button class="btn ${this.activeSection === 'java' ? 'btn-primary' : 'btn-secondary'}" data-sec="java" style="justify-content: flex-start; gap: 8px;">
+            <img src="${getItemDataUrl('minecraft:redstone')}" style="width: 16px; height: 16px; image-rendering: pixelated;" />
+            <span>Java Runtimes</span>
+          </button>
+          <button class="btn ${this.activeSection === 'appearance' ? 'btn-primary' : 'btn-secondary'}" data-sec="appearance" style="justify-content: flex-start; gap: 8px;">
+            <img src="${getItemDataUrl('minecraft:amethyst_shard')}" style="width: 16px; height: 16px; image-rendering: pixelated;" />
+            <span>Appearance</span>
+          </button>
+          <button class="btn ${this.activeSection === 'advanced' ? 'btn-primary' : 'btn-secondary'}" data-sec="advanced" style="justify-content: flex-start; gap: 8px;">
+            <img src="${getItemDataUrl('minecraft:beacon')}" style="width: 16px; height: 16px; image-rendering: pixelated;" />
+            <span>Advanced</span>
+          </button>
+          <button class="btn ${this.activeSection === 'about' ? 'btn-primary' : 'btn-secondary'}" data-sec="about" style="justify-content: flex-start; gap: 8px;">
+            <img src="${getItemDataUrl('minecraft:enchanted_book')}" style="width: 16px; height: 16px; image-rendering: pixelated;" />
+            <span>About</span>
+          </button>
         </div>
 
         <!-- Section Content Panel -->
@@ -87,7 +106,7 @@ export class SettingsPage {
             Re-run the 7-step onboarding wizard to re-scan hardware, Java installations, and environment status.
           </p>
           <button class="btn btn-secondary" id="btn-redo-onboarding">
-            🚀 Redo Startup Introduction
+            Redo Startup Introduction
           </button>
         </div>
       `;
@@ -148,8 +167,9 @@ export class SettingsPage {
         </div>
 
         <div style="margin-top: 24px;">
-          <button class="btn btn-primary" id="btn-open-java-mgr">
-            ☕ Open Java Runtime Manager
+          <button class="btn btn-primary" id="btn-open-java-mgr" style="display: inline-flex; align-items: center; gap: 8px;">
+            <img src="${getItemDataUrl('minecraft:redstone')}" style="width: 16px; height: 16px; image-rendering: pixelated;" />
+            <span>Open Java Runtime Manager</span>
           </button>
         </div>
       `;
@@ -168,17 +188,17 @@ export class SettingsPage {
 
         <div style="display: flex; flex-direction: column; gap: 12px;">
           <div class="horizontal-card ${this.settings.theme === 'dark' ? 'selected' : ''}" data-set-theme="dark" style="padding: 14px 18px; background: var(--bg-surface); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
-            <div style="font-weight: 700;">◐ Dark Theme</div>
+            <div style="font-weight: 700;">Dark Theme</div>
             ${this.settings.theme === 'dark' ? '<span class="badge badge-recommended">✓ ACTIVE</span>' : ''}
           </div>
 
           <div class="horizontal-card ${this.settings.theme === 'light' ? 'selected' : ''}" data-set-theme="light" style="padding: 14px 18px; background: var(--bg-surface); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
-            <div style="font-weight: 700;">○ Light Theme</div>
+            <div style="font-weight: 700;">Light Theme</div>
             ${this.settings.theme === 'light' ? '<span class="badge badge-recommended">✓ ACTIVE</span>' : ''}
           </div>
 
           <div class="horizontal-card ${this.settings.theme === 'system' ? 'selected' : ''}" data-set-theme="system" style="padding: 14px 18px; background: var(--bg-surface); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
-            <div style="font-weight: 700;">🖥 Follow System (Windows)</div>
+            <div style="font-weight: 700;">Follow System (Windows)</div>
             ${this.settings.theme === 'system' ? '<span class="badge badge-recommended">✓ ACTIVE</span>' : ''}
           </div>
         </div>

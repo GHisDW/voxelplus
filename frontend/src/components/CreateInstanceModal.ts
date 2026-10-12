@@ -49,6 +49,16 @@ export class CreateInstanceModal {
                 <input type="text" class="input-field" id="inst-name" placeholder="My Mod Test" value="My Mod Test" autofocus />
               </div>
 
+              <div class="form-group">
+                <label class="form-label">Instance Description</label>
+                <input type="text" class="input-field" id="inst-desc" placeholder="Fabric modded development setup with Sodium & Iris..." value="Modded development setup with custom tools" />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Shared Source / Network</label>
+                <input type="text" class="input-field" id="inst-share" placeholder="discord, voxelplus-hub, friend..." value="discord" />
+              </div>
+
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
                 <div class="form-group">
                   <label class="form-label">Minecraft Version</label>
@@ -237,12 +247,16 @@ export class CreateInstanceModal {
           });
 
           const nameInput = overlay.querySelector('#inst-name') as HTMLInputElement;
+          const descInput = overlay.querySelector('#inst-desc') as HTMLInputElement;
+          const shareInput = overlay.querySelector('#inst-share') as HTMLInputElement;
           const mcSelect = overlay.querySelector('#inst-mc-ver') as HTMLSelectElement;
           const loaderSelect = overlay.querySelector('#inst-loader') as HTMLSelectElement;
           const javaSelect = overlay.querySelector('#inst-java') as HTMLSelectElement;
 
           const payload: CreateInstancePayload = {
             name: nameInput.value.trim() || 'My Mod Test',
+            description: descInput?.value.trim() || 'Modded development setup with custom tools',
+            shareSource: shareInput?.value.trim() || 'discord',
             minecraftVersion: mcSelect.value,
             loaderType: loaderSelect.value as any,
             javaRuntime: javaSelect.value,

@@ -7,6 +7,7 @@ export interface HeaderFilters {
 export interface HeaderEvents {
   onFilterChange: (filters: HeaderFilters) => void;
   onCreateInstance: () => void;
+  onImportVPack?: () => void;
 }
 
 export class Header {
@@ -48,8 +49,11 @@ export class Header {
         </select>
       </div>
 
-      <!-- Action Button -->
-      <div>
+      <!-- Action Buttons -->
+      <div style="display: flex; gap: 10px;">
+        <button class="btn btn-secondary" id="btn-header-import-vpack" title="Import a .vpack / .voxelplus package">
+          📦 IMPORT VPACK
+        </button>
         <button class="btn btn-primary" id="btn-header-create">
           + CREATE INSTANCE
         </button>
@@ -76,6 +80,11 @@ export class Header {
 
     const createBtn = this.container.querySelector('#btn-header-create') as HTMLButtonElement;
     createBtn.onclick = () => this.events.onCreateInstance();
+
+    const importVPackBtn = this.container.querySelector('#btn-header-import-vpack') as HTMLButtonElement;
+    if (importVPackBtn && this.events.onImportVPack) {
+      importVPackBtn.onclick = () => this.events.onImportVPack!();
+    }
 
     return this.container;
   }

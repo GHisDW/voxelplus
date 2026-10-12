@@ -65,7 +65,7 @@ function registerIpcHandlers() {
   handle('instance:duplicate', 'INSTANCE', async (_, id) => CommandManager.duplicateInstance(id));
   handle('instance:delete', 'INSTANCE', async (_, id) => CommandManager.deleteInstance(id));
   handle('instance:openFolder', 'INSTANCE', async (_, id) => CommandManager.openInstanceFolder(id));
-  handle('instance:setSkin', 'SKIN', async (_, id, skinId) => CommandManager.setInstanceSkin(id, skinId));
+
 
   // Process (PLAY / STOP)
   handle('process:launch', 'MINECRAFT', async (_, id) => CommandManager.launchInstance(id));
@@ -82,18 +82,7 @@ function registerIpcHandlers() {
   handle('content:removeShader', 'SHADER', async (_, id, fn) => CommandManager.removeShader(id, fn));
   handle('content:importFile', 'FILESYSTEM', async (_, id, fp, type) => CommandManager.importFile(id, fp, type));
 
-  // Skins
-  handle('skins:list', 'SKIN', async () => CommandManager.listSkins());
-  handle('skins:get', 'SKIN', async (_, id) => CommandManager.getSkin(id));
-  handle('skins:getActive', 'SKIN', async () => CommandManager.getActiveSkin());
-  handle('skins:import', 'SKIN', async (_, filePath, customName) => CommandManager.importSkin(filePath, customName));
-  handle('skins:download', 'SKIN', async (_, username, customName) => CommandManager.downloadSkin(username, customName));
-  handle('skins:search', 'SKIN', async (_, username) => CommandManager.searchPlayer(username));
-  handle('skins:setActive', 'SKIN', async (_, id) => CommandManager.setActiveSkin(id));
-  handle('skins:rename', 'SKIN', async (_, id, newName) => CommandManager.renameSkin(id, newName));
-  handle('skins:delete', 'SKIN', async (_, id) => CommandManager.deleteSkin(id));
-  handle('skins:validate', 'SKIN', async (_, filePath) => CommandManager.validateSkin(filePath));
-  handle('skins:clear', 'SKIN', async () => CommandManager.clearSkins());
+
 
   // Modrinth
   handle('modrinth:search', 'NETWORK', async (_, params) => CommandManager.searchModrinth(params));
@@ -106,9 +95,28 @@ function registerIpcHandlers() {
   handle('logs:clear', 'IPC', async (_, id) => CommandManager.clearLogs(id));
   handle('logs:export', 'IPC', async (_, id) => CommandManager.exportLogs(id));
 
-  // Import / Export
+  // Import / Export & VPack
   handle('instance:export', 'INSTANCE', async (_, id, targetPath) => CommandManager.exportInstance(id, targetPath));
   handle('instance:import', 'INSTANCE', async (_, zipPath, name) => CommandManager.importInstance(zipPath, name));
+  handle('vpack:validate', 'INSTANCE', async (_, zipPath) => CommandManager.validateVPack(zipPath));
+  handle('vpack:listRepository', 'INSTANCE', async () => CommandManager.listRepositoryVPacks());
+  handle('vpack:purchase', 'INSTANCE', async (_, zipPath, price) => CommandManager.purchaseVPack(zipPath, price));
+
+  // Player & Economy
+  handle('player:getProfile', 'IPC', async () => CommandManager.getPlayerProfile());
+  handle('player:updateProfile', 'IPC', async (_, updates) => CommandManager.updatePlayerProfile(updates));
+  handle('player:getWallet', 'IPC', async () => CommandManager.getWallet());
+  handle('player:getTransactions', 'IPC', async () => CommandManager.getWalletTransactions());
+  handle('player:getAchievements', 'IPC', async () => CommandManager.getAchievements());
+  handle('player:getCosmetics', 'IPC', async () => CommandManager.getCosmetics());
+  handle('player:purchaseCosmetic', 'IPC', async (_, cosmeticId) => CommandManager.purchaseCosmetic(cosmeticId));
+  handle('player:equipCosmetic', 'IPC', async (_, cosmeticId, effectId) => CommandManager.equipCosmetic(cosmeticId, effectId));
+
+  // Arcade
+  handle('arcade:getStockerData', 'IPC', async () => CommandManager.getStockerData());
+  handle('arcade:recordStockerRun', 'IPC', async (_, run) => CommandManager.recordStockerRun(run));
+  handle('arcade:getCookieData', 'IPC', async () => CommandManager.getCookieData());
+  handle('arcade:saveCookieData', 'IPC', async (_, data) => CommandManager.saveCookieData(data));
 
   // Dialogs
   handle('dialog:selectFolder', 'IPC', async () => CommandManager.selectFolderDialog(mainWindow || undefined));

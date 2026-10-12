@@ -2,7 +2,9 @@ import { PageId, Sidebar } from './components/Sidebar';
 import { Header, HeaderFilters } from './components/Header';
 import { InstancesPage } from './pages/InstancesPage';
 import { ContentPage } from './pages/ContentPage';
-import { SkinsPage } from './pages/SkinsPage';
+import { PlayerPage } from './pages/PlayerPage';
+import { ShopPage } from './pages/ShopPage';
+import { ArcadePage } from './pages/ArcadePage';
 import { LogsPage } from './pages/LogsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { OnboardingPage } from './pages/OnboardingPage';
@@ -18,7 +20,9 @@ class VoxelApp {
   private header!: Header;
   private instancesPage!: InstancesPage;
   private contentPage!: ContentPage;
-  private skinsPage!: SkinsPage;
+  private playerPage!: PlayerPage;
+  private shopPage!: ShopPage;
+  private arcadePage!: ArcadePage;
   private logsPage!: LogsPage;
   private settingsPage!: SettingsPage;
 
@@ -69,7 +73,9 @@ class VoxelApp {
       }
     });
     this.contentPage = new ContentPage();
-    this.skinsPage = new SkinsPage();
+    this.playerPage = new PlayerPage();
+    this.shopPage = new ShopPage();
+    this.arcadePage = new ArcadePage();
     this.logsPage = new LogsPage();
     this.settingsPage = new SettingsPage({
       onRedoOnboarding: () => this.showOnboarding()
@@ -91,6 +97,23 @@ class VoxelApp {
         if (created) {
           this.navigateTo('instances');
           this.instancesPage.render();
+        }
+      },
+      onImportVPack: async () => {
+        const zipFile = await api.selectFileDialog([
+          { name: 'Voxel⁺ Instance Packages (*.vpack, *.voxelplus, *.zip)', extensions: ['vpack', 'voxelplus', 'zip'] },
+          { name: 'All Files', extensions: ['*'] }
+        ]);
+        if (zipFile) {
+          NotificationToast.show('Importing VPack package...', 'info');
+          const imported = await api.importInstance(zipFile);
+          if (imported) {
+            NotificationToast.show(`Successfully imported VPack: ${imported.name}`, 'success');
+            this.navigateTo('instances');
+            this.instancesPage.render();
+          } else {
+            NotificationToast.show('Failed to import package. Check file format.', 'error');
+          }
         }
       }
     });
@@ -131,8 +154,12 @@ class VoxelApp {
       pageContainer.appendChild(await this.instancesPage.render());
     } else if (this.activePage === 'content') {
       pageContainer.appendChild(await this.contentPage.render());
-    } else if (this.activePage === 'skins') {
-      pageContainer.appendChild(await this.skinsPage.render());
+    } else if (this.activePage === 'player') {
+      pageContainer.appendChild(await this.playerPage.render());
+    } else if (this.activePage === 'shop') {
+      pageContainer.appendChild(await this.shopPage.render());
+    } else if (this.activePage === 'arcade') {
+      pageContainer.appendChild(await this.arcadePage.render());
     } else if (this.activePage === 'logs') {
       pageContainer.appendChild(await this.logsPage.render());
     } else if (this.activePage === 'settings') {

@@ -1,4 +1,5 @@
 import { dialog, BrowserWindow } from 'electron';
+import path from 'node:path';
 import {
   AppSettings,
   CreateInstancePayload,
@@ -14,9 +15,19 @@ import {
   ResourcePackInfo,
   ShaderPackInfo,
   SystemScanResult,
-  SkinMetadata,
-  SkinSearchResult,
-  SkinValidationResult
+  PlayerProfile,
+  WalletState,
+  WalletTransaction,
+  AchievementDefinition,
+  AchievementProgress,
+  CosmeticDefinition,
+  CosmeticEffect,
+  CosmeticOwnership,
+  VPackValidationResult,
+  StockerRunResult,
+  StockerSaveData,
+  CookieClickerSaveData,
+  ArcadeRewardResult
 } from '../types';
 import { ConfigStore } from './storage/configStore';
 import { SystemScanner } from './system/systemScanner';
@@ -32,7 +43,12 @@ import { ContentImporter } from './content/contentImporter';
 import { ModrinthClient } from './modrinth/modrinthClient';
 import { DownloadManager } from './modrinth/downloader';
 import { LogStreamer } from './processes/logStreamer';
-import { SkinManager } from './skins/skinManager';
+import { PlayerDataStore } from './player/playerDataStore';
+import { AchievementEngine } from './player/achievementEngine';
+import { CosmeticCatalogue } from './player/cosmeticCatalogue';
+import { VPackManager } from './vpack/vpackManager';
+import { ArcadeStore } from './arcade/arcadeStore';
+
 
 export class CommandManager {
   // Settings
@@ -83,9 +99,6 @@ export class CommandManager {
     return InstanceManager.updateInstance(id, updates);
   }
 
-  public static async setInstanceSkin(instanceId: string, skinId: string | null): Promise<InstanceMetadata | null> {
-    return InstanceManager.setInstanceSkin(instanceId, skinId);
-  }
 
   public static async duplicateInstance(id: string): Promise<InstanceMetadata | null> {
     return InstanceManager.duplicateInstance(id);
@@ -204,13 +217,135 @@ export class CommandManager {
     return LogStreamer.exportLogs(instanceId);
   }
 
-  // Import / Export
+  // Import / Export & VPack
   public static async exportInstance(instanceId: string, targetZipPath: string): Promise<boolean> {
-    return InstanceManager.exportInstance(instanceId, targetZipPath);
+    const success = await InstanceManager.exportInstance(instanceId, targetZipPath);
+    if (success) {
+      new AchievementEngine().trackProgress('vpack_export', 1);
+    }
+    return success;
   }
 
   public static async importInstance(zipPath: string, customName?: string): Promise<InstanceMetadata | null> {
-    return InstanceManager.importInstance(zipPath, customName);
+    const meta = await InstanceManager.importInstance(zipPath, customName);
+    if (meta) {
+      new AchievementEngine().trackProgress('vpack_import', 1);
+    }
+    return meta;
+  }
+
+  public static async validateVPack(zipPath: string): Promise<VPackValidationResult> {
+    return VPackManager.validateVPack(zipPath);
+  }
+
+  public static async listRepositoryVPacks(): Promise<any[]> {
+    return VPackManager.scanVPackRepository();
+  }
+
+  public static async purchaseVPack(zipPath: string, price: number): Promise<{ success: boolean; instance?: InstanceMetadata; error?: string }> {
+    const store = PlayerDataStore.getInstance();
+    if (price > 0) {
+      const tx = store.addTransaction('spend', price, `Purchased VPack: ${path.basename(zipPath)}`);
+      if (!tx.success) {
+        return { success: false, error: tx.error || 'Insufficient Voxel Points' };
+      }
+    }
+    const meta = await InstanceManager.importInstance(zipPath);
+    if (!meta) {
+      if (price > 0) store.addTransaction('earn', price, 'Refund for failed VPack installation');
+      return { success: false, error: 'Failed to extract and initialize VPack.' };
+    }
+    new AchievementEngine(store).trackProgress('vpack_import', 1);
+    return { success: true, instance: meta };
+  }
+
+  // Player & Economy
+  public static async getPlayerProfile(): Promise<PlayerProfile> {
+    return PlayerDataStore.getInstance().getProfile();
+  }
+
+  public static async updatePlayerProfile(updates: Partial<PlayerProfile>): Promise<PlayerProfile> {
+    return PlayerDataStore.getInstance().updateProfile(updates);
+  }
+
+  public static async getWallet(): Promise<WalletState> {
+    return PlayerDataStore.getInstance().getWallet();
+  }
+
+  public static async getWalletTransactions(): Promise<WalletTransaction[]> {
+    return PlayerDataStore.getInstance().getTransactions();
+  }
+
+  public static async getAchievements(): Promise<{ definitions: AchievementDefinition[]; progress: AchievementProgress[] }> {
+    const engine = new AchievementEngine();
+    return {
+      definitions: engine.getDefinitions(),
+      progress: engine.getProgressList()
+    };
+  }
+
+  public static async getCosmetics(): Promise<{
+    catalogue: CosmeticDefinition[];
+    owned: CosmeticOwnership[];
+    effects: CosmeticEffect[];
+  }> {
+    const store = PlayerDataStore.getInstance();
+    return {
+      catalogue: CosmeticCatalogue.getAll(),
+      owned: store.getOwnedCosmetics(),
+      effects: CosmeticCatalogue.getEffects()
+    };
+  }
+
+  public static async purchaseCosmetic(cosmeticId: string): Promise<{ success: boolean; error?: string; wallet?: WalletState }> {
+    const def = CosmeticCatalogue.getById(cosmeticId);
+    if (!def) return { success: false, error: 'Cosmetic does not exist.' };
+    const store = PlayerDataStore.getInstance();
+    if (store.isCosmeticOwned(cosmeticId)) {
+      return { success: false, error: 'You already own this cosmetic.' };
+    }
+    if (def.price === null || def.price < 0) {
+      return { success: false, error: 'This item cannot be purchased with VP.' };
+    }
+
+    const tx = store.addTransaction('spend', def.price, `Purchased: ${def.name}`, def.id);
+    if (!tx.success) {
+      return { success: false, error: tx.error || 'Failed transaction.' };
+    }
+
+    store.grantCosmetic(cosmeticId, 'purchase');
+    new AchievementEngine(store).trackProgress('first_purchase', 1);
+    new AchievementEngine(store).trackProgress('fashion_icon', store.getOwnedCosmetics().length, true);
+
+    return { success: true, wallet: tx.wallet };
+  }
+
+  public static async equipCosmetic(cosmeticId: string | null, effectId: string | null): Promise<PlayerProfile> {
+    const store = PlayerDataStore.getInstance();
+    if (cosmeticId && !store.isCosmeticOwned(cosmeticId)) {
+      throw new Error('Cannot equip cosmetic that is not owned.');
+    }
+    return store.updateProfile({
+      equippedCosmeticId: cosmeticId,
+      equippedEffectId: effectId
+    });
+  }
+
+  // Arcade
+  public static async getStockerData(): Promise<StockerSaveData> {
+    return ArcadeStore.getInstance().getStockerData();
+  }
+
+  public static async recordStockerRun(run: StockerRunResult): Promise<ArcadeRewardResult> {
+    return ArcadeStore.getInstance().recordStockerRun(run);
+  }
+
+  public static async getCookieData(): Promise<CookieClickerSaveData> {
+    return ArcadeStore.getInstance().getCookieData();
+  }
+
+  public static async saveCookieData(data: CookieClickerSaveData): Promise<ArcadeRewardResult> {
+    return ArcadeStore.getInstance().saveCookieData(data);
   }
 
   // Native Dialogs
@@ -227,7 +362,7 @@ export class CommandManager {
     const result = await dialog.showOpenDialog(BrowserWindow.getFocusedWindow()!, {
       properties: ['openFile'],
       filters: filters || [
-        { name: 'Supported Files (*.jar, *.zip)', extensions: ['jar', 'zip', 'voxelplus'] },
+        { name: 'Supported Files (*.jar, *.zip, *.voxelplus)', extensions: ['jar', 'zip', 'voxelplus'] },
         { name: 'All Files', extensions: ['*'] }
       ]
     });
@@ -244,50 +379,5 @@ export class CommandManager {
     });
     if (result.canceled || !result.filePath) return null;
     return result.filePath;
-  }
-
-  // Skins
-  public static async listSkins(): Promise<SkinMetadata[]> {
-    return SkinManager.getAllSkins();
-  }
-
-  public static async getSkin(skinId: string): Promise<SkinMetadata | null> {
-    return SkinManager.getSkin(skinId);
-  }
-
-  public static async getActiveSkin(): Promise<SkinMetadata | null> {
-    return SkinManager.getActiveSkin();
-  }
-
-  public static async importSkin(filePath: string, customName?: string): Promise<{ success: boolean; skin?: SkinMetadata; error?: string }> {
-    return SkinManager.importSkin(filePath, customName);
-  }
-
-  public static async downloadSkin(username: string, customName?: string): Promise<{ success: boolean; skin?: SkinMetadata; error?: string }> {
-    return SkinManager.downloadSkin(username, customName);
-  }
-
-  public static async searchPlayer(username: string): Promise<{ success: boolean; result?: SkinSearchResult; error?: string }> {
-    return SkinManager.searchPlayer(username);
-  }
-
-  public static async setActiveSkin(skinId: string): Promise<{ success: boolean; error?: string }> {
-    return SkinManager.setActiveSkin(skinId);
-  }
-
-  public static async renameSkin(skinId: string, newName: string): Promise<{ success: boolean; error?: string }> {
-    return SkinManager.renameSkin(skinId, newName);
-  }
-
-  public static async deleteSkin(skinId: string): Promise<{ success: boolean; error?: string }> {
-    return SkinManager.deleteSkin(skinId);
-  }
-
-  public static async validateSkin(filePath: string): Promise<SkinValidationResult> {
-    return SkinManager.validateSkin(filePath);
-  }
-
-  public static async clearSkins(): Promise<void> {
-    SkinManager.clearLibrary();
   }
 }

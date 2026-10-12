@@ -63,22 +63,32 @@ export class InstanceCard {
       <div class="card-info-col">
         <div class="card-title-row">
           <h3 class="card-instance-name">${this.escapeHtml(instance.name)}</h3>
+          ${instance.shareSource ? `
+            <span style="font-size: 0.72rem; padding: 2px 8px; border-radius: 999px; background: rgba(88, 101, 242, 0.18); color: #818cf8; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;">
+              <span style="opacity: 0.7;">VIA</span> ${this.escapeHtml(instance.shareSource)}
+            </span>
+          ` : ''}
           <button class="btn-fav" title="${instance.isFavorite ? 'Unfavorite' : 'Favorite'}">
             ${instance.isFavorite ? '★' : '☆'}
           </button>
         </div>
+        ${instance.description ? `
+          <div style="font-size: 0.78rem; color: var(--text-secondary); margin: 2px 0 6px 0; line-height: 1.3;">
+            ${this.escapeHtml(instance.description)}
+          </div>
+        ` : ''}
 
         <div class="card-meta-row">
           <div class="card-meta-chip">
-            <span class="meta-icon">⛏</span>
+            <img src="${getItemDataUrl('minecraft:grass_block')}" style="width: 14px; height: 14px; image-rendering: pixelated;" />
             <span>Minecraft ${instance.minecraft.version}</span>
           </div>
           <div class="card-meta-chip">
-            <span class="meta-icon">☕</span>
+            <img src="${getItemDataUrl('minecraft:redstone')}" style="width: 14px; height: 14px; image-rendering: pixelated;" />
             <span>Java ${this.javaVersionForMc(instance.minecraft.version)}</span>
           </div>
           <div class="card-meta-chip">
-            <span class="meta-icon">⚡</span>
+            <img src="${getItemDataUrl('minecraft:iron_ingot')}" style="width: 14px; height: 14px; image-rendering: pixelated;" />
             <span>${(instance.runtime.memoryMb || 4096) / 1024} GB RAM</span>
           </div>
           <div class="status-pill ${instance.status.toLowerCase()}">
@@ -88,17 +98,20 @@ export class InstanceCard {
         </div>
 
         <div class="card-content-row">
-          <div class="content-pill mods">
-            <span>⬡</span> ${instance.modCount || 0} Mods
+          <div class="content-pill mods" style="display: inline-flex; align-items: center; gap: 6px;">
+            <img src="${getItemDataUrl('minecraft:crafting_table')}" style="width: 13px; height: 13px; image-rendering: pixelated;" />
+            <span>${instance.modCount || 0} Mods</span>
           </div>
-          <div class="content-pill packs">
-            <span>🎨</span> ${instance.resourcePackCount || 0} Packs
+          <div class="content-pill packs" style="display: inline-flex; align-items: center; gap: 6px;">
+            <img src="${getItemDataUrl('minecraft:enchanted_book')}" style="width: 13px; height: 13px; image-rendering: pixelated;" />
+            <span>${instance.resourcePackCount || 0} Packs</span>
           </div>
-          <div class="content-pill shaders">
-            <span>✦</span> ${instance.shaderCount || 0} Shaders
+          <div class="content-pill shaders" style="display: inline-flex; align-items: center; gap: 6px;">
+            <img src="${getItemDataUrl('minecraft:spyglass')}" style="width: 13px; height: 13px; image-rendering: pixelated;" />
+            <span>${instance.shaderCount || 0} Shaders</span>
           </div>
           <span class="card-last-played">
-            <span>🕐</span> ${lastPlayedText}
+            ${lastPlayedText}
           </span>
         </div>
 

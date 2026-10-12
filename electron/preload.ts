@@ -15,10 +15,20 @@ import {
   ProcessStatusEvent,
   ResourcePackInfo,
   ShaderPackInfo,
-  SkinMetadata,
-  SkinSearchResult,
-  SkinValidationResult,
-  SystemScanResult
+  SystemScanResult,
+  PlayerProfile,
+  WalletState,
+  WalletTransaction,
+  AchievementDefinition,
+  AchievementProgress,
+  CosmeticDefinition,
+  CosmeticEffect,
+  CosmeticOwnership,
+  VPackValidationResult,
+  StockerRunResult,
+  StockerSaveData,
+  CookieClickerSaveData,
+  ArcadeRewardResult
 } from './types';
 
 const api = {
@@ -43,7 +53,7 @@ const api = {
   duplicateInstance: (id: string): Promise<InstanceMetadata | null> => ipcRenderer.invoke('instance:duplicate', id),
   deleteInstance: (id: string): Promise<boolean> => ipcRenderer.invoke('instance:delete', id),
   openInstanceFolder: (id: string): Promise<boolean> => ipcRenderer.invoke('instance:openFolder', id),
-  setInstanceSkin: (id: string, skinId: string | null): Promise<InstanceMetadata | null> => ipcRenderer.invoke('instance:setSkin', id, skinId),
+
 
   // Process Controls (PLAY / STOP)
   launchInstance: (id: string): Promise<LaunchResult> => ipcRenderer.invoke('process:launch', id),
@@ -71,27 +81,34 @@ const api = {
   clearLogs: (instanceId?: string): Promise<void> => ipcRenderer.invoke('logs:clear', instanceId),
   exportLogs: (instanceId?: string): Promise<string> => ipcRenderer.invoke('logs:export', instanceId),
 
-  // Import / Export
+  // Import / Export & VPack
   exportInstance: (instanceId: string, targetZipPath: string): Promise<boolean> => ipcRenderer.invoke('instance:export', instanceId, targetZipPath),
   importInstance: (zipPath: string, customName?: string): Promise<InstanceMetadata | null> => ipcRenderer.invoke('instance:import', zipPath, customName),
+  validateVPack: (zipPath: string): Promise<VPackValidationResult> => ipcRenderer.invoke('vpack:validate', zipPath),
+  listRepositoryVPacks: (): Promise<any[]> => ipcRenderer.invoke('vpack:listRepository'),
+  purchaseVPack: (zipPath: string, price: number): Promise<{ success: boolean; instance?: InstanceMetadata; error?: string }> => ipcRenderer.invoke('vpack:purchase', zipPath, price),
+
+  // Player & Economy
+  getPlayerProfile: (): Promise<PlayerProfile> => ipcRenderer.invoke('player:getProfile'),
+  updatePlayerProfile: (updates: Partial<PlayerProfile>): Promise<PlayerProfile> => ipcRenderer.invoke('player:updateProfile', updates),
+  getWallet: (): Promise<WalletState> => ipcRenderer.invoke('player:getWallet'),
+  getWalletTransactions: (): Promise<WalletTransaction[]> => ipcRenderer.invoke('player:getTransactions'),
+  getAchievements: (): Promise<{ definitions: AchievementDefinition[]; progress: AchievementProgress[] }> => ipcRenderer.invoke('player:getAchievements'),
+  getCosmetics: (): Promise<{ catalogue: CosmeticDefinition[]; owned: CosmeticOwnership[]; effects: CosmeticEffect[] }> => ipcRenderer.invoke('player:getCosmetics'),
+  purchaseCosmetic: (cosmeticId: string): Promise<{ success: boolean; error?: string; wallet?: WalletState }> => ipcRenderer.invoke('player:purchaseCosmetic', cosmeticId),
+  equipCosmetic: (cosmeticId: string | null, effectId: string | null): Promise<PlayerProfile> => ipcRenderer.invoke('player:equipCosmetic', cosmeticId, effectId),
+
+  // Arcade
+  getStockerData: (): Promise<StockerSaveData> => ipcRenderer.invoke('arcade:getStockerData'),
+  recordStockerRun: (run: StockerRunResult): Promise<ArcadeRewardResult> => ipcRenderer.invoke('arcade:recordStockerRun', run),
+  getCookieData: (): Promise<CookieClickerSaveData> => ipcRenderer.invoke('arcade:getCookieData'),
+  saveCookieData: (data: CookieClickerSaveData): Promise<ArcadeRewardResult> => ipcRenderer.invoke('arcade:saveCookieData', data),
 
   // Native Dialogs
   selectFolderDialog: (): Promise<string | null> => ipcRenderer.invoke('dialog:selectFolder'),
   selectFileDialog: (filters?: any): Promise<string | null> => ipcRenderer.invoke('dialog:selectFile', filters),
   selectSaveFileDialog: (defaultName: string, filters?: any): Promise<string | null> => ipcRenderer.invoke('dialog:selectSaveFile', defaultName, filters),
 
-  // Skins
-  listSkins: (): Promise<SkinMetadata[]> => ipcRenderer.invoke('skins:list'),
-  getSkin: (skinId: string): Promise<SkinMetadata | null> => ipcRenderer.invoke('skins:get', skinId),
-  getActiveSkin: (): Promise<SkinMetadata | null> => ipcRenderer.invoke('skins:getActive'),
-  importSkin: (filePath: string, customName?: string): Promise<{ success: boolean; skin?: SkinMetadata; error?: string }> => ipcRenderer.invoke('skins:import', filePath, customName),
-  downloadSkin: (username: string, customName?: string): Promise<{ success: boolean; skin?: SkinMetadata; error?: string }> => ipcRenderer.invoke('skins:download', username, customName),
-  searchPlayer: (username: string): Promise<{ success: boolean; result?: SkinSearchResult; error?: string }> => ipcRenderer.invoke('skins:search', username),
-  setActiveSkin: (skinId: string): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('skins:setActive', skinId),
-  renameSkin: (skinId: string, newName: string): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('skins:rename', skinId, newName),
-  deleteSkin: (skinId: string): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('skins:delete', skinId),
-  validateSkin: (filePath: string): Promise<SkinValidationResult> => ipcRenderer.invoke('skins:validate', filePath),
-  clearSkins: (): Promise<void> => ipcRenderer.invoke('skins:clear'),
 
   // Real-time Event Subscriptions
   onLog: (callback: (entry: LogEntry) => void) => {

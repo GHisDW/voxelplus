@@ -4,6 +4,7 @@ import { InstanceCard } from '../components/InstanceCard';
 import { InstanceDetails } from '../components/InstanceDetails';
 import { HeaderFilters } from '../components/Header';
 import { CreateInstanceModal } from '../components/CreateInstanceModal';
+import { getItemDataUrl } from '../assets/items';
 
 export interface InstancesPageEvents {
   onOpenModrinthForInstance: (instance: InstanceMetadata) => void;
@@ -116,7 +117,9 @@ export class InstancesPage {
           border-radius: var(--radius-xl);
           padding: 40px;
         ">
-          <div style="font-size: 3rem; margin-bottom: 16px;">🌱</div>
+          <div style="margin-bottom: 16px;">
+            <img src="${getItemDataUrl('minecraft:grass_block')}" style="width: 56px; height: 56px; image-rendering: pixelated;" />
+          </div>
           <h3 style="font-size: 1.4rem; font-weight: 800; color: var(--text-primary); margin-bottom: 8px;">
             No Instances Found
           </h3>

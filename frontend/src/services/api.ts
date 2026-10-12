@@ -14,10 +14,20 @@ import {
   ProcessStatusEvent,
   ResourcePackInfo,
   ShaderPackInfo,
-  SkinMetadata,
-  SkinSearchResult,
-  SkinValidationResult,
-  SystemScanResult
+  SystemScanResult,
+  PlayerProfile,
+  WalletState,
+  WalletTransaction,
+  AchievementDefinition,
+  AchievementProgress,
+  CosmeticDefinition,
+  CosmeticEffect,
+  CosmeticOwnership,
+  VPackValidationResult,
+  StockerRunResult,
+  StockerSaveData,
+  CookieClickerSaveData,
+  ArcadeRewardResult
 } from '../../../electron/types';
 
 // Access the contextBridge exposed API
@@ -45,7 +55,6 @@ export const api = {
   duplicateInstance: (id: string): Promise<InstanceMetadata | null> => electronApi.duplicateInstance(id),
   deleteInstance: (id: string): Promise<boolean> => electronApi.deleteInstance(id),
   openInstanceFolder: (id: string): Promise<boolean> => electronApi.openInstanceFolder(id),
-  setInstanceSkin: (id: string, skinId: string | null): Promise<InstanceMetadata | null> => electronApi.setInstanceSkin(id, skinId),
 
   // Process Controls (PLAY / STOP)
   launchInstance: (id: string): Promise<LaunchResult> => electronApi.launchInstance(id),
@@ -73,30 +82,37 @@ export const api = {
   clearLogs: (instanceId?: string): Promise<void> => electronApi.clearLogs(instanceId),
   exportLogs: (instanceId?: string): Promise<string> => electronApi.exportLogs(instanceId),
 
-  // Import / Export
+  // Import / Export & VPack
   exportInstance: (instanceId: string, targetZipPath: string): Promise<boolean> => electronApi.exportInstance(instanceId, targetZipPath),
   importInstance: (zipPath: string, customName?: string): Promise<InstanceMetadata | null> => electronApi.importInstance(zipPath, customName),
+  validateVPack: (zipPath: string): Promise<VPackValidationResult> => electronApi.validateVPack(zipPath),
+  listRepositoryVPacks: (): Promise<any[]> => electronApi.listRepositoryVPacks(),
+  purchaseVPack: (zipPath: string, price: number): Promise<{ success: boolean; instance?: InstanceMetadata; error?: string }> => electronApi.purchaseVPack(zipPath, price),
+
+  // Player & Economy
+  getPlayerProfile: (): Promise<PlayerProfile> => electronApi.getPlayerProfile(),
+  updatePlayerProfile: (updates: Partial<PlayerProfile>): Promise<PlayerProfile> => electronApi.updatePlayerProfile(updates),
+  getWallet: (): Promise<WalletState> => electronApi.getWallet(),
+  getWalletTransactions: (): Promise<WalletTransaction[]> => electronApi.getWalletTransactions(),
+  getAchievements: (): Promise<{ definitions: AchievementDefinition[]; progress: AchievementProgress[] }> => electronApi.getAchievements(),
+  getCosmetics: (): Promise<{ catalogue: CosmeticDefinition[]; owned: CosmeticOwnership[]; effects: CosmeticEffect[] }> => electronApi.getCosmetics(),
+  purchaseCosmetic: (cosmeticId: string): Promise<{ success: boolean; error?: string; wallet?: WalletState }> => electronApi.purchaseCosmetic(cosmeticId),
+  equipCosmetic: (cosmeticId: string | null, effectId: string | null): Promise<PlayerProfile> => electronApi.equipCosmetic(cosmeticId, effectId),
+
+  // Arcade
+  getStockerData: (): Promise<StockerSaveData> => electronApi.getStockerData(),
+  recordStockerRun: (run: StockerRunResult): Promise<ArcadeRewardResult> => electronApi.recordStockerRun(run),
+  getCookieData: (): Promise<CookieClickerSaveData> => electronApi.getCookieData(),
+  saveCookieData: (data: CookieClickerSaveData): Promise<ArcadeRewardResult> => electronApi.saveCookieData(data),
 
   // Dialogs
   selectFolderDialog: (): Promise<string | null> => electronApi.selectFolderDialog(),
   selectFileDialog: (filters?: any): Promise<string | null> => electronApi.selectFileDialog(filters),
   selectSaveFileDialog: (defaultName: string, filters?: any): Promise<string | null> => electronApi.selectSaveFileDialog(defaultName, filters),
 
-  // Skins
-  listSkins: (): Promise<SkinMetadata[]> => electronApi.listSkins(),
-  getSkin: (skinId: string): Promise<SkinMetadata | null> => electronApi.getSkin(skinId),
-  getActiveSkin: (): Promise<SkinMetadata | null> => electronApi.getActiveSkin(),
-  importSkin: (filePath: string, customName?: string): Promise<{ success: boolean; skin?: SkinMetadata; error?: string }> => electronApi.importSkin(filePath, customName),
-  downloadSkin: (username: string, customName?: string): Promise<{ success: boolean; skin?: SkinMetadata; error?: string }> => electronApi.downloadSkin(username, customName),
-  searchPlayer: (username: string): Promise<{ success: boolean; result?: SkinSearchResult; error?: string }> => electronApi.searchPlayer(username),
-  setActiveSkin: (skinId: string): Promise<{ success: boolean; error?: string }> => electronApi.setActiveSkin(skinId),
-  renameSkin: (skinId: string, newName: string): Promise<{ success: boolean; error?: string }> => electronApi.renameSkin(skinId, newName),
-  deleteSkin: (skinId: string): Promise<{ success: boolean; error?: string }> => electronApi.deleteSkin(skinId),
-  validateSkin: (filePath: string): Promise<SkinValidationResult> => electronApi.validateSkin(filePath),
-  clearSkins: (): Promise<void> => electronApi.clearSkins(),
-
   // Real-time Event Subscriptions
   onLog: (callback: (entry: LogEntry) => void) => electronApi.onLog(callback),
   onProcessStatus: (callback: (event: ProcessStatusEvent) => void) => electronApi.onProcessStatus(callback),
   onDownloadProgress: (callback: (event: DownloadProgressEvent) => void) => electronApi.onDownloadProgress(callback)
 };
+

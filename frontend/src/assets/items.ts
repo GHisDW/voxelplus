@@ -297,6 +297,30 @@ export const MINECRAFT_ITEMS: MinecraftItemDef[] = [
     "name": "Copper Ingot",
     "category": "items",
     "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAAG1BMVEUAAAD7w7b8mYLnfFbBWjacTjGcRSmKQSltNCFALkIDAAAAAXRSTlMAQObYZgAAAF9JREFUeNpjwAHSIBRbmksBmJvsGmIO4jqbhDqbFDAkORu7hhgrmTMkK5u4GCm5RjAkOxkrKbuEAxkhQq4hruUeDMmhKqFAgQYGNlfVENeOBgYGhlRTjw6IuRkN2O0FAIf/FK7CRf/vAAAAAElFTkSuQmCC"
+  },
+  {
+    "id": "minecraft:cookie",
+    "name": "Cookie",
+    "category": "items",
+    "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAAMFBMVEUAAABjWltEQkF5bm6YkJDX1ta+vb3e3d3V1dV0bW1samqQjo6Mioq7ubmPhYVsYV/U6M24AAAAAXRSTlMAQObYZgAAAF9JREFUeNpjYEAFTD49PQwQYPr+/XsGBgYjVze3BBiDhYFv3tz5k2AMRk5gLgMYM8zdtQvKYAJyjAwYQIBfW1o6VBEEYGBgSksrS9QCczj4U0s9fBiAPM2e2lIfoBwAwzUVI0/5eJ8AAAAASUVORK5CYII="
+  },
+  {
+    "id": "minecraft:iron_pickaxe",
+    "name": "Iron Pickaxe",
+    "category": "tools",
+    "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAAHlBMVEUAAAC3t7evr69AQEBCQkJwcHB4eHh/f39/kJC3t7fc7t6yAAAAAXRSTlMAQObYZgAAAEVJREFUeNpjwArKywvANLuQsXoqmFU509iDAQL27AFhB05hBhPAjJSGyRMgAgwTJ0AEGDihAlAtUEYHms0AOw8PQ5cytswAAAA15A0vU3Dk8QAAAABJRU5ErkJggg=="
+  },
+  {
+    "id": "minecraft:golden_pickaxe",
+    "name": "Golden Pickaxe",
+    "category": "tools",
+    "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAAHlBMVEUAAAD///9aWlpjY2NtbW1zc3N5eXmLi4uWlpa7u7s4zJzBAAAAAXRSTlMAQObYZgAAAEZJREFUeNpjwArKywvANLuQsXoqmFU509iDAQKSLCE0W4TRBDAjpWHyBIgAw+QJEAGGSRMgAgwTJ0AEGDihAlAtUEYHms0AO88PQ5cytswAAAAASUVORK5CYII="
+  },
+  {
+    "id": "minecraft:netherite_pickaxe",
+    "name": "Netherite Pickaxe",
+    "category": "tools",
+    "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAAHlBMVEUAAAAzMzM7Ozs9PT1HR0dTU1NWVlZfX19zc3N5eXn09PRSAAAAAXRSTlMAQObYZgAAAEZJREFUeNpjwArKywvANLuQsXoqmFU509iDAQKSLCE0W4TRBDAjpWHyBIgAw+QJEAGGSRMgAgwTJ0AEGDihAlAtUEYHms0AO88PQ5cytswAAAAASUVORK5CYII="
   }
 ];
 

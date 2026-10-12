@@ -1,8 +1,26 @@
-export type PageId = 'instances' | 'content' | 'skins' | 'logs' | 'settings';
+import { getItemDataUrl } from '../assets/items';
+
+export type PageId = 'instances' | 'content' | 'player' | 'shop' | 'arcade' | 'logs' | 'settings';
 
 export interface SidebarEvents {
   onNavigate: (page: PageId) => void;
 }
+
+interface NavItem {
+  id: PageId;
+  label: string;
+  itemTextureId: string;
+}
+
+const NAV_ITEMS: NavItem[] = [
+  { id: 'instances', label: 'Instances', itemTextureId: 'minecraft:grass_block' },
+  { id: 'content',   label: 'Content',   itemTextureId: 'minecraft:enchanted_book' },
+  { id: 'player',    label: 'Player',    itemTextureId: 'minecraft:diamond' },
+  { id: 'shop',      label: 'Shop',      itemTextureId: 'minecraft:emerald' },
+  { id: 'arcade',    label: 'Arcade',    itemTextureId: 'minecraft:cookie' },
+  { id: 'logs',      label: 'Logs',      itemTextureId: 'minecraft:command_block' },
+  { id: 'settings',  label: 'Settings',  itemTextureId: 'minecraft:redstone' }
+];
 
 export class Sidebar {
   private activePage: PageId = 'instances';
@@ -18,9 +36,20 @@ export class Sidebar {
   public render(activePage: PageId): HTMLElement {
     this.activePage = activePage;
 
+    const navButtons = NAV_ITEMS.map(item => {
+      const isActive = this.activePage === item.id;
+      const texture = getItemDataUrl(item.itemTextureId);
+      return `
+        <button class="nav-item ${isActive ? 'active' : ''}" data-page="${item.id}" style="${this.navItemStyle(isActive)}" aria-current="${isActive ? 'page' : 'false'}" title="${item.label}">
+          <img src="${texture}" alt="${item.label}" style="width: 20px; height: 20px; image-rendering: pixelated; object-fit: contain; flex-shrink: 0;" />
+          <span style="font-weight: 600;">${item.label}</span>
+        </button>
+      `;
+    }).join('');
+
     this.container.innerHTML = `
       <!-- Brand Logo -->
-      <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 32px; padding: 4px 6px;">
+      <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 24px; padding: 4px 6px;">
         <div style="
           width: 36px;
           height: 36px;
@@ -42,31 +71,8 @@ export class Sidebar {
       </div>
 
       <!-- Navigation Links -->
-      <nav style="display: flex; flex-direction: column; gap: 6px; flex: 1;">
-        <button class="nav-item ${this.activePage === 'instances' ? 'active' : ''}" data-page="instances" style="${this.navItemStyle(this.activePage === 'instances')}">
-          <span style="font-size: 1.2rem;">⌂</span>
-          <span>Instances</span>
-        </button>
-
-        <button class="nav-item ${this.activePage === 'content' ? 'active' : ''}" data-page="content" style="${this.navItemStyle(this.activePage === 'content')}">
-          <span style="font-size: 1.2rem;">◈</span>
-          <span>Content</span>
-        </button>
-
-        <button class="nav-item ${this.activePage === 'skins' ? 'active' : ''}" data-page="skins" style="${this.navItemStyle(this.activePage === 'skins')}">
-          <span style="font-size: 1.2rem;">👕</span>
-          <span>Skins</span>
-        </button>
-
-        <button class="nav-item ${this.activePage === 'logs' ? 'active' : ''}" data-page="logs" style="${this.navItemStyle(this.activePage === 'logs')}">
-          <span style="font-size: 1.2rem;">▣</span>
-          <span>Logs</span>
-        </button>
-
-        <button class="nav-item ${this.activePage === 'settings' ? 'active' : ''}" data-page="settings" style="${this.navItemStyle(this.activePage === 'settings')}">
-          <span style="font-size: 1.2rem;">⚙</span>
-          <span>Settings</span>
-        </button>
+      <nav style="display: flex; flex-direction: column; gap: 4px; flex: 1;">
+        ${navButtons}
       </nav>
 
       <!-- Bottom Engine Status -->
@@ -102,10 +108,10 @@ export class Sidebar {
       display: flex;
       align-items: center;
       gap: 12px;
-      padding: 11px 16px;
+      padding: 10px 16px;
       border-radius: var(--radius-md);
       font-family: var(--font-main);
-      font-size: 0.95rem;
+      font-size: 0.92rem;
       font-weight: 600;
       color: ${isActive ? '#ffffff' : 'var(--text-secondary)'};
       background: ${isActive ? 'var(--accent-gradient)' : 'transparent'};

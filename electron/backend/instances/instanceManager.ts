@@ -10,6 +10,7 @@ import { ConfigStore } from '../storage/configStore';
 import { PathManager } from '../storage/paths';
 import { ProcessManager } from '../processes/processManager';
 import { VoxelError } from '../diagnostics';
+import { VPackManager } from '../vpack/vpackManager';
 
 export class InstanceManager {
   public static async listInstances(): Promise<InstanceMetadata[]> {
@@ -90,14 +91,6 @@ export class InstanceManager {
     return updated;
   }
 
-  public static async setInstanceSkin(instanceId: string, skinId: string | null): Promise<InstanceMetadata | null> {
-    return this.updateInstance(instanceId, {
-      appearance: {
-        ...(await this.getInstance(instanceId))?.appearance || { artwork: null, item: 'minecraft:diamond' },
-        skinId: skinId
-      }
-    });
-  }
 
   public static async duplicateInstance(instanceId: string): Promise<InstanceMetadata | null> {
     const sourceDir = await this.getInstanceDir(instanceId);
@@ -175,39 +168,11 @@ export class InstanceManager {
     if (!instanceDir) return false;
 
     try {
-      const zip = new AdmZip();
-      
-      // Include metadata, mods, resourcepacks, shaderpacks, config, saves, build scripts
-      const allowedRoots = [
-        'voxel-instance.json',
-        'build.gradle',
-        'gradle.properties',
-        'settings.gradle',
-        'gradlew.bat',
-        'gradlew',
-        'gradle',
-        'src',
-        'mods',
-        'resourcepacks',
-        'shaderpacks',
-        'config',
-        'saves'
-      ];
+      const meta = InstanceMetadataStore.readMetadata(instanceDir);
+      if (!meta) return false;
 
-      for (const item of allowedRoots) {
-        const itemPath = path.join(instanceDir, item);
-        if (fs.existsSync(itemPath)) {
-          const stat = fs.statSync(itemPath);
-          if (stat.isDirectory()) {
-            zip.addLocalFolder(itemPath, item);
-          } else {
-            zip.addLocalFile(itemPath);
-          }
-        }
-      }
-
-      zip.writeZip(exportDestinationZip);
-      return true;
+      const res = VPackManager.exportVPack(instanceDir, meta, exportDestinationZip);
+      return res.success;
     } catch (e) {
       new VoxelError({
         title: 'Instance Export Failed',
@@ -240,9 +205,7 @@ export class InstanceManager {
     }
 
     try {
-      const zip = new AdmZip(importZipPath);
       const baseDir = ConfigStore.getInstanceDirectory();
-
       const suggestedName = customName || path.basename(importZipPath, path.extname(importZipPath));
       const folderName = PathManager.sanitizeFilename(suggestedName);
       let targetDir = path.join(baseDir, folderName);
@@ -253,11 +216,21 @@ export class InstanceManager {
       }
 
       PathManager.ensureDirectory(targetDir);
-      zip.extractAllTo(targetDir, true);
 
-      // Re-read or synthesize metadata
+      const extractResult = VPackManager.extractVPack(importZipPath, targetDir);
+      if (!extractResult.success) {
+        throw new Error(extractResult.error || 'Failed to extract package.');
+      }
+
+      // Re-read or synthesize metadata from extracted manifest
       let meta = InstanceMetadataStore.readMetadata(targetDir);
-      if (!meta) {
+      if (!meta && extractResult.manifest) {
+        meta = InstanceMetadataStore.createDefaultMetadata({
+          name: customName || extractResult.manifest.name || suggestedName,
+          minecraftVersion: extractResult.manifest.minecraft?.version || '1.21.1',
+          loaderType: (extractResult.manifest.loader?.type as any) || 'fabric'
+        });
+      } else if (!meta) {
         meta = InstanceMetadataStore.createDefaultMetadata({
           name: suggestedName,
           minecraftVersion: '1.21.1',

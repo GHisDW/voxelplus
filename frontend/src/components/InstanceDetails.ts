@@ -1,9 +1,8 @@
-import { InstanceMetadata, SkinMetadata } from '../../../electron/types';
+import { InstanceMetadata } from '../../../electron/types';
 import { api } from '../services/api';
 import { ARTWORK_PRESETS, getArtworkStyle } from '../assets/artworks';
 import { getItemDataUrl, getItemDefinition } from '../assets/items';
 import { ItemPickerModal } from './ItemPickerModal';
-import { SkinManagerModal } from './SkinManagerModal';
 import { AddContentModal } from './AddContentModal';
 import { ConfirmDialog } from './ConfirmDialog';
 import { NotificationToast } from './NotificationToast';
@@ -195,16 +194,6 @@ export class InstanceDetails {
                 </span>
               </button>
             </div>
-
-            <div class="form-group">
-              <label class="form-label">Character Skin</label>
-              <button type="button" class="btn btn-secondary" id="btn-edit-skin" style="width: 100%; display: flex; justify-content: flex-start; gap: 10px;">
-                <span style="font-size: 1.2rem;">👕</span>
-                <span id="edit-skin-text" style="font-size: 0.88rem; font-weight: 600;">
-                  ${this.instance.appearance.skinId ? 'Custom Skin' : 'Default Skin'}
-                </span>
-              </button>
-            </div>
           </div>
         </div>
 
@@ -275,33 +264,7 @@ export class InstanceDetails {
       }
     };
 
-    // Hook skin change button
-    const skinBtn = div.querySelector('#btn-edit-skin') as HTMLElement;
-    skinBtn.onclick = async () => {
-      const skins = await api.listSkins();
-      if (skins.length === 0) {
-        NotificationToast.show('No skins available. Please import or download a skin first.', 'error');
-        return;
-      }
 
-      // Create a simple skin selector
-      const selectedSkinId = await this.showSkinSelector(skins);
-      if (selectedSkinId) {
-        await api.setInstanceSkin(this.instance.id, selectedSkinId);
-        this.instance.appearance.skinId = selectedSkinId;
-        
-        const selectedSkin = skins.find(s => s.id === selectedSkinId);
-        (div.querySelector('#edit-skin-text') as HTMLElement).textContent = selectedSkin ? selectedSkin.name : 'Custom Skin';
-        
-        NotificationToast.show(`Instance skin set to "${selectedSkin?.name}"`, 'success');
-      } else if (selectedSkinId === null) {
-        // Remove skin
-        await api.setInstanceSkin(this.instance.id, null);
-        this.instance.appearance.skinId = null;
-        (div.querySelector('#edit-skin-text') as HTMLElement).textContent = 'Default Skin';
-        NotificationToast.show('Skin removed from instance', 'success');
-      }
-    };
 
     return div;
   }
@@ -603,77 +566,7 @@ export class InstanceDetails {
     return div;
   }
 
-  private async showSkinSelector(skins: SkinMetadata[]): Promise<string | null> {
-    return new Promise((resolve) => {
-      const modal = document.createElement('div');
-      modal.className = 'modal-overlay';
-      modal.innerHTML = `
-        <div class="modal modal-lg animate-fade-in-up">
-          <div class="modal-header">
-            <h2>Select Skin</h2>
-            <button class="btn-close" title="Close">×</button>
-          </div>
-          
-          <div class="modal-body">
-            <div class="skin-grid" style="max-height: 400px; overflow-y: auto;">
-              ${skins.map(skin => `
-                <div class="skin-card ${this.instance.appearance.skinId === skin.id ? 'active' : ''}" data-skin-id="${skin.id}">
-                  <div class="skin-preview">
-                    <img src="${skin.thumbnail}" alt="${skin.name}" class="skin-image" />
-                    ${this.instance.appearance.skinId === skin.id ? '<div class="active-badge">Current</div>' : ''}
-                  </div>
-                  
-                  <div class="skin-info">
-                    <div class="skin-name-row">
-                      <span class="skin-name">${this.escapeHtml(skin.name)}</span>
-                      <span class="skin-model">${skin.model === 'alex' ? '👩' : '👨'}</span>
-                    </div>
-                    
-                    <div class="skin-meta">
-                      <span class="skin-source">${skin.source === 'download' ? '⬇' : '📁'} ${skin.source === 'download' ? 'Downloaded' : 'Imported'}</span>
-                    </div>
-                  </div>
-                </div>
-              `).join('')}
-              
-              <div class="skin-card" data-skin-id="null" style="border-style: dashed; justify-content: center; align-items: center; min-height: 120px;">
-                <div style="text-align: center; color: var(--text-muted);">
-                  <div style="font-size: 2rem; margin-bottom: 8px;">🚫</div>
-                  <div style="font-size: 0.9rem; font-weight: 600;">Remove Skin</div>
-                  <div style="font-size: 0.8rem;">Use default skin</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      `;
 
-      document.body.appendChild(modal);
-
-      // Close button
-      (modal.querySelector('.btn-close') as HTMLElement).onclick = () => {
-        modal.remove();
-        resolve(null);
-      };
-
-      // Close on backdrop click
-      (modal as HTMLElement).onclick = (e: Event) => {
-        if (e.target === modal) {
-          modal.remove();
-          resolve(null);
-        }
-      };
-
-      // Skin selection
-      modal.querySelectorAll('.skin-card').forEach(card => {
-        (card as HTMLElement).onclick = () => {
-          const skinId = card.getAttribute('data-skin-id');
-          modal.remove();
-          resolve(skinId === 'null' ? null : skinId);
-        };
-      });
-    });
-  }
 
   private escapeHtml(text: string): string {
     const div = document.createElement('div');

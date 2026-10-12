@@ -1823,3 +1823,105 @@ h1, h2, h3, h4, h5, h6 {
     flex-direction: column;
   }
 }
+
+/* ========================================================
+   COSMETIC EFFECTS (Aura & Particle Animations)
+   ======================================================== */
+
+.fx-sparkle {
+  position: relative;
+  box-shadow: 0 0 16px rgba(245, 158, 11, 0.4), inset 0 0 10px rgba(251, 191, 36, 0.3) !important;
+  border-color: #f59e0b !important;
+  animation: fx-sparkle-pulse 2s ease-in-out infinite alternate;
+}
+
+@keyframes fx-sparkle-pulse {
+  0% { box-shadow: 0 0 12px rgba(245, 158, 11, 0.3), inset 0 0 8px rgba(251, 191, 36, 0.2); }
+  100% { box-shadow: 0 0 24px rgba(245, 158, 11, 0.7), inset 0 0 16px rgba(251, 191, 36, 0.5); }
+}
+
+.fx-rainbow {
+  position: relative;
+  border-color: #a855f7 !important;
+  animation: fx-rainbow-glow 4s linear infinite;
+}
+
+@keyframes fx-rainbow-glow {
+  0% {
+    box-shadow: 0 0 16px #ec4899, inset 0 0 10px #ec4899;
+    border-color: #ec4899;
+  }
+  33% {
+    box-shadow: 0 0 16px #3b82f6, inset 0 0 10px #3b82f6;
+    border-color: #3b82f6;
+  }
+  66% {
+    box-shadow: 0 0 16px #10b981, inset 0 0 10px #10b981;
+    border-color: #10b981;
+  }
+  100% {
+    box-shadow: 0 0 16px #ec4899, inset 0 0 10px #ec4899;
+    border-color: #ec4899;
+  }
+}
+
+.fx-shine {
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 0 20px rgba(56, 189, 248, 0.4) !important;
+  border-color: #38bdf8 !important;
+  animation: fx-shine-pulse 2.5s ease-in-out infinite;
+}
+
+@keyframes fx-shine-pulse {
+  0%, 100% { box-shadow: 0 0 14px rgba(56, 189, 248, 0.3); }
+  50% { box-shadow: 0 0 28px rgba(56, 189, 248, 0.7), 0 0 45px rgba(14, 165, 233, 0.4); }
+}
+
+.fx-enchant {
+  position: relative;
+  border-color: #c084fc !important;
+  box-shadow: 0 0 18px rgba(192, 132, 252, 0.4) !important;
+  animation: fx-enchant-cycle 3s ease-in-out infinite alternate;
+}
+
+@keyframes fx-enchant-cycle {
+  0% {
+    box-shadow: 0 0 12px rgba(192, 132, 252, 0.3), inset 0 0 8px rgba(192, 132, 252, 0.2);
+    border-color: #c084fc;
+  }
+  100% {
+    box-shadow: 0 0 26px rgba(168, 85, 247, 0.8), inset 0 0 16px rgba(168, 85, 247, 0.5);
+    border-color: #e879f9;
+  }
+}
+
+/* 1UP / Fortnite-style Coin Badge */
+.voxel-coin-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  border: 1.5px solid #f59e0b;
+  border-radius: 9999px;
+  padding: 4px 12px;
+  box-shadow: 0 2px 10px rgba(245, 158, 11, 0.25);
+  font-family: var(--font-mono);
+  font-weight: 800;
+  color: #fbbf24;
+}
+
+.voxel-coin-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #fef08a 0%, #eab308 55%, #ca8a04 100%);
+  border: 1px solid #fde047;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #713f12;
+  font-size: 11px;
+  font-weight: 900;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}

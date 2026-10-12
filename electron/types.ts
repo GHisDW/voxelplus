@@ -11,7 +11,6 @@ export type VoxelErrorCategory =
   | 'RESOURCE_PACK'
   | 'SHADER'
   | 'INSTANCE'
-  | 'SKIN'
   | 'DOWNLOAD'
   | 'NETWORK'
   | 'FILESYSTEM'
@@ -158,7 +157,7 @@ export interface EnvironmentCheckResult {
 export interface InstanceAppearance {
   artwork: string | null; // Data URL or preset name
   item: string; // e.g. "minecraft:diamond"
-  skinId?: string | null; // Reference to skin in skin library
+  // skinId removed in v2 — old metadata files may still contain it; ignored on read, stripped on write
 }
 
 export interface InstanceRuntime {
@@ -176,6 +175,7 @@ export interface InstanceMetadata {
   schemaVersion: number;
   id: string;
   name: string;
+  description?: string;
   minecraft: {
     version: string;
   };
@@ -186,6 +186,7 @@ export interface InstanceMetadata {
   createdAt: string;
   lastPlayedAt: string | null;
   status: ProcessStatus;
+  shareSource?: string; // where it was shared from (e.g. "discord", "voxelplus-hub", "friend")
   modCount?: number;
   resourcePackCount?: number;
   shaderCount?: number;
@@ -292,6 +293,7 @@ export interface AppSettings {
 
 export interface CreateInstancePayload {
   name: string;
+  description?: string;
   minecraftVersion: string;
   loaderType: LoaderType;
   loaderVersion?: string;
@@ -299,6 +301,7 @@ export interface CreateInstancePayload {
   memoryMb?: number;
   artwork?: string | null;
   item?: string;
+  shareSource?: string;
 }
 
 export interface LaunchResult {
@@ -335,46 +338,202 @@ export interface MinecraftVersionOption {
   fabricSupported: boolean;
 }
 
-// Skin Manager Types
-export type SkinModel = 'steve' | 'alex';
+// ────────────────────────────────────────────────────────
+// Player Profile & Economy Types
+// ────────────────────────────────────────────────────────
 
-export interface SkinMetadata {
+export interface PlayerProfile {
+  id: string;
+  displayName: string;
+  avatar: string | null; // Data URL
+  equippedCosmeticId: string | null;
+  equippedEffectId: string | null;
+  createdAt: string;
+  lastActiveAt: string;
+}
+
+export interface WalletState {
+  balance: number; // Integer VP
+  lifetimeEarned: number;
+  lifetimeSpent: number;
+  lastTransactionId: string | null;
+}
+
+export interface WalletTransaction {
+  id: string;
+  type: 'earn' | 'spend';
+  amount: number; // positive integer
+  reason: string;
+  sourceId?: string; // achievement ID, game run ID, etc.
+  timestamp: string;
+}
+
+export type AchievementCategory =
+  | 'launcher'
+  | 'vpack'
+  | 'content'
+  | 'stocker'
+  | 'cookie'
+  | 'player'
+  | 'collection';
+
+export type AchievementRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
+
+export interface AchievementDefinition {
   id: string;
   name: string;
-  filePath: string;
-  model: SkinModel;
-  dimensions: { width: number; height: number };
-  sizeBytes: number;
-  source: 'import' | 'download';
-  sourceUsername?: string; // For downloaded skins
-  downloadedAt?: string;
-  isActive: boolean;
+  description: string;
+  category: AchievementCategory;
+  rarity: AchievementRarity;
+  icon?: string;
+  hidden: boolean;
+  /** For boolean achievements: target = 1. For numeric: the threshold. */
+  target: number;
+  /** VP reward on first unlock. 0 = no reward. */
+  rewardVP: number;
+  /** Cosmetic ID unlocked by this achievement, if any. */
+  rewardCosmeticId?: string;
+  /** Multi-stage: ordered list of sub-targets, each granting partial credit. */
+  stages?: { target: number; rewardVP: number }[];
+}
+
+export interface AchievementProgress {
+  achievementId: string;
+  currentValue: number;
+  unlocked: boolean;
+  unlockedAt: string | null;
+  rewardClaimed: boolean;
+  stagesClaimed: number[]; // indices of claimed stages
+}
+
+export type CosmeticRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
+
+export type CosmeticCategory =
+  | 'gem'
+  | 'mining'
+  | 'relic'
+  | 'mob'
+  | 'badge'
+  | 'cosmic'
+  | 'original';
+
+export interface CosmeticDefinition {
+  id: string;
+  name: string;
+  description: string;
+  rarity: CosmeticRarity;
+  category: CosmeticCategory;
+  artworkPath: string;
+  /** null = purchasable with VP. 'achievement:xxx' = unlocked by achievement. */
+  unlockCondition: string | null;
+  /** VP price. 0 or null if not purchasable. */
+  price: number | null;
+  supportedEffectIds: string[];
+  available: boolean;
+}
+
+export interface CosmeticEffect {
+  id: string;
+  name: string;
+  family: 'glitter' | 'rainbow' | 'shine' | 'enchantment';
+  cssClass: string;
+}
+
+export interface CosmeticOwnership {
+  cosmeticId: string;
+  acquiredAt: string;
+  source: 'purchase' | 'achievement' | 'default';
+}
+
+// ────────────────────────────────────────────────────────
+// VPack Types
+// ────────────────────────────────────────────────────────
+
+export interface VPackManifest {
+  formatId: 'voxelplus-vpack';
+  formatVersion: 1;
+  packId: string;
+  name: string;
+  description: string;
+  author: string;
+  packVersion: string;
+  minecraft: {
+    version: string;
+  };
+  loader: {
+    type: LoaderType;
+    version: string;
+  };
+  content: VPackContentEntry[];
+  artwork: string | null; // relative path inside archive
+  item?: string; // Minecraft item texture ID derived from instance
+  shareSource?: string; // e.g. "discord", "voxelplus-hub", "friend"
+  price?: number; // VP price in marketplace
   createdAt: string;
-  thumbnail: string; // Data URL for preview
+  generatorVersion: string;
 }
 
-export interface SkinValidationResult {
-  isValid: boolean;
-  error?: string;
-  dimensions?: { width: number; height: number };
-  model?: SkinModel;
-  sizeBytes?: number;
+export interface VPackListing {
+  fileName: string;
+  filePath: string;
+  manifest: VPackManifest;
+  price: number;
 }
 
-export interface SkinSearchResult {
-  username: string;
-  uuid: string;
-  skinUrl: string;
-  capeUrl?: string;
-  nameHistory: Array<{ name: string; changed_at: string }>;
+export interface VPackContentEntry {
+  relativePath: string;
+  type: 'mod' | 'resourcepack' | 'shaderpack' | 'config' | 'other';
+  sizeBytes: number;
+  sha256?: string;
 }
 
-export interface SkinDownloadProgress {
-  downloadId: string;
-  username: string;
-  bytesReceived: number;
-  totalBytes: number;
-  percentage: number;
-  status: 'downloading' | 'validating' | 'completed' | 'failed';
-  error?: string;
+export interface VPackValidationResult {
+  valid: boolean;
+  manifest: VPackManifest | null;
+  errors: string[];
+  warnings: string[];
+}
+
+// ────────────────────────────────────────────────────────
+// Arcade Types
+// ────────────────────────────────────────────────────────
+
+export type StockerMode = 'wave' | 'ship';
+
+export interface StockerRunResult {
+  mode: StockerMode;
+  score: number;
+  distance: number;
+  obstaclesCleared: number;
+  durationMs: number;
+  timestamp: string;
+}
+
+export interface StockerSaveData {
+  bestScore: number;
+  bestScoreWave: number;
+  bestScoreShip: number;
+  totalRuns: number;
+  totalDistance: number;
+  totalObstaclesCleared: number;
+  lastRunTimestamp: string | null;
+}
+
+export interface CookieClickerSaveData {
+  cookies: number;
+  lifetimeCookies: number;
+  cookiesPerClick: number;
+  cookiesPerSecond: number;
+  upgrades: Record<string, number>; // upgradeId -> count owned
+  producers: Record<string, number>; // producerId -> count owned
+  milestonesClaimed: number[]; // lifetime cookie thresholds claimed
+  lastTickTimestamp: string;
+  totalClicks: number;
+  totalTimePlayedMs: number;
+}
+
+export interface ArcadeRewardResult {
+  vpEarned: number;
+  newAchievements: string[];
+  transactionId: string | null;
 }

@@ -13,6 +13,7 @@ export class InstanceMetadataStore {
       schemaVersion: 1,
       id,
       name: payload.name.trim() || 'New Instance',
+      description: payload.description?.trim() || `Minecraft ${payload.minecraftVersion || '1.21.1'} instance`,
       minecraft: {
         version: payload.minecraftVersion || '1.21.1'
       },
@@ -31,7 +32,8 @@ export class InstanceMetadataStore {
       isFavorite: false,
       createdAt: new Date().toISOString(),
       lastPlayedAt: null,
-      status: 'READY'
+      status: 'READY',
+      shareSource: payload.shareSource || 'local'
     };
   }
 
@@ -97,6 +99,10 @@ export class InstanceMetadataStore {
       // modCount / resourcePackCount / shaderCount – counted at read time.
       // (status IS intentionally persisted so crash/error state survives restarts.)
       const { instancePath, modCount, resourcePackCount, shaderCount, ...persistable } = metadata as any;
+      // v2 migration: strip legacy skinId from appearance if present
+      if (persistable.appearance && 'skinId' in persistable.appearance) {
+        delete persistable.appearance.skinId;
+      }
       fs.writeFileSync(metaFile, JSON.stringify(persistable, null, 2), 'utf-8');
     } catch (e) {
       new VoxelError({
