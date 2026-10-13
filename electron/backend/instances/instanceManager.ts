@@ -205,6 +205,22 @@ export class InstanceManager {
     }
 
     try {
+      // First validate the VPack to give better error messages
+      const validation = VPackManager.validateVPack(importZipPath);
+      if (!validation.valid) {
+        new VoxelError({
+          title: 'Invalid VPack File',
+          message: 'The selected file is not a valid Voxel⁺ VPack.',
+          cause: 'The file may be corrupt, missing required metadata, or not a VPack format.',
+          suggestedAction: `Validation errors: ${validation.errors.join(', ')}`,
+          code: 'INVALID_VPACK',
+          category: 'INSTANCE',
+          severity: 'ERROR',
+          details: `Package path: ${importZipPath}\nErrors: ${validation.errors.join('\n')}`
+        }).log();
+        return null;
+      }
+
       const baseDir = ConfigStore.getInstanceDirectory();
       const suggestedName = customName || path.basename(importZipPath, path.extname(importZipPath));
       const folderName = PathManager.sanitizeFilename(suggestedName);
@@ -224,22 +240,36 @@ export class InstanceManager {
 
       // Re-read or synthesize metadata from extracted manifest
       let meta = InstanceMetadataStore.readMetadata(targetDir);
-      if (!meta && extractResult.manifest) {
-        meta = InstanceMetadataStore.createDefaultMetadata({
-          name: customName || extractResult.manifest.name || suggestedName,
-          minecraftVersion: extractResult.manifest.minecraft?.version || '1.21.1',
-          loaderType: (extractResult.manifest.loader?.type as any) || 'fabric'
-        });
-      } else if (!meta) {
-        meta = InstanceMetadataStore.createDefaultMetadata({
-          name: suggestedName,
-          minecraftVersion: '1.21.1',
-          loaderType: 'fabric'
-        });
+      if (!meta) {
+        // Use manifest if available, otherwise create default
+        if (extractResult.manifest) {
+          meta = InstanceMetadataStore.createDefaultMetadata({
+            name: customName || extractResult.manifest.name || suggestedName,
+            minecraftVersion: extractResult.manifest.minecraft?.version || '1.21.1',
+            loaderType: (extractResult.manifest.loader?.type as any) || 'fabric'
+          });
+          // Preserve appearance from manifest
+          if (extractResult.manifest.item) {
+            meta.appearance.item = extractResult.manifest.item;
+          }
+          if (extractResult.manifest.artwork) {
+            meta.appearance.artwork = extractResult.manifest.artwork;
+          }
+        } else {
+          // No manifest - create default instance
+          meta = InstanceMetadataStore.createDefaultMetadata({
+            name: suggestedName,
+            minecraftVersion: '1.21.1',
+            loaderType: 'fabric'
+          });
+        }
       } else {
         meta.id = crypto.randomUUID(); // Assign new fresh ID
         if (customName) meta.name = customName;
       }
+
+      // Mark as VPack import
+      meta.isVPack = true;
 
       InstanceMetadataStore.writeMetadata(targetDir, meta);
       return meta;

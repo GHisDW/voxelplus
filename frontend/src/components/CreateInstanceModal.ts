@@ -7,7 +7,8 @@ import { NotificationToast } from './NotificationToast';
 import { describeIpcError } from '../services/errors';
 
 const SUPPORTED_MC_VERSIONS = [
-  { ver: '26.2', label: '26.2 (Latest)', default: true },
+  { ver: '26.3', label: '26.3 (Latest)', default: true },
+  { ver: '26.2', label: '26.2' },
   { ver: '26.1.2', label: '26.1.2' },
   { ver: '26.1.1', label: '26.1.1' },
   { ver: '1.21.4', label: '1.21.4' },

@@ -40,6 +40,28 @@ export interface FabricVersionSpec {
 // Experimentally verified profiles for representative generations (1.15.x to 26.x)
 const VERIFIED_PROFILES: Record<string, CompatibilityProfile> = {
   // 26.x New Era (Non-Obfuscated, requires Gradle 9.4.0, Loom 1.16.3, Loader 0.19.5, Java 25)
+  '26.3': {
+    minecraftVersion: '26.3',
+    generation: '26.x',
+    status: 'SUPPORTED',
+    java: {
+      gradleJvmMin: 21,
+      clientJavaMin: 24,
+      clientJavaRecommended: 25
+    },
+    buildTool: {
+      gradleVersion: '9.4.0',
+      loomVersion: '1.16.3',
+      pluginId: 'net.fabricmc.fabric-loom'
+    },
+    fabric: {
+      loaderVersion: '0.19.5',
+      mappingsProvider: 'none',
+      mappingsVersion: null,
+      fabricApiVersion: null,
+      isNonObfuscated: true
+    }
+  },
   '26.2': {
     minecraftVersion: '26.2',
     generation: '26.x',
@@ -549,7 +571,7 @@ export function getCompatibilityProfile(mcVersion: string): CompatibilityProfile
 
   // Fallback for sub-versions within supported generations
   if (mcVersion.startsWith('26.')) {
-    const base = VERIFIED_PROFILES['26.1.1'];
+    const base = VERIFIED_PROFILES['26.3'];
     return {
       ...base,
       minecraftVersion: mcVersion

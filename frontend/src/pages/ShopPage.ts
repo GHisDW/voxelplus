@@ -5,7 +5,7 @@ import { getItemDataUrl } from '../assets/items';
 
 export class ShopPage {
   private container: HTMLElement;
-  private activeTab: 'cosmetics' | 'effects' | 'vpacks' = 'cosmetics';
+  private activeTab: 'cosmetics' | 'effects' = 'cosmetics';
 
   constructor() {
     this.container = document.createElement('div');
@@ -17,7 +17,6 @@ export class ShopPage {
     const cosmeticsData = await api.getCosmetics();
     const wallet = await api.getWallet();
     const profile = await api.getPlayerProfile();
-    const vpacksList = await api.listRepositoryVPacks();
 
     const ownedMap = new Set(cosmeticsData.owned.map(o => o.cosmeticId));
 
@@ -34,8 +33,8 @@ export class ShopPage {
         margin-bottom: 24px;
       ">
         <div>
-          <h1 style="font-size: 1.6rem; font-weight: 800; color: var(--text-primary); margin-bottom: 4px;">Voxel⁺ Marketplace</h1>
-          <p style="color: var(--text-secondary); font-size: 0.88rem;">Spend earned Voxel Points (VP) on authentic Minecraft items, particle effects, and curated VPacks.</p>
+          <h1 style="font-size: 1.6rem; font-weight: 800; color: var(--text-primary); margin-bottom: 4px;">V+ Marketplace</h1>
+          <p style="color: var(--text-secondary); font-size: 0.88rem;">Spend earned V+ Points (VP) on authentic Minecraft items and particle effects.</p>
         </div>
         <div style="display: flex; align-items: center; gap: 12px;">
           <div class="voxel-coin-badge" style="padding: 8px 16px; font-size: 1.1rem;">
@@ -45,7 +44,7 @@ export class ShopPage {
         </div>
       </div>
 
-      <!-- 3 Main Tabs: Cosmetics, Cosmetic Effects, VPacks -->
+      <!-- 2 Main Tabs: Cosmetics, Cosmetic Effects -->
       <div style="display: flex; gap: 8px; margin-bottom: 24px;">
         <button class="btn ${this.activeTab === 'cosmetics' ? 'btn-primary' : 'btn-secondary'}" id="shop-tab-cosmetics">
           Cosmetics (${cosmeticsData.catalogue.length})
@@ -53,25 +52,20 @@ export class ShopPage {
         <button class="btn ${this.activeTab === 'effects' ? 'btn-primary' : 'btn-secondary'}" id="shop-tab-effects">
           Cosmetic Effects (${cosmeticsData.effects.length})
         </button>
-        <button class="btn ${this.activeTab === 'vpacks' ? 'btn-primary' : 'btn-secondary'}" id="shop-tab-vpacks">
-          VPacks (${vpacksList.length})
-        </button>
       </div>
 
       <!-- Tab Content Grid -->
       <div id="shop-stage">
-        ${this.renderActiveTab(cosmeticsData, wallet, ownedMap, profile, vpacksList)}
+        ${this.renderActiveTab(cosmeticsData, wallet, ownedMap, profile)}
       </div>
     `;
 
     // Hook tab buttons
     const tabCosmetics = this.container.querySelector('#shop-tab-cosmetics') as HTMLElement;
     const tabEffects = this.container.querySelector('#shop-tab-effects') as HTMLElement;
-    const tabVpacks = this.container.querySelector('#shop-tab-vpacks') as HTMLElement;
 
     tabCosmetics.onclick = () => { this.activeTab = 'cosmetics'; this.render(); };
     tabEffects.onclick = () => { this.activeTab = 'effects'; this.render(); };
-    tabVpacks.onclick = () => { this.activeTab = 'vpacks'; this.render(); };
 
     // Hook buy cosmetic buttons
     this.container.querySelectorAll('[data-buy-cosmetic]').forEach(btn => {
@@ -108,22 +102,6 @@ export class ShopPage {
       };
     });
 
-    // Hook buy vpack buttons
-    this.container.querySelectorAll('[data-buy-vpack]').forEach(btn => {
-      (btn as HTMLElement).onclick = async () => {
-        const zipPath = btn.getAttribute('data-buy-vpack')!;
-        const price = parseInt(btn.getAttribute('data-vpack-price') || '0', 10);
-        NotificationToast.show('Installing VPack instance...', 'info');
-        const res = await api.purchaseVPack(zipPath, price);
-        if (res.success) {
-          NotificationToast.show(`Successfully installed VPack "${res.instance?.name}"!`, 'success');
-          this.render();
-        } else {
-          NotificationToast.show(res.error || 'Failed to install VPack', 'error');
-        }
-      };
-    });
-
     return this.container;
   }
 
@@ -131,8 +109,7 @@ export class ShopPage {
     cosmeticsData: { catalogue: CosmeticDefinition[]; owned: any[]; effects: CosmeticEffect[] },
     wallet: WalletState,
     ownedMap: Set<string>,
-    profile: any,
-    vpacksList: any[]
+    profile: any
   ): string {
     if (this.activeTab === 'cosmetics') {
       const itemsHtml = cosmeticsData.catalogue.map(item => {
@@ -269,82 +246,6 @@ export class ShopPage {
       `;
     }
 
-    // Tab 3: VPacks (Live from repository vpacks/ folder)
-    if (vpacksList.length === 0) {
-      return `
-        <div style="padding: 40px; text-align: center; background: var(--bg-surface); border: 1px dashed var(--border-subtle); border-radius: var(--radius-lg);">
-          <div style="display: flex; justify-content: center; margin-bottom: 12px;">
-            <img src="${getItemDataUrl('minecraft:chest') || getItemDataUrl('minecraft:grass_block')}" style="width: 48px; height: 48px; image-rendering: pixelated;" />
-          </div>
-          <div style="font-size: 1.1rem; font-weight: 800; color: var(--text-primary);">No VPacks in Repository Folder</div>
-          <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 4px;">
-            Place your exported <code>.vpack</code> files inside the <code>d:\\voxelplus\\vpacks\\</code> directory to automatically list them here.
-          </p>
-        </div>
-      `;
-    }
-
-    const vpackCards = vpacksList.map(item => {
-      const manifest = item.manifest;
-      const itemUrl = getItemDataUrl(manifest.item || 'minecraft:grass_block');
-      const canAfford = wallet.balance >= (item.price || 0);
-
-      return `
-        <div class="card" style="
-          display: flex;
-          flex-direction: column;
-          padding: 20px;
-          background: var(--bg-surface);
-          border: 1px solid var(--border-subtle);
-          border-radius: var(--radius-lg);
-        ">
-          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px;">
-            <div style="display: flex; align-items: center; gap: 14px;">
-              <div style="
-                width: 50px;
-                height: 50px;
-                border-radius: var(--radius-md);
-                background: var(--bg-card);
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                border: 1px solid var(--border-subtle);
-              ">
-                <img src="${itemUrl}" style="width: 36px; height: 36px; image-rendering: pixelated;" />
-              </div>
-              <div>
-                <div style="font-size: 1.1rem; font-weight: 800; color: var(--text-primary);">${manifest.name}</div>
-                <div style="font-size: 0.78rem; color: #10b981; font-weight: 700;">Minecraft ${manifest.minecraft?.version || '1.21.1'} • Fabric ${manifest.loader?.version || '0.16.9'}</div>
-              </div>
-            </div>
-            ${manifest.shareSource ? `
-              <span style="font-size: 0.72rem; padding: 2px 8px; border-radius: 999px; background: rgba(88, 101, 242, 0.18); color: #818cf8; font-weight: 700;">
-                ${manifest.shareSource}
-              </span>
-            ` : ''}
-          </div>
-
-          <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 18px; flex: 1; line-height: 1.4;">
-            ${manifest.description || 'Pre-configured Minecraft instance package.'}
-          </p>
-
-          <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 14px; border-top: 1px solid var(--border-subtle); margin-top: auto;">
-            <div class="voxel-coin-badge" style="padding: 4px 10px; font-size: 0.9rem;">
-              <span class="voxel-coin-icon" style="width: 16px; height: 16px; font-size: 10px;">V</span>
-              <span>${item.price.toLocaleString()} VP</span>
-            </div>
-            <button class="btn btn-sm ${canAfford ? 'btn-primary' : 'btn-secondary disabled'}" data-buy-vpack="${item.filePath}" data-vpack-price="${item.price}" ${canAfford ? '' : 'disabled'}>
-              Acquire VPack
-            </button>
-          </div>
-        </div>
-      `;
-    }).join('');
-
-    return `
-      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 18px;">
-        ${vpackCards}
-      </div>
-    `;
+    return '';
   }
 }

@@ -14,7 +14,7 @@ import { api } from './services/api';
 import { InstanceMetadata } from '../../electron/types';
 import { NotificationToast } from './components/NotificationToast';
 
-class VoxelApp {
+class VPlusApp {
   private activePage: PageId = 'instances';
   private sidebar!: Sidebar;
   private header!: Header;
@@ -169,5 +169,5 @@ class VoxelApp {
 }
 
 // Start application
-const app = new VoxelApp();
+const app = new VPlusApp();
 app.init();

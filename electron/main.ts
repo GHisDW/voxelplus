@@ -132,8 +132,9 @@ function createWindow() {
     minHeight: 650,
     frame: true,
     titleBarStyle: 'default',
-    title: 'Voxel⁺ Launcher',
+    title: 'V+ Launcher',
     backgroundColor: '#0a0d14',
+    icon: path.join(__dirname, '../../logo.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

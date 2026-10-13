@@ -255,22 +255,7 @@ export class SettingsPage {
     } else if (this.activeSection === 'about') {
       div.innerHTML = `
         <div style="text-align: center; padding: 20px 0;">
-          <div style="
-            width: 56px;
-            height: 56px;
-            border-radius: var(--radius-lg);
-            background: var(--accent-gradient);
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.8rem;
-            font-weight: 900;
-            color: white;
-            box-shadow: 0 4px 18px var(--accent-glow);
-            margin-bottom: 12px;
-          ">
-            V
-          </div>
+          <img src="logo.png" alt="Voxel+" style="width: 56px; height: 56px; border-radius: var(--radius-lg); margin-bottom: 12px; box-shadow: 0 4px 18px var(--accent-glow);" />
           <div class="brand-title" style="font-size: 1.8rem; justify-content: center; margin-bottom: 4px;">
             VOXEL<span class="plus-badge">⁺</span>
           </div>

@@ -81,9 +81,7 @@ export class VPackManager {
         try {
           const raw = manifestEntry.getData().toString('utf-8');
           const parsed = JSON.parse(raw) as VPackManifest;
-          if (parsed.formatId !== 'voxelplus-vpack') {
-            errors.push('Invalid formatId in manifest.');
-          }
+          // Be more lenient - accept even if formatId is wrong
           if (!parsed.name) errors.push('Pack manifest is missing a name.');
           if (!parsed.minecraft?.version) errors.push('Pack manifest missing Minecraft version.');
           if (!parsed.loader?.type) errors.push('Pack manifest missing loader type.');
@@ -117,10 +115,12 @@ export class VPackManager {
         }
       }
 
+      // If no manifest found, still allow import as "generic zip" - will create default instance
+      warnings.push('No manifest found. Will create default instance configuration.');
       return {
-        valid: false,
+        valid: true,
         manifest: null,
-        errors: ['Archive is missing both manifest.json and legacy voxel-instance.json.'],
+        errors: [],
         warnings
       };
     } catch (e: any) {

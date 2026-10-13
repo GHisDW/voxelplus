@@ -5,10 +5,14 @@ package-lock.json
 # Build outputs
 dist/
 dist-electron/
+dist-portable/
 *.js
 *.js.map
 *.d.ts
 !electron/types.ts
+
+# TypeScript build info
+*.tsbuildinfo
 
 # Environment files
 .env
@@ -45,10 +49,14 @@ test-e2e-data/
 *.temp
 .cache/
 
-# Electron
+# Electron build artifacts
 out/
 *.app
 *.dmg
 *.exe
 *.deb
 *.rpm
+
+# Local debug/utility scripts (not part of source)
+check-cookie-items.cjs
+verify-pngs.cjs

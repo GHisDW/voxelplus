@@ -1,7 +1,7 @@
 import { CookieClickerSaveData } from '../../../electron/types';
 import { api } from '../services/api';
 import { NotificationToast } from '../components/NotificationToast';
-import { getItemDataUrl } from '../assets/items';
+import { getItemDataUrl, getItemDefinition } from '../assets/items';
 
 interface MinerUnit {
   id: string;
@@ -103,6 +103,8 @@ export class CookieClickerGame {
   private data!: CookieClickerSaveData;
   private container!: HTMLElement;
   private timerId: any = null;
+  private isVisible: boolean = true;
+  private lastNotifiedMilestone: number = 0;
 
   constructor() {
     this.data = {
@@ -129,7 +131,20 @@ export class CookieClickerGame {
 
     this.container = parent;
     this.updateUI();
-    this.startTicker();
+    this.setupVisibilityTracking();
+
+    // Wait for DOM to be ready before starting ticker
+    requestAnimationFrame(() => {
+      this.startTicker();
+    });
+  }
+
+  private setupVisibilityTracking(): void {
+    const handleVisibilityChange = () => {
+      this.isVisible = !document.hidden;
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
   }
 
   private recalculateBonuses(): void {
@@ -153,13 +168,16 @@ export class CookieClickerGame {
   }
 
   private updateUI(): void {
-    const cookieTexture = getItemDataUrl('minecraft:cookie');
+    // Retrieve the cookie texture data URL for the main cookie button and item icons
+    const cookieDef = getItemDefinition('minecraft:cookie');
+    const cookieTexture = cookieDef.dataUrl;
+
 
     const minersHtml = MINERS.map(m => {
       const owned = this.data.producers[m.id] || 0;
       const cost = Math.floor(m.baseCost * Math.pow(1.18, owned));
       const canAfford = this.data.cookies >= cost;
-      const texture = getItemDataUrl(m.itemTextureId);
+      const texture = getItemDataUrl(m.itemTextureId) || '⛏️';
 
       return `
         <div class="card" style="
@@ -185,7 +203,7 @@ export class CookieClickerGame {
               align-items: center;
               justify-content: center;
             ">
-              <img src="${texture}" style="width: 32px; height: 32px; image-rendering: pixelated;" />
+              ${typeof texture === 'string' && texture.startsWith('data') ? '<img src="' + texture + '" style="width:32px;height:32px;image-rendering:pixelated;" />' : '<span style="font-size:32px;">' + texture + '</span>'}
             </div>
             <div>
               <div style="font-size: 0.92rem; font-weight: 800; color: var(--text-primary);">
@@ -197,7 +215,7 @@ export class CookieClickerGame {
           </div>
           <button class="btn btn-sm ${canAfford ? 'btn-primary' : 'btn-secondary disabled'}" data-buy-miner="${m.id}" ${canAfford ? '' : 'disabled'} style="display: flex; align-items: center; gap: 4px;">
             <span>${cost.toLocaleString()}</span>
-            <img src="${cookieTexture}" style="width: 14px; height: 14px; image-rendering: pixelated;" />
+            <span style="font-size:14px;">${typeof cookieTexture === 'string' && cookieTexture.startsWith('data') ? '<img src="' + cookieTexture + '" style="width: 14px; height: 14px; image-rendering: pixelated;" />' : cookieTexture}</span>
           </button>
         </div>
       `;
@@ -206,7 +224,7 @@ export class CookieClickerGame {
     const pickaxesHtml = PICKAXES.map(p => {
       const isOwned = !!this.data.upgrades[p.id];
       const canAfford = this.data.cookies >= p.cost;
-      const texture = getItemDataUrl(p.itemTextureId);
+      const texture = getItemDataUrl(p.itemTextureId) || '⚒️';
 
       return `
         <div class="card" style="
@@ -232,7 +250,7 @@ export class CookieClickerGame {
               align-items: center;
               justify-content: center;
             ">
-              <img src="${texture}" style="width: 32px; height: 32px; image-rendering: pixelated;" />
+              ${typeof texture === 'string' && texture.startsWith('data') ? `<img src="${texture}" style="width: 32px; height: 32px; image-rendering: pixelated;" />` : `<span style="font-size:32px;">${texture}</span>`}
             </div>
             <div>
               <div style="font-size: 0.92rem; font-weight: 800; color: var(--text-primary);">${p.name}</div>
@@ -244,7 +262,7 @@ export class CookieClickerGame {
           ` : `
             <button class="btn btn-sm ${canAfford ? 'btn-primary' : 'btn-secondary disabled'}" data-buy-pick="${p.id}" ${canAfford ? '' : 'disabled'} style="display: flex; align-items: center; gap: 4px;">
               <span>${p.cost.toLocaleString()}</span>
-              <img src="${cookieTexture}" style="width: 14px; height: 14px; image-rendering: pixelated;" />
+              <span style="font-size:14px;">${typeof cookieTexture === 'string' && cookieTexture.startsWith('data') ? '<img src="' + cookieTexture + '" style="width: 14px; height: 14px; image-rendering: pixelated;" />' : cookieTexture}</span>
             </button>
           `}
         </div>
@@ -308,12 +326,12 @@ export class CookieClickerGame {
             user-select: none;
             box-shadow: 0 0 24px rgba(245, 158, 11, 0.2);
           ">
-            <img src="${cookieTexture}" style="
-              width: 130px;
-              height: 130px;
-              image-rendering: pixelated;
-              filter: drop-shadow(0 10px 20px rgba(180, 83, 9, 0.6));
-            " />
+            ${typeof cookieTexture === 'string' && cookieTexture.startsWith('data') ? '<img src="' + cookieTexture + '" style="width:130px;height:130px;image-rendering:pixelated;filter:drop-shadow(0 10px 20px rgba(180,83,9,0.6));"/>' : '<span style="font-size:130px;">' + cookieTexture + '</span>'}
+
+
+
+
+
           </div>
 
           <div style="margin-top: 28px; font-size: 0.78rem; color: var(--text-muted); font-family: var(--font-mono);">
@@ -403,7 +421,6 @@ export class CookieClickerGame {
       this.data.upgrades[p.id] = 1;
       this.recalculateBonuses();
       this.updateUI();
-      NotificationToast.show(`Forged ${p.name}! Click power increased.`, 'success');
     }
   }
 
@@ -452,9 +469,11 @@ export class CookieClickerGame {
         this.data.cookies += delta;
         this.data.lifetimeCookies += delta;
 
-        const display = this.container?.querySelector('#cookie-display');
-        if (display) display.textContent = Math.floor(this.data.cookies).toLocaleString();
-        this.updateAffordability();
+        if (this.isVisible) {
+          const display = this.container?.querySelector('#cookie-display');
+          if (display) display.textContent = Math.floor(this.data.cookies).toLocaleString();
+          this.updateAffordability();
+        }
       }
 
       if (Math.random() < 0.2) {
@@ -467,7 +486,8 @@ export class CookieClickerGame {
     try {
       this.data.lastTickTimestamp = new Date().toISOString();
       const res = await api.saveCookieData(this.data);
-      if (res.vpEarned > 0) {
+      if (res.vpEarned > 0 && this.data.lifetimeCookies > this.lastNotifiedMilestone) {
+        this.lastNotifiedMilestone = this.data.lifetimeCookies;
         NotificationToast.show(`Milestone Reached! Awarded ${res.vpEarned} VP`, 'success');
       }
     } catch (e) {

@@ -17,7 +17,7 @@ export class InstanceDetails {
   private instance: InstanceMetadata;
   private events: InstanceDetailsEvents;
   private container: HTMLElement;
-  private activeTab: 'overview' | 'mods' | 'packs' | 'shaders' = 'overview';
+  private activeTab: 'overview' | 'mods' | 'packs' | 'shaders' | 'extras' = 'overview';
 
   constructor(instance: InstanceMetadata, events: InstanceDetailsEvents) {
     this.instance = instance;
@@ -56,6 +56,7 @@ export class InstanceDetails {
           }
           <button class="btn btn-secondary" id="details-btn-folder">📁 Open Folder</button>
           <button class="btn btn-secondary" id="details-btn-logs">▤ Logs</button>
+          <button class="btn btn-secondary" id="details-btn-export">📦 Export VPack</button>
         </div>
       </div>
 
@@ -65,6 +66,7 @@ export class InstanceDetails {
         <button class="btn ${this.activeTab === 'mods' ? 'btn-primary' : 'btn-secondary'}" data-tab="mods">Mods (${this.instance.modCount || 0})</button>
         <button class="btn ${this.activeTab === 'packs' ? 'btn-primary' : 'btn-secondary'}" data-tab="packs">Resource Packs (${this.instance.resourcePackCount || 0})</button>
         <button class="btn ${this.activeTab === 'shaders' ? 'btn-primary' : 'btn-secondary'}" data-tab="shaders">Shaders (${this.instance.shaderCount || 0})</button>
+        <button class="btn ${this.activeTab === 'extras' ? 'btn-primary' : 'btn-secondary'}" data-tab="extras">Extras</button>
       </div>
 
       <!-- Tab Content Area -->
@@ -75,6 +77,17 @@ export class InstanceDetails {
     (this.container.querySelector('#btn-back') as HTMLElement).onclick = () => this.events.onBack();
     (this.container.querySelector('#details-btn-folder') as HTMLElement).onclick = () => api.openInstanceFolder(this.instance.id);
     (this.container.querySelector('#details-btn-logs') as HTMLElement).onclick = () => this.events.onViewLogs(this.instance.id);
+    (this.container.querySelector('#details-btn-export') as HTMLElement).onclick = async () => {
+      const savePath = await api.selectSaveFileDialog(`${this.instance.name.replace(/[^a-zA-Z0-9]/g, '_')}.voxelplus`, [{ name: 'VPack', extensions: ['voxelplus', 'zip'] }]);
+      if (savePath) {
+        const success = await api.exportInstance(this.instance.id, savePath);
+        if (success) {
+          NotificationToast.show(`Exported "${this.instance.name}" to VPack successfully!`, 'success');
+        } else {
+          NotificationToast.show('Failed to export VPack', 'error');
+        }
+      }
+    };
 
     const playBtn = this.container.querySelector('#details-btn-play') as HTMLButtonElement;
     if (playBtn) {
@@ -125,6 +138,8 @@ export class InstanceDetails {
       target.appendChild(await this.renderResourcePacks());
     } else if (this.activeTab === 'shaders') {
       target.appendChild(await this.renderShaders());
+    } else if (this.activeTab === 'extras') {
+      target.appendChild(this.renderExtras());
     }
   }
 
@@ -566,7 +581,153 @@ export class InstanceDetails {
     return div;
   }
 
+  private renderExtras(): HTMLElement {
+    const div = document.createElement('div');
+    div.className = 'animate-fade-in';
 
+    const extras = this.instance.extras || {};
+
+    div.innerHTML = `
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+        <!-- Tags -->
+        <div class="horizontal-card" style="padding: 20px; background: var(--bg-card); border-radius: var(--radius-lg);">
+          <h4 style="font-size: 1rem; font-weight: 700; color: var(--text-primary); margin-bottom: 16px;">
+            Tags
+          </h4>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;" id="extras-tags">
+            ${(extras.tags || []).map(tag => `
+              <span style="
+                padding: 4px 12px;
+                background: rgba(99, 102, 241, 0.15);
+                color: #818cf8;
+                border-radius: 999px;
+                font-size: 0.82rem;
+                font-weight: 600;
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+              ">
+                ${this.escapeHtml(tag)}
+                <button class="btn-icon remove-tag" data-tag="${this.escapeHtml(tag)}" style="color: #ef4444; font-size: 14px;">×</button>
+              </span>
+            `).join('')}
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="new-tag-input" placeholder="Add tag..." style="
+              flex: 1;
+              padding: 8px 12px;
+              background: var(--bg-surface);
+              border: 1px solid var(--border-subtle);
+              border-radius: var(--radius-md);
+              color: var(--text-primary);
+              font-size: 0.88rem;
+            " />
+            <button class="btn btn-sm btn-primary" id="btn-add-tag">Add</button>
+          </div>
+        </div>
+
+        <!-- Notes -->
+        <div class="horizontal-card" style="padding: 20px; background: var(--bg-card); border-radius: var(--radius-lg);">
+          <h4 style="font-size: 1rem; font-weight: 700; color: var(--text-primary); margin-bottom: 16px;">
+            Notes
+          </h4>
+          <textarea id="extras-notes" placeholder="Add notes about this instance..." style="
+            width: 100%;
+            min-height: 120px;
+            padding: 12px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            color: var(--text-primary);
+            font-size: 0.88rem;
+            font-family: var(--font-mono);
+            resize: vertical;
+          ">${this.escapeHtml(extras.notes || '')}</textarea>
+          <button class="btn btn-sm btn-primary" id="btn-save-notes" style="margin-top: 12px;">Save Notes</button>
+        </div>
+
+        <!-- Game Settings -->
+        <div class="horizontal-card" style="padding: 20px; background: var(--bg-card); border-radius: var(--radius-lg);">
+          <h4 style="font-size: 1rem; font-weight: 700; color: var(--text-primary); margin-bottom: 16px;">
+            Game Settings
+          </h4>
+          <div class="form-group" style="margin-bottom: 16px;">
+            <label class="form-label">Intended Difficulty</label>
+            <select class="select-field" id="extras-difficulty">
+              <option value="" ${!extras.difficulty ? 'selected' : ''}>Not set</option>
+              <option value="peaceful" ${extras.difficulty === 'peaceful' ? 'selected' : ''}>Peaceful</option>
+              <option value="easy" ${extras.difficulty === 'easy' ? 'selected' : ''}>Easy</option>
+              <option value="normal" ${extras.difficulty === 'normal' ? 'selected' : ''}>Normal</option>
+              <option value="hard" ${extras.difficulty === 'hard' ? 'selected' : ''}>Hard</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Intended Game Mode</label>
+            <select class="select-field" id="extras-gamemode">
+              <option value="" ${!extras.gameMode ? 'selected' : ''}>Not set</option>
+              <option value="survival" ${extras.gameMode === 'survival' ? 'selected' : ''}>Survival</option>
+              <option value="creative" ${extras.gameMode === 'creative' ? 'selected' : ''}>Creative</option>
+              <option value="adventure" ${extras.gameMode === 'adventure' ? 'selected' : ''}>Adventure</option>
+              <option value="spectator" ${extras.gameMode === 'spectator' ? 'selected' : ''}>Spectator</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Hook tag removal
+    div.querySelectorAll('.remove-tag').forEach(btn => {
+      (btn as HTMLElement).onclick = async () => {
+        const tagToRemove = btn.getAttribute('data-tag');
+        if (tagToRemove && extras.tags) {
+          extras.tags = extras.tags.filter(t => t !== tagToRemove);
+          await api.updateInstance(this.instance.id, { extras });
+          this.instance.extras = extras;
+          this.renderTabContent();
+        }
+      };
+    });
+
+    // Hook tag addition
+    const tagInput = div.querySelector('#new-tag-input') as HTMLInputElement;
+    const addTagBtn = div.querySelector('#btn-add-tag') as HTMLElement;
+    addTagBtn.onclick = async () => {
+      const newTag = tagInput.value.trim();
+      if (newTag) {
+        extras.tags = [...(extras.tags || []), newTag];
+        await api.updateInstance(this.instance.id, { extras });
+        this.instance.extras = extras;
+        this.renderTabContent();
+      }
+    };
+
+    // Hook notes save
+    const notesTextarea = div.querySelector('#extras-notes') as HTMLTextAreaElement;
+    const saveNotesBtn = div.querySelector('#btn-save-notes') as HTMLElement;
+    saveNotesBtn.onclick = async () => {
+      extras.notes = notesTextarea.value;
+      await api.updateInstance(this.instance.id, { extras });
+      this.instance.extras = extras;
+      NotificationToast.show('Notes saved!', 'success');
+    };
+
+    // Hook game settings
+    const difficultySelect = div.querySelector('#extras-difficulty') as HTMLSelectElement;
+    difficultySelect.onchange = async () => {
+      extras.difficulty = difficultySelect.value as any || undefined;
+      await api.updateInstance(this.instance.id, { extras });
+      this.instance.extras = extras;
+    };
+
+    const gamemodeSelect = div.querySelector('#extras-gamemode') as HTMLSelectElement;
+    gamemodeSelect.onchange = async () => {
+      extras.gameMode = gamemodeSelect.value as any || undefined;
+      await api.updateInstance(this.instance.id, { extras });
+      this.instance.extras = extras;
+    };
+
+    return div;
+  }
 
   private escapeHtml(text: string): string {
     const div = document.createElement('div');

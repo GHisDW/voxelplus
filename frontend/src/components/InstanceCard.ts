@@ -63,6 +63,11 @@ export class InstanceCard {
       <div class="card-info-col">
         <div class="card-title-row">
           <h3 class="card-instance-name">${this.escapeHtml(instance.name)}</h3>
+          ${instance.isVPack ? `
+            <span style="font-size: 0.72rem; padding: 2px 8px; border-radius: 999px; background: rgba(245, 158, 11, 0.18); color: #f59e0b; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;">
+              📦 VPACK
+            </span>
+          ` : ''}
           ${instance.shareSource ? `
             <span style="font-size: 0.72rem; padding: 2px 8px; border-radius: 999px; background: rgba(88, 101, 242, 0.18); color: #818cf8; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;">
               <span style="opacity: 0.7;">VIA</span> ${this.escapeHtml(instance.shareSource)}

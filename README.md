@@ -113,6 +113,7 @@ Voxel⁺ currently provides verified Fabric development profiles for:
 
 | Minecraft | Java |    Status   |
 | :-------: | :--: | :---------: |
+|    26.3   |  25  | ✅ Supported |
 |    26.2   |  25  | ✅ Supported |
 |   26.1.2  |  25  | ✅ Supported |
 |   26.1.1  |  25  | ✅ Supported |

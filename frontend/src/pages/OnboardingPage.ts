@@ -54,22 +54,7 @@ export class OnboardingPage {
       // Step 1: Welcome
       card.innerHTML = `
         <div style="text-align: center; padding: 24px 12px;">
-          <div style="
-            width: 68px;
-            height: 68px;
-            border-radius: var(--radius-lg);
-            background: var(--accent-gradient);
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 2.2rem;
-            font-weight: 900;
-            color: white;
-            box-shadow: 0 8px 24px var(--accent-glow);
-            margin-bottom: 20px;
-          ">
-            V
-          </div>
+          <img src="logo.png" alt="Voxel+" style="width: 68px; height: 68px; border-radius: var(--radius-lg); margin-bottom: 20px; box-shadow: 0 8px 24px var(--accent-glow);" />
           <div class="brand-title" style="font-size: 2.2rem; justify-content: center; margin-bottom: 8px;">
             VOXEL<span class="plus-badge">⁺</span>
           </div>

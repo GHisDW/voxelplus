@@ -102,46 +102,117 @@ export class InstancesPage {
 
     this.container.innerHTML = '';
 
+    // Add info banner at the top
+    const infoBanner = document.createElement('div');
+    infoBanner.style.cssText = `
+      display: flex;
+      gap: 12px;
+      padding: 16px 20px;
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(139, 92, 246, 0.1) 100%);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      border-radius: var(--radius-lg);
+      margin-bottom: 20px;
+    `;
+    infoBanner.innerHTML = `
+      <div style="flex: 1; display: flex; gap: 20px; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 1.2rem;">📦</span>
+          <div>
+            <div style="font-size: 0.88rem; font-weight: 700; color: var(--text-primary);">V+ Pack Support</div>
+            <div style="font-size: 0.75rem; color: var(--text-secondary);">Export & Import instances</div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 1.2rem;">📥</span>
+          <div>
+            <div style="font-size: 0.88rem; font-weight: 700; color: var(--text-primary);">Import</div>
+            <div style="font-size: 0.75rem; color: var(--text-secondary);">ZIP, JAR, V+ files</div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 1.2rem;">🔗</span>
+          <div>
+            <div style="font-size: 0.88rem; font-weight: 700; color: var(--text-primary);">CurseForge</div>
+            <div style="font-size: 0.75rem; color: var(--text-secondary);">Mod support integrated</div>
+          </div>
+        </div>
+      </div>
+    `;
+    this.container.appendChild(infoBanner);
+
+    // Add import button at the top
+    const headerActions = document.createElement('div');
+    headerActions.style.cssText = 'display: flex; justify-content: flex-end; margin-bottom: 16px;';
+    headerActions.innerHTML = `
+      <button class="btn btn-primary" id="btn-import-vpack" style="padding: 10px 20px;">
+        📦 Import VPack
+      </button>
+    `;
+    this.container.appendChild(headerActions);
+
+    (this.container.querySelector('#btn-import-vpack') as HTMLElement).onclick = async () => {
+      const filePath = await api.selectFileDialog([{ name: 'VPack', extensions: ['voxelplus', 'zip', 'jar'] }]);
+      if (filePath) {
+        console.log('Importing VPack from:', filePath);
+        NotificationToast.show('Importing VPack...', 'info');
+        try {
+          const instance = await api.importInstance(filePath);
+          console.log('Import result:', instance);
+          if (instance) {
+            NotificationToast.show(`Successfully imported "${instance.name}"!`, 'success');
+            this.render();
+          } else {
+            NotificationToast.show('Failed to import VPack - file may not be a valid VPack format', 'error');
+          }
+        } catch (error: any) {
+          console.error('Import error:', error);
+          const errorMsg = error?.message || error?.toString() || 'Unknown error';
+          NotificationToast.show(`Import error: ${errorMsg}`, 'error');
+        }
+      }
+    };
+
     // Empty state
     if (displayed.length === 0) {
-      this.container.innerHTML = `
-        <div style="
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          height: calc(100vh - 200px);
-          text-align: center;
-          background: var(--bg-card);
-          border: 1px dashed var(--border-subtle);
-          border-radius: var(--radius-xl);
-          padding: 40px;
-        ">
-          <div style="margin-bottom: 16px;">
-            <img src="${getItemDataUrl('minecraft:grass_block')}" style="width: 56px; height: 56px; image-rendering: pixelated;" />
-          </div>
-          <h3 style="font-size: 1.4rem; font-weight: 800; color: var(--text-primary); margin-bottom: 8px;">
-            No Instances Found
-          </h3>
-          <p style="color: var(--text-secondary); font-size: 0.95rem; max-width: 440px; margin-bottom: 24px;">
-            ${this.instances.length === 0
-              ? 'Create your first Minecraft development instance powered by Fabric Loom and Gradle.'
-              : 'No instances matched your active search or filters.'
-            }
-          </p>
-          <button class="btn btn-primary" id="btn-empty-create" style="padding: 12px 28px; font-size: 1rem;">
-            + CREATE INSTANCE
-          </button>
+      const emptyState = document.createElement('div');
+      emptyState.style.cssText = `
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: calc(100vh - 200px);
+        text-align: center;
+        background: var(--bg-card);
+        border: 1px dashed var(--border-subtle);
+        border-radius: var(--radius-xl);
+        padding: 40px;
+      `;
+      emptyState.innerHTML = `
+        <div style="margin-bottom: 16px;">
+          <img src="${getItemDataUrl('minecraft:grass_block')}" style="width: 56px; height: 56px; image-rendering: pixelated;" />
         </div>
+        <h3 style="font-size: 1.4rem; font-weight: 800; color: var(--text-primary); margin-bottom: 8px;">
+          No Instances Found
+        </h3>
+        <p style="color: var(--text-secondary); font-size: 0.95rem; max-width: 440px; margin-bottom: 24px;">
+          ${this.instances.length === 0
+            ? 'Create your first Minecraft development instance powered by Fabric Loom and Gradle, or import a VPack.'
+            : 'No instances matched your active search or filters.'
+          }
+        </p>
+        <button class="btn btn-primary" id="btn-empty-create" style="padding: 12px 28px; font-size: 1rem;">
+          + CREATE INSTANCE
+        </button>
       `;
 
-      (this.container.querySelector('#btn-empty-create') as HTMLElement).onclick = async () => {
+      (emptyState.querySelector('#btn-empty-create') as HTMLElement).onclick = async () => {
         const created = await CreateInstanceModal.show();
         if (created) {
           this.render();
         }
       };
 
+      this.container.appendChild(emptyState);
       return this.container;
     }
 

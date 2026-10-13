@@ -19,7 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 * Dynamic compatibility resolution system for Minecraft versions
 * Centralized Java runtime selection with deterministic preferences
 * Automatic environment resolution for different Minecraft eras
-* Verified support for Minecraft 1.15.2 through 1.21.4 and 26.1.1 through 26.2
+* Verified support for Minecraft 1.15.2 through 1.21.4 and 26.1.1 through 26.3
 * Minecraft version chooser aligned with verified compatibility profiles
 * Integration with existing Fabric Loom and Gradle configurations
 * Improved error messages with specific Java version requirements

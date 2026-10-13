@@ -160,6 +160,13 @@ export interface InstanceAppearance {
   // skinId removed in v2 — old metadata files may still contain it; ignored on read, stripped on write
 }
 
+export interface InstanceExtras {
+  tags?: string[]; // Custom tags for organization (e.g., "survival", "tech", "magic")
+  notes?: string; // Custom notes about the instance
+  difficulty?: 'peaceful' | 'easy' | 'normal' | 'hard'; // Intended difficulty
+  gameMode?: 'survival' | 'creative' | 'adventure' | 'spectator'; // Intended game mode
+}
+
 export interface InstanceRuntime {
   java: 'auto' | string; // 'auto' or specific Java runtime ID / path
   memoryMb: number;
@@ -182,11 +189,13 @@ export interface InstanceMetadata {
   loader: InstanceLoader;
   runtime: InstanceRuntime;
   appearance: InstanceAppearance;
+  extras?: InstanceExtras;
   isFavorite: boolean;
   createdAt: string;
   lastPlayedAt: string | null;
   status: ProcessStatus;
   shareSource?: string; // where it was shared from (e.g. "discord", "voxelplus-hub", "friend")
+  isVPack?: boolean; // whether this instance was imported from a VPack
   modCount?: number;
   resourcePackCount?: number;
   shaderCount?: number;

@@ -1,7 +1,7 @@
 import { VoxelErrorPayload, VoxelIpcError, VOXEL_IPC_ERROR_MARKER } from '../../../electron/types';
 
 /**
- * Helpers for consuming structured Voxel+ IPC errors in the renderer.
+ * Helpers for consuming structured V+ IPC errors in the renderer.
  *
  * When an IPC handler fails, Electron delivers the rejection as an Error
  * whose text is `Error invoking remote method '<channel>': <error>` — the
