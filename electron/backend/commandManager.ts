@@ -244,17 +244,29 @@ export class CommandManager {
 
   public static async purchaseVPack(zipPath: string, price: number): Promise<{ success: boolean; instance?: InstanceMetadata; error?: string }> {
     const store = PlayerDataStore.getInstance();
+    const val = VPackManager.validateVPack(zipPath);
+    const packId = val.manifest?.packId || path.basename(zipPath);
+
+    if (store.isVPackOwned(packId)) {
+      const meta = await InstanceManager.importInstance(zipPath);
+      if (!meta) return { success: false, error: 'Failed to extract VPack.' };
+      return { success: true, instance: meta };
+    }
+
     if (price > 0) {
-      const tx = store.addTransaction('spend', price, `Purchased VPack: ${path.basename(zipPath)}`);
+      const tx = store.addTransaction('spend', price, `Purchased VPack: ${val.manifest?.name || path.basename(zipPath)}`);
       if (!tx.success) {
-        return { success: false, error: tx.error || 'Insufficient Voxel Points' };
+        return { success: false, error: tx.error || 'Insufficient Voxel Points (VP).' };
       }
     }
+
     const meta = await InstanceManager.importInstance(zipPath);
     if (!meta) {
       if (price > 0) store.addTransaction('earn', price, 'Refund for failed VPack installation');
       return { success: false, error: 'Failed to extract and initialize VPack.' };
     }
+
+    store.recordVPackPurchase(packId, price);
     new AchievementEngine(store).trackProgress('vpack_import', 1);
     return { success: true, instance: meta };
   }

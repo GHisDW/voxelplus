@@ -10,12 +10,19 @@ import {
   CosmeticOwnership
 } from '../../types';
 
+export interface VPackOwnership {
+  packId: string;
+  acquiredAt: string;
+  price: number;
+}
+
 export interface PlayerDataSchema {
   profile: PlayerProfile;
   wallet: WalletState;
   transactions: WalletTransaction[];
   achievements: Record<string, AchievementProgress>;
   cosmetics: Record<string, CosmeticOwnership>;
+  vpacks: Record<string, VPackOwnership>;
 }
 
 export class PlayerDataStore {
@@ -53,8 +60,8 @@ export class PlayerDataStore {
         lastActiveAt: now
       },
       wallet: {
-        balance: 250,
-        lifetimeEarned: 250,
+        balance: 1000,
+        lifetimeEarned: 1000,
         lifetimeSpent: 0,
         lastTransactionId: null
       },
@@ -62,7 +69,7 @@ export class PlayerDataStore {
         {
           id: crypto.randomUUID(),
           type: 'earn',
-          amount: 250,
+          amount: 1000,
           reason: 'Welcome to Voxel+!',
           sourceId: 'starter-bonus',
           timestamp: now
@@ -75,7 +82,8 @@ export class PlayerDataStore {
           acquiredAt: now,
           source: 'default'
         }
-      }
+      },
+      vpacks: {}
     };
   }
 
@@ -95,7 +103,8 @@ export class PlayerDataStore {
               acquiredAt: new Date().toISOString(),
               source: 'default'
             }
-          }
+          },
+          vpacks: parsed.vpacks || {}
         };
       }
     } catch (e) {
@@ -207,6 +216,21 @@ export class PlayerDataStore {
       source
     };
     this.data.cosmetics[id] = ownership;
+    this.save();
+    return ownership;
+  }
+
+  public isVPackOwned(packId: string): boolean {
+    return !!this.data.vpacks[packId];
+  }
+
+  public recordVPackPurchase(packId: string, price: number): VPackOwnership {
+    const ownership: VPackOwnership = {
+      packId,
+      acquiredAt: new Date().toISOString(),
+      price
+    };
+    this.data.vpacks[packId] = ownership;
     this.save();
     return ownership;
   }

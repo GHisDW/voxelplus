@@ -30,12 +30,12 @@ describe('Voxel+ Core Integration: Player, Economy, VPack & Arcade', () => {
     expect(profile.displayName).toBe('Voxel Explorer');
 
     const wallet = store.getWallet();
-    expect(wallet.balance).toBe(250);
+    expect(wallet.balance).toBe(1000);
 
     // Spend test
     const spendRes = store.addTransaction('spend', 50, 'Test Purchase');
     expect(spendRes.success).toBe(true);
-    expect(spendRes.wallet.balance).toBe(200);
+    expect(spendRes.wallet.balance).toBe(950);
 
     // Insufficient funds
     const overspend = store.addTransaction('spend', 9999, 'Too expensive');
@@ -72,12 +72,11 @@ describe('Voxel+ Core Integration: Player, Economy, VPack & Arcade', () => {
       name: 'Sample Modded World',
       minecraft: { version: '1.21.1' },
       loader: { type: 'fabric', version: '0.16.9' },
-      runtime: { memoryMb: 4096, java: 'auto', jvmArgs: [] },
+      runtime: { memoryMb: 4096, java: 'auto', jvmArgs: '' },
       appearance: { artwork: null, item: 'minecraft:stone' },
-      status: 'READY',
+      isFavorite: false,
       createdAt: new Date().toISOString(),
-      lastPlayedAt: null,
-      totalPlayTimeMinutes: 0
+      lastPlayedAt: null
     };
 
     const outZip = path.join(tmpDir, 'sample.voxelplus');
