@@ -234,4 +234,10 @@ export class PlayerDataStore {
     this.save();
     return ownership;
   }
+
+  public resetToDefaults(): PlayerDataSchema {
+    this.data = this.getDefaultData();
+    this.save();
+    return this.data;
+  }
 }

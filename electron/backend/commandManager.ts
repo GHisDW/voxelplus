@@ -60,6 +60,21 @@ export class CommandManager {
     return ConfigStore.saveSettings(settings);
   }
 
+  public static async resetEverything(): Promise<boolean> {
+    // 1. Delete all user instances
+    const instances = await InstanceManager.listInstances();
+    for (const inst of instances) {
+      await InstanceManager.deleteInstance(inst.id);
+    }
+
+    // 2. Reset stores
+    ConfigStore.resetToDefaults();
+    PlayerDataStore.getInstance().resetToDefaults();
+    ArcadeStore.getInstance().resetToDefaults();
+
+    return true;
+  }
+
   // System & Environment
   public static async scanSystem(): Promise<SystemScanResult> {
     return SystemScanner.scanSystem();
