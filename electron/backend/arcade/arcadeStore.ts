@@ -183,4 +183,10 @@ export class ArcadeStore {
       transactionId: null
     };
   }
+
+  public resetToDefaults(): void {
+    this.stockerData = this.getDefaultStocker();
+    this.cookieData = this.getDefaultCookie();
+    this.save();
+  }
 }

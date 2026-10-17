@@ -37,6 +37,7 @@ export const api = {
   // Settings
   getAppSettings: (): Promise<AppSettings> => electronApi.getAppSettings(),
   setAppSettings: (settings: Partial<AppSettings>): Promise<AppSettings> => electronApi.setAppSettings(settings),
+  resetEverything: (): Promise<boolean> => electronApi.resetEverything(),
 
   // System & Environment
   scanSystem: (): Promise<SystemScanResult> => electronApi.scanSystem(),
