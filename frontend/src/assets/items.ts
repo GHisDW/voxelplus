@@ -140,7 +140,7 @@ export const MINECRAFT_ITEMS: MinecraftItemDef[] = [
     "id": "minecraft:diamond_pickaxe",
     "name": "Diamond Pickaxe",
     "category": "tools",
-    "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAAHlBMVEUAAABY8tc80rkqqpEcgmwPUEEUZFJlRC9LMiIvHxW/vGZ1AAAAAXRSTlMAQObYZgAAADNJREFUeJxjYIADJgMow1AZQjMLQYWYDJihQgxGQlBVyszqMI3sDTBWBT6hCTBWAQNuAABnwgTs56ou/AAAAABJRU5ErkJggg=="
+    "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAPUlEQVR4nGNgGCiw5ev//yIV0/6TpVnnxIP/IEyWrUNYM1kBBrM1xkqSNM0g2yjW3B2lTWfNMDBENQ8oAADKUl1TCZW2LQAAAABJRU5ErkJggg=="
   },
   {
     "id": "minecraft:netherite_sword",
@@ -302,25 +302,25 @@ export const MINECRAFT_ITEMS: MinecraftItemDef[] = [
     "id": "minecraft:cookie",
     "name": "Cookie",
     "category": "items",
-    "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAAHlBMVEUAAAC+kUugczeCWCZkQRlBJg8tGQjSqmSvgkFVNxQYpQNYAAAAAXRSTlMAQObYZgAAAEtJREFUeJxjYIADZhMXZwMQw0jIWFEZJKAYqCQqZMDAwCKaKhgW6MDAwKIYZKwqBGIYCSsZKkMYoVCGaFqgMooamC64OXCTEXahAwAorA3zXvwNAAAAAABJRU5ErkJggg=="
+    "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAcklEQVR4nGNgQAM2clz/sWF0dRgApvBOjxFWjNcgdI0aIqxgjMsgnAbANG5JkQNjbIZhGIBsO7JGfGIohmDzNzYvIIthNQBZAcUG4HM+UV7AZgBBFxCKPpINICktEBsTBBMSMRhvciY7L2AziOTcSC4AAMKkb0A5TsxVAAAAAElFTkSuQmCC"
   },
   {
     "id": "minecraft:iron_pickaxe",
     "name": "Iron Pickaxe",
     "category": "tools",
-    "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAAHlBMVEUAAAD///+3t7d/f39wcHBAQEB4kHhlRC9LMiIvHxXA8YHaAAAAAXRSTlMAQObYZgAAADNJREFUeJxjYIADJgMow1AZQjMLQYWYDJihQgxGQlBVyszqMI3sDTBWBT6hCTBWAQNuAABnwgTs56ou/AAAAABJRU5ErkJggg=="
+    "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAVklEQVR4nGNgoAdoamr6v2/fPjh+9uwZGJOkGaYJxIaJkaQZpjHFTYM8zSCNNhoiYEOI1gyzEYSJ8i+yZpiNMJokzTAMJGlGB6OaSQQgjRRpJksjtQAAktsH00KsSckAAAAASUVORSerAAAAAElFTkSuQmCC"
   },
   {
     "id": "minecraft:golden_pickaxe",
     "name": "Golden Pickaxe",
     "category": "tools",
-    "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAAHlBMVEUAAAD/1QDlswS5hwOWZAJaPAB4UAFlRC9LMiIvHxXbQ+cBAAAAAXRSTlMAQObYZgAAADNJREFUeJxjYIADJgMow1AZQjMLQYWYDJihQgxGQlBVyszqMI3sDTBWBT6hCTBWAQNuAABnwgTs56ou/AAAAABJRU5ErkJggg=="
+    "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAVklEQVR4nGNgoAfY0sP1/8MJDTj+/6ECjEnSDNMEYsPESNIM05jipkGeZpBGGw0RsCFEa4bZCMJE+RdZM8xGGE2SZpgGkjSjg1HNJAKQRoo0k6WRWgAA1Jp+kQYlWHEAAAAASUVORSerAAAAAElFTkSuQmCC"
   },
   {
     "id": "minecraft:netherite_pickaxe",
     "name": "Netherite Pickaxe",
     "category": "tools",
-    "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAAHlBMVEUAAABzc3NfX19LS0s3NzcjIyMtLS1QNy08KCAoGhQx5EzGAAAAAXRSTlMAQObYZgAAADNJREFUeJxjYIADJgMow1AZQjMLQYWYDJihQgxGQlBVyszqMI3sDTBWBT6hCTBWAQNuAABnwgTs56ou/AAAAABJRU5ErkJggg=="
+    "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAVUlEQVR4nGNgoAfQUFD472ZjA8d58fFgTJJmmCYQGyZGkmaYxhQ3DfI0gzTaaIiADSFaM8xGECbKv8iaYTbCaJI0wzSQpBkdjGomEYA0UqSZLI3UAgD33l2dXvraRAAAAABJRU5ErkJggg=="
   }
 ];
 

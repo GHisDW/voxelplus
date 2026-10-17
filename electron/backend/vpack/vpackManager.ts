@@ -3,6 +3,8 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import AdmZip from 'adm-zip';
 import { VPackManifest, VPackValidationResult, VPackContentEntry, InstanceMetadata } from '../../types';
+import { LoomProjectGenerator } from '../instances/loomGenerator';
+import { generateBuildGradle, generateGradleProperties, generateSettingsGradle, getGradleDistributionUrl } from '../instances/fabricVersions';
 
 export class VPackManager {
   public static readonly MANIFEST_FILENAME = 'manifest.json';
@@ -208,6 +210,33 @@ export class VPackManager {
         if (!fs.existsSync(parent)) fs.mkdirSync(parent, { recursive: true });
         fs.writeFileSync(resolvedOut, entry.getData());
       }
+
+      // Ensure cross-platform Loom / Gradle wrapper build files exist in destination
+      const mcVer = val.manifest.minecraft?.version || '1.21.1';
+      const cleanName = (val.manifest.name || 'voxelplus-instance')
+        .toLowerCase()
+        .replace(/\s+/g, '-')
+        .replace(/[^a-z0-9-]/g, '');
+
+      if (!fs.existsSync(path.join(destDir, 'build.gradle'))) {
+        fs.writeFileSync(path.join(destDir, 'build.gradle'), generateBuildGradle(mcVer, cleanName, 4096), 'utf-8');
+      }
+      if (!fs.existsSync(path.join(destDir, 'settings.gradle'))) {
+        fs.writeFileSync(path.join(destDir, 'settings.gradle'), generateSettingsGradle(mcVer, cleanName), 'utf-8');
+      }
+      if (!fs.existsSync(path.join(destDir, 'gradle.properties'))) {
+        fs.writeFileSync(path.join(destDir, 'gradle.properties'), generateGradleProperties(mcVer, cleanName, 4096), 'utf-8');
+      }
+      const wrapperPropsPath = path.join(destDir, 'gradle/wrapper/gradle-wrapper.properties');
+      if (!fs.existsSync(wrapperPropsPath)) {
+        if (!fs.existsSync(path.dirname(wrapperPropsPath))) {
+          fs.mkdirSync(path.dirname(wrapperPropsPath), { recursive: true });
+        }
+        const propsContent = `distributionBase=GRADLE_USER_HOME\ndistributionPath=wrapper/dists\ndistributionUrl=${getGradleDistributionUrl(mcVer)}\nnetworkTimeout=10000\nvalidateDistributionUrl=true\nzipStoreBase=GRADLE_USER_HOME\nzipStorePath=wrapper/dists\n`;
+        fs.writeFileSync(wrapperPropsPath, propsContent, 'utf-8');
+      }
+
+      LoomProjectGenerator.ensureWrapperFiles(destDir);
 
       return { success: true, manifest: val.manifest };
     } catch (e: any) {
