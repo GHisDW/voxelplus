@@ -140,7 +140,7 @@ export const MINECRAFT_ITEMS: MinecraftItemDef[] = [
     "id": "minecraft:diamond_pickaxe",
     "name": "Diamond Pickaxe",
     "category": "tools",
-    "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAPUlEQVR4nGNgGCiw5ev//yIV0/6TpVnnxIP/IEyWrUNYM1kBBrM1xkqSNM0g2yjW3B2lTWfNMDBENQ8oAADKUl1TCZW2LQAAAABJRU5ErkJggg=="
+    "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAAHlBMVEUAAAAz68srx6wnspqJZydoTh5JNhUOPzYoHgsIJSBDqdTeAAAAAXRSTlMAQObYZgAAAEZJREFUeNpjwArKywvANLuQsXoqmFU509iDAQKSLCE0W4TRBDAjpWHyBIgAw+QJEAGGSRMgAgwTJ0AEGDihAlAtUEYHms0AO88PQ5cytswAAAAASUVORK5CYII="
   },
   {
     "id": "minecraft:netherite_sword",
@@ -278,7 +278,7 @@ export const MINECRAFT_ITEMS: MinecraftItemDef[] = [
     "id": "minecraft:end_portal_frame",
     "name": "End Portal Frame",
     "category": "blocks",
-    "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAAHlBMVEXt8rnk5qzAwoeZxpO1r3lCc2cvWE4kQzsGGRQDEg4NqstBAAAAbUlEQVR42mMIhQKG4PJi9yTzclOG8CDXJNEQ1VSGcAeR0DRHFiDDMSw9vUwEyFConDlzKlMqQ7BCZkdHG5MpQxiI0coElgIyYFKtICmYSLhjampomAjYwDCQgSArElVBVgSnJaulmKWZMsCcAQDP4imZv+L1CAAAAABJRU5ErkJggg=="
+    "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAAKlBMVEUAAAD2+r3u9rTe5qTV2pTNxovFvouZxpO4qHarhl9Cc2cvWE4YNT4TLjfYHHOhAAAAAXRSTlMAQObYZgAAAHVJREFUeNpjwANWQQHD9rN3geBONcOemx1AMPc0w962tNDQtIzTDGePOhmahHrdYei9s3v37lWrbzBk3AWDNgYXt4yOjrYUFwYjJWMXF0MTFwaVUCcTZyFlQwax0GBhwzAnZQaVVBcjYddUFwYlFxMTI5NgZwB8rTBHhTAeVQAAAABJRU5ErkJggg=="
   },
   {
     "id": "minecraft:gold_ingot",
@@ -302,25 +302,25 @@ export const MINECRAFT_ITEMS: MinecraftItemDef[] = [
     "id": "minecraft:cookie",
     "name": "Cookie",
     "category": "items",
-    "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAcklEQVR4nGNgQAM2clz/sWF0dRgApvBOjxFWjNcgdI0aIqxgjMsgnAbANG5JkQNjbIZhGIBsO7JGfGIohmDzNzYvIIthNQBZAcUG4HM+UV7AZgBBFxCKPpINICktEBsTBBMSMRhvciY7L2AziOTcSC4AAMKkb0A5TsxVAAAAAElFTkSuQmCC"
+    "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAAGFBMVEUAAADomFDZgz65czWLSytXLxpLKBdFKhOKF3TuAAAAAXRSTlMAQObYZgAAAGVJREFUeNptzTESQDAUhOEdzKj3Tegfoc6IA6BRc4M4QQozrk/U2Wa/7kdupffu//nq+qSJFFqg5GHCqguKU4Zw0qGgEar5IC1F1aFStaGRiHo7SNoI3FM39juA+vZ+j0h6nphLv4g3DcSxFtcjAAAAAElFTkSuQmCC"
   },
   {
     "id": "minecraft:iron_pickaxe",
     "name": "Iron Pickaxe",
     "category": "tools",
-    "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAVklEQVR4nGNgoAdoamr6v2/fPjh+9uwZGJOkGaYJxIaJkaQZpjHFTYM8zSCNNhoiYEOI1gyzEYSJ8i+yZpiNMJokzTAMJGlGB6OaSQQgjRRpJksjtQAAktsH00KsSckAAAAASUVORSerAAAAAElFTkSuQmCC"
+    "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAAHlBMVEUAAAD////Y2NjBwcGJZydoTh5ERERJNhUoHgsYGBhl7cYfAAAAAXRSTlMAQObYZgAAAEZJREFUeNpjwArS0hLANJuQsVopmJU509iDAQKKLCE0e4TRBDCjpGHyBIgAw+QJEAGGSRMgAgwTJ0AEGDihAlAtUEYHms0ANwkPY7rJmyQAAAAASUVORK5CYII="
   },
   {
     "id": "minecraft:golden_pickaxe",
     "name": "Golden Pickaxe",
     "category": "tools",
-    "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAVklEQVR4nGNgoAfY0sP1/8MJDTj+/6ECjEnSDNMEYsPESNIM05jipkGeZpBGGw0RsCFEa4bZCMJE+RdZM8xGGE2SZpgGkjSjg1HNJAKQRoo0k6WRWgAA1Jp+kQYlWHEAAAAASUVORSerAAAAAElFTkSuQmCC"
+    "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAAHlBMVEUAAAD9/3bq7lfpsRWJZyeCXRZoTh5JNhU/Lg4oHgvtX/hPAAAAAXRSTlMAQObYZgAAAEVJREFUeNpjwApCQwPANKuQsWoZmBXRYezJAAFFFhCaPdOoAcwomdDcABFgaG6ACDA0NUAEGBobIAIMHFABqBYoYyaazQAK8Q8Sw29uEgAAAABJRU5ErkJggg=="
   },
   {
     "id": "minecraft:netherite_pickaxe",
     "name": "Netherite Pickaxe",
     "category": "tools",
-    "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAVUlEQVR4nGNgoAfQUFD472ZjA8d58fFgTJJmmCYQGyZGkmaYxhQ3DfI0gzTaaIiADSFaM8xGECbKv8iaYTbCaJI0wzSQpBkdjGomEYA0UqSZLI3UAgD33l2dXvraRAAAAABJRU5ErkJggg=="
+    "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQBAMAAADt3eJSAAAAJFBMVEUAAACGe4ZwZ3BdVl1zRUNPPD5DQENgNDI7OTtKKUAvISIjEBKxjxDsAAAAAXRSTlMAQObYZgAAAEVJREFUeNpjwApmzpwApjkFhSxngVmzdwd7M0DAUmsIzVUdvAHMWLJh0waIAMPGDRABCIOrmwHCWAYkuKECUC1Qxm40mwGSfBRqSnvsrAAAAABJRU5ErkJggg=="
   }
 ];
 
