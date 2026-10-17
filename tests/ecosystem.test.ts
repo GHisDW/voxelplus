@@ -93,6 +93,40 @@ describe('Voxel+ Core Integration: Player, Economy, VPack & Arcade', () => {
     expect(fs.existsSync(path.join(extractDir, 'manifest.json'))).toBe(true);
   });
 
+  it('rejects catalog packs that advertise files they do not contain', () => {
+    const archive = path.join(tmpDir, 'broken.vpack');
+    const zip = new (require('adm-zip'))();
+    zip.addFile('manifest.json', Buffer.from(JSON.stringify({
+      formatId: 'voxelplus-vpack', formatVersion: 1, packId: 'broken', name: 'Broken',
+      description: '', author: 'test', packVersion: '1.0.0',
+      minecraft: { version: '1.21.1' }, loader: { type: 'fabric', version: '0.16.9' },
+      content: [{ relativePath: 'mods/missing.jar', type: 'mod', sizeBytes: 1 }],
+      artwork: null, createdAt: new Date().toISOString(), generatorVersion: 'test'
+    })));
+    zip.writeZip(archive);
+    const validation = VPackManager.validateVPack(archive);
+    expect(validation.valid).toBe(false);
+    expect(validation.errors.join(' ')).toContain('missing.jar');
+  });
+
+  it('embeds archive artwork into the imported manifest for portable instance icons', () => {
+    const archive = path.join(tmpDir, 'artwork.vpack');
+    const zip = new (require('adm-zip'))();
+    zip.addFile('icon.png', Buffer.from([137, 80, 78, 71]));
+    zip.addFile('manifest.json', Buffer.from(JSON.stringify({
+      formatId: 'voxelplus-vpack', formatVersion: 1, packId: 'artwork-pack', name: 'Artwork Pack',
+      description: 'Pack with an icon', author: 'test', packVersion: '1.0.0',
+      minecraft: { version: '1.21.1' }, loader: { type: 'fabric', version: '0.16.9' },
+      content: [{ relativePath: 'icon.png', type: 'other', sizeBytes: 4 }],
+      artwork: 'icon.png', item: 'minecraft:diamond', createdAt: new Date().toISOString(), generatorVersion: 'test'
+    })));
+    zip.writeZip(archive);
+
+    const extracted = VPackManager.extractVPack(archive, path.join(tmpDir, 'artwork-extracted'));
+    expect(extracted.success).toBe(true);
+    expect(extracted.manifest?.artwork).toBe('data:image/png;base64,iVBORw==');
+  });
+
   it('records arcade runs and persists stocker & cookie clicker rewards', () => {
     const playerStore = new PlayerDataStore(playerFile);
     const arcadeStore = new ArcadeStore(arcadeFile, playerStore);

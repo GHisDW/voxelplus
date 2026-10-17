@@ -263,8 +263,28 @@ export class InstanceManager {
             loaderType: 'fabric'
           });
         }
+      }
+
+      // The manifest is authoritative for pack identity and appearance. Legacy
+      // voxel-instance.json files often contain stale/default icons, which used
+      // to overwrite the icon selected by the pack creator during import.
+      if (extractResult.manifest) {
+        meta.id = crypto.randomUUID();
+        meta.name = customName || extractResult.manifest.name || meta.name;
+        meta.description = extractResult.manifest.description || meta.description;
+        meta.minecraft.version = extractResult.manifest.minecraft.version;
+        meta.loader = {
+          type: extractResult.manifest.loader.type,
+          version: extractResult.manifest.loader.version
+        };
+        meta.appearance = {
+          ...meta.appearance,
+          item: extractResult.manifest.item || meta.appearance.item,
+          artwork: extractResult.manifest.artwork || meta.appearance.artwork
+        };
+        meta.shareSource = extractResult.manifest.shareSource || meta.shareSource;
       } else {
-        meta.id = crypto.randomUUID(); // Assign new fresh ID
+        meta.id = crypto.randomUUID();
         if (customName) meta.name = customName;
       }
 

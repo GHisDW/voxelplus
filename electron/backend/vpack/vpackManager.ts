@@ -14,11 +14,18 @@ export class VPackManager {
    * Sanitizes relative archive paths against zip-slip directory traversal vulnerabilities.
    */
   public static isSafePath(entryPath: string): boolean {
-    const normalized = path.normalize(entryPath).replace(/^(\.\.(\/|\\|$))+/, '');
-    if (normalized.includes('..') || path.isAbsolute(entryPath)) {
-      return false;
-    }
-    return true;
+    if (!entryPath || entryPath.includes('\0') || path.isAbsolute(entryPath)) return false;
+    const normalized = path.posix.normalize(entryPath.replace(/\\/g, '/'));
+    return normalized !== '..' && !normalized.startsWith('../') && !normalized.includes('/:');
+  }
+
+  /** Resolve catalog assets relative to the application, not the process launch directory. */
+  public static getRepositoryDirectory(): string {
+    const candidates = [
+      path.resolve(__dirname, '../../../vpacks'),
+      path.resolve(process.cwd(), 'vpacks')
+    ];
+    return candidates.find(candidate => fs.existsSync(candidate)) || candidates[0];
   }
 
   /**
@@ -84,9 +91,22 @@ export class VPackManager {
           const raw = manifestEntry.getData().toString('utf-8');
           const parsed = JSON.parse(raw) as VPackManifest;
           // Be more lenient - accept even if formatId is wrong
+          if (parsed.formatId !== 'voxelplus-vpack') errors.push('Unsupported VPack format.');
+          if (parsed.formatVersion !== 1) errors.push(`Unsupported VPack version: ${parsed.formatVersion ?? 'missing'}.`);
           if (!parsed.name) errors.push('Pack manifest is missing a name.');
           if (!parsed.minecraft?.version) errors.push('Pack manifest missing Minecraft version.');
           if (!parsed.loader?.type) errors.push('Pack manifest missing loader type.');
+          if (!parsed.packId) errors.push('Pack manifest missing a stable pack ID.');
+
+          for (const content of parsed.content || []) {
+            if (!content.relativePath || !this.isSafePath(content.relativePath)) {
+              errors.push(`Pack contains an unsafe content path: ${content.relativePath || '(empty)'}.`);
+              continue;
+            }
+            if (!zip.getEntry(content.relativePath) && !content.downloadUrl) {
+              errors.push(`Pack is missing declared content: ${content.relativePath}.`);
+            }
+          }
 
           return {
             valid: errors.length === 0,
@@ -117,14 +137,8 @@ export class VPackManager {
         }
       }
 
-      // If no manifest found, still allow import as "generic zip" - will create default instance
-      warnings.push('No manifest found. Will create default instance configuration.');
-      return {
-        valid: true,
-        manifest: null,
-        errors: [],
-        warnings
-      };
+      errors.push('Archive does not contain manifest.json or voxel-instance.json.');
+      return { valid: false, manifest: null, errors, warnings };
     } catch (e: any) {
       return { valid: false, manifest: null, errors: [`Failed to inspect archive: ${e.message}`], warnings };
     }
@@ -194,6 +208,24 @@ export class VPackManager {
       const zip = new AdmZip(zipPath);
       const entries = zip.getEntries();
 
+      // Make pack artwork portable. A manifest may point at an image entry
+      // instead of embedding a large data URL; imported instances must not
+      // keep depending on the original archive for their icon.
+      if (val.manifest.artwork && !val.manifest.artwork.startsWith('data:')) {
+        const artworkEntry = zip.getEntry(val.manifest.artwork);
+        if (artworkEntry) {
+          const extension = path.extname(val.manifest.artwork).toLowerCase();
+          const mime = extension === '.jpg' || extension === '.jpeg'
+            ? 'image/jpeg'
+            : extension === '.webp'
+              ? 'image/webp'
+              : extension === '.svg'
+                ? 'image/svg+xml'
+                : 'image/png';
+          val.manifest.artwork = `data:${mime};base64,${artworkEntry.getData().toString('base64')}`;
+        }
+      }
+
       for (const entry of entries) {
         if (entry.isDirectory) continue;
         if (!this.isSafePath(entry.entryName)) {
@@ -202,7 +234,8 @@ export class VPackManager {
 
         const outTarget = path.join(destDir, entry.entryName);
         const resolvedOut = path.resolve(outTarget);
-        if (!resolvedOut.startsWith(path.resolve(destDir))) {
+        const resolvedRoot = path.resolve(destDir) + path.sep;
+        if (resolvedOut !== path.resolve(destDir) && !resolvedOut.startsWith(resolvedRoot)) {
           return { success: false, manifest: null, error: `Zip Slip path traversal blocked: ${entry.entryName}` };
         }
 
@@ -249,7 +282,7 @@ export class VPackManager {
    */
   public static scanVPackRepository(): { fileName: string; filePath: string; manifest: VPackManifest; price: number }[] {
     const results: { fileName: string; filePath: string; manifest: VPackManifest; price: number }[] = [];
-    const vpacksDir = path.join(process.cwd(), 'vpacks');
+    const vpacksDir = this.getRepositoryDirectory();
     if (!fs.existsSync(vpacksDir)) {
       try { fs.mkdirSync(vpacksDir, { recursive: true }); } catch (_) {}
       return results;

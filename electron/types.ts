@@ -494,6 +494,8 @@ export interface VPackContentEntry {
   type: 'mod' | 'resourcepack' | 'shaderpack' | 'config' | 'other';
   sizeBytes: number;
   sha256?: string;
+  /** Optional remote source used when a catalog pack intentionally keeps large binaries out of git. */
+  downloadUrl?: string;
 }
 
 export interface VPackValidationResult {
