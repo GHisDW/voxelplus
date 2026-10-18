@@ -55,7 +55,7 @@ describe('Voxel+ Core Integration: Player, Economy, VPack & Arcade', () => {
     expect(store.isCosmeticOwned('cosmetic-badge-first-instance')).toBe(true);
   });
 
-  it('exports and securely imports VPack with manifest and traversal protection', () => {
+  it('exports and securely imports VPack with manifest and traversal protection', async () => {
     const instanceDir = path.join(tmpDir, 'inst-sample');
     fs.mkdirSync(instanceDir, { recursive: true });
     fs.writeFileSync(path.join(instanceDir, 'voxel-instance.json'), JSON.stringify({
@@ -89,7 +89,7 @@ describe('Voxel+ Core Integration: Player, Economy, VPack & Arcade', () => {
     expect(validation.manifest?.item).toBe('minecraft:stone');
 
     const extractDir = path.join(tmpDir, 'extracted');
-    const ext = VPackManager.extractVPack(outZip, extractDir);
+    const ext = await VPackManager.extractVPack(outZip, extractDir);
     expect(ext.success).toBe(true);
     expect(fs.existsSync(path.join(extractDir, 'manifest.json'))).toBe(true);
   });
@@ -110,7 +110,7 @@ describe('Voxel+ Core Integration: Player, Economy, VPack & Arcade', () => {
     expect(validation.errors.join(' ')).toContain('missing.jar');
   });
 
-  it('embeds archive artwork into the imported manifest for portable instance icons', () => {
+  it('embeds archive artwork into the imported manifest for portable instance icons', async () => {
     const archive = path.join(tmpDir, 'artwork.vpack');
     const zip = new (require('adm-zip'))();
     zip.addFile('icon.png', Buffer.from([137, 80, 78, 71]));
@@ -123,9 +123,25 @@ describe('Voxel+ Core Integration: Player, Economy, VPack & Arcade', () => {
     })));
     zip.writeZip(archive);
 
-    const extracted = VPackManager.extractVPack(archive, path.join(tmpDir, 'artwork-extracted'));
+    const extracted = await VPackManager.extractVPack(archive, path.join(tmpDir, 'artwork-extracted'));
     expect(extracted.success).toBe(true);
     expect(extracted.manifest?.artwork).toBe('data:image/png;base64,iVBORw==');
+  });
+
+  it('ships three real catalog recipes with verified Modrinth sources', () => {
+    const listings = VPackManager.scanVPackRepository();
+    expect(listings.map(item => item.manifest.packId).sort()).toEqual([
+      'voxelplus-actions-and-fresh',
+      'voxelplus-create-industrial-horizons',
+      'voxelplus-fabulously-optimized'
+    ]);
+
+    for (const listing of listings) {
+      expect(listing.manifest.source?.platform).toBe('modrinth');
+      expect(listing.manifest.source?.url).toMatch(/^https:\/\/cdn\.modrinth\.com\//);
+      expect(listing.manifest.content.length).toBeGreaterThan(20);
+      expect(listing.manifest.content.every(entry => entry.downloadUrl || entry.relativePath)).toBe(true);
+    }
   });
 
   it('records arcade runs and persists stocker & cookie clicker rewards', () => {

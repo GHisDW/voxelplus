@@ -233,7 +233,7 @@ export class InstanceManager {
 
       PathManager.ensureDirectory(targetDir);
 
-      const extractResult = VPackManager.extractVPack(importZipPath, targetDir);
+      const extractResult = await VPackManager.extractVPack(importZipPath, targetDir);
       if (!extractResult.success) {
         throw new Error(extractResult.error || 'Failed to extract package.');
       }
