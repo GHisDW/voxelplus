@@ -55,9 +55,7 @@ export class OnboardingPage {
       card.innerHTML = `
         <div style="text-align: center; padding: 24px 12px;">
           <img src="logo.png" alt="Voxel+" style="width: 68px; height: 68px; border-radius: var(--radius-lg); margin-bottom: 20px; box-shadow: 0 8px 24px var(--accent-glow);" />
-          <div class="brand-title" style="font-size: 2.2rem; justify-content: center; margin-bottom: 8px;">
-            VOXEL<span class="plus-badge">⁺</span>
-          </div>
+          <div style="font-size: 2.2rem; font-weight: 800; letter-spacing: -0.03em; color: var(--text-primary); margin-bottom: 8px;">Voxel+</div>
           <h3 style="font-size: 1.25rem; font-weight: 600; color: var(--text-primary); margin-bottom: 12px;">
             Minecraft development, simplified.
           </h3>

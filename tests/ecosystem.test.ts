@@ -86,6 +86,7 @@ describe('Voxel+ Core Integration: Player, Economy, VPack & Arcade', () => {
     const validation = VPackManager.validateVPack(outZip);
     expect(validation.valid).toBe(true);
     expect(validation.manifest?.name).toBe('Sample Modded World');
+    expect(validation.manifest?.item).toBe('minecraft:stone');
 
     const extractDir = path.join(tmpDir, 'extracted');
     const ext = VPackManager.extractVPack(outZip, extractDir);

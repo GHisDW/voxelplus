@@ -50,24 +50,8 @@ export class Sidebar {
     this.container.innerHTML = `
       <!-- Brand Logo -->
       <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 24px; padding: 4px 6px;">
-        <div style="
-          width: 36px;
-          height: 36px;
-          border-radius: var(--radius-md);
-          background: var(--accent-gradient);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          box-shadow: 0 4px 14px var(--accent-glow);
-          color: white;
-          font-size: 1.2rem;
-          font-weight: 900;
-        ">
-          V
-        </div>
-        <div class="brand-title">
-          VOXEL<span class="plus-badge">⁺</span>
-        </div>
+        <img src="logo.png" alt="Voxel+" style="width: 42px; height: 42px; border-radius: var(--radius-md); object-fit: cover; box-shadow: 0 4px 14px var(--accent-glow);" />
+        <span style="font-size: 1.18rem; font-weight: 800; letter-spacing: -0.03em; color: var(--text-primary);">Voxel+</span>
       </div>
 
       <!-- Navigation Links -->
