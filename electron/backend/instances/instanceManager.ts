@@ -238,6 +238,27 @@ export class InstanceManager {
         throw new Error(extractResult.error || 'Failed to extract package.');
       }
 
+      // A Modrinth .mrpack may contain only its content and index metadata.
+      // Imported VPacks still need the launcher's Loom project scaffold so the
+      // instance can be started through the normal ProcessManager path.
+      if (!fs.existsSync(path.join(targetDir, 'build.gradle')) || !fs.existsSync(path.join(targetDir, 'gradlew.bat'))) {
+        const packManifest = extractResult.manifest;
+        if (packManifest) {
+          await LoomProjectGenerator.generateProject(targetDir, {
+            name: customName || packManifest.name || suggestedName,
+            description: packManifest.description,
+            minecraftVersion: packManifest.minecraft?.version || '1.21.1',
+            loaderType: (packManifest.loader?.type as any) || 'fabric',
+            loaderVersion: packManifest.loader?.version,
+            javaRuntime: 'auto',
+            memoryMb: 4096,
+            artwork: packManifest.artwork || null,
+            item: packManifest.item,
+            shareSource: packManifest.shareSource
+          });
+        }
+      }
+
       // Re-read or synthesize metadata from extracted manifest
       let meta = InstanceMetadataStore.readMetadata(targetDir);
       if (!meta) {

@@ -132,7 +132,7 @@ describe('Voxel+ Core Integration: Player, Economy, VPack & Arcade', () => {
     const listings = VPackManager.scanVPackRepository();
     expect(listings.map(item => item.manifest.packId).sort()).toEqual([
       'voxelplus-actions-and-fresh',
-      'voxelplus-create-industrial-horizons',
+      'voxelplus-fabricate-create',
       'voxelplus-fabulously-optimized'
     ]);
 

@@ -36,17 +36,17 @@ const catalog = [
     price: 450
   },
   {
-    slug: 'create-industrial-horizons',
-    sourceFile: 'industrial-horizons.mrpack',
-    packId: 'voxelplus-create-industrial-horizons',
-    name: 'Create: Industrial Horizons',
-    description: 'A Voxel+ Fabric engineering instance based on Create: Industrial Horizons, including its Create ecosystem, datapacks, configs, and client presentation.',
-    author: 'Voxel+ + Create: Industrial Horizons',
+    slug: 'fabricate-create',
+    sourceFile: 'fabricate.mrpack',
+    packId: 'voxelplus-fabricate-create',
+    name: 'Fabricate: Create Engineering',
+    description: 'A Voxel+ Fabric engineering instance based on Fabricate, with Create, performance mods, configs, and client presentation.',
+    author: 'Voxel+ + Fabricate',
     item: 'minecraft:copper_ingot',
     artwork: 'preset:sunset_plains',
-    sourceProjectId: 'ZKwcjthq',
-    sourceVersionId: 'uOvCHfRw',
-    sourceUrl: 'https://cdn.modrinth.com/data/ZKwcjthq/versions/uOvCHfRw/Industrial%20Horizons%202.1.mrpack',
+    sourceProjectId: '9RQ9AyJY',
+    sourceVersionId: 'sUv2uZiC',
+    sourceUrl: 'https://cdn.modrinth.com/data/9RQ9AyJY/versions/sUv2uZiC/pack.mrpack',
     price: 500
   }
 ];
@@ -123,7 +123,7 @@ for (const item of catalog) {
     description: item.description,
     minecraft: { version: index.dependencies.minecraft },
     loader: { type: 'fabric', version: index.dependencies['fabric-loader'] },
-    runtime: { java: 'auto', memoryMb: item.slug === 'create-industrial-horizons' ? 6144 : 4096 },
+    runtime: { java: 'auto', memoryMb: item.slug === 'fabricate-create' ? 6144 : 4096 },
     appearance: { artwork: item.artwork, item: item.item },
     isFavorite: false,
     createdAt: new Date().toISOString(),
