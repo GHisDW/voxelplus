@@ -23,6 +23,7 @@ export interface PlayerDataSchema {
   achievements: Record<string, AchievementProgress>;
   cosmetics: Record<string, CosmeticOwnership>;
   vpacks: Record<string, VPackOwnership>;
+  _starterBonusGranted?: boolean;
 }
 
 export class PlayerDataStore {
@@ -83,7 +84,8 @@ export class PlayerDataStore {
           source: 'default'
         }
       },
-      vpacks: {}
+      vpacks: {},
+      _starterBonusGranted: true
     };
   }
 
@@ -92,19 +94,30 @@ export class PlayerDataStore {
       if (fs.existsSync(this.filePath)) {
         const raw = fs.readFileSync(this.filePath, 'utf-8');
         const parsed = JSON.parse(raw);
+        
+        // Check if starter bonus was already granted
+        const starterBonusGranted = parsed._starterBonusGranted === true;
+        
+        const defaultData = this.getDefaultData();
+        
+        // If starter bonus was already granted, use the existing wallet balance
+        // Otherwise, grant the starter bonus
+        const wallet = starterBonusGranted 
+          ? { ...defaultData.wallet, ...(parsed.wallet || {}) }
+          : defaultData.wallet;
+        
+        const transactions = starterBonusGranted && Array.isArray(parsed.transactions)
+          ? parsed.transactions
+          : defaultData.transactions;
+        
         return {
-          profile: { ...this.getDefaultData().profile, ...(parsed.profile || {}) },
-          wallet: { ...this.getDefaultData().wallet, ...(parsed.wallet || {}) },
-          transactions: Array.isArray(parsed.transactions) ? parsed.transactions : [],
+          profile: { ...defaultData.profile, ...(parsed.profile || {}) },
+          wallet,
+          transactions,
           achievements: parsed.achievements || {},
-          cosmetics: parsed.cosmetics || {
-            'cosmetic-gem-emerald': {
-              cosmeticId: 'cosmetic-gem-emerald',
-              acquiredAt: new Date().toISOString(),
-              source: 'default'
-            }
-          },
-          vpacks: parsed.vpacks || {}
+          cosmetics: parsed.cosmetics || defaultData.cosmetics,
+          vpacks: parsed.vpacks || {},
+          _starterBonusGranted: true
         };
       }
     } catch (e) {

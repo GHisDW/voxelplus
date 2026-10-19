@@ -88,7 +88,7 @@ export const api = {
   importInstance: (zipPath: string, customName?: string): Promise<InstanceMetadata | null> => electronApi.importInstance(zipPath, customName),
   validateVPack: (zipPath: string): Promise<VPackValidationResult> => electronApi.validateVPack(zipPath),
   listRepositoryVPacks: (): Promise<any[]> => electronApi.listRepositoryVPacks(),
-  purchaseVPack: (zipPath: string, price: number): Promise<{ success: boolean; instance?: InstanceMetadata; error?: string }> => electronApi.purchaseVPack(zipPath, price),
+  purchaseVPack: (zipPath: string): Promise<{ success: boolean; instance?: InstanceMetadata; error?: string }> => electronApi.purchaseVPack(zipPath),
 
   // Player & Economy
   getPlayerProfile: (): Promise<PlayerProfile> => electronApi.getPlayerProfile(),

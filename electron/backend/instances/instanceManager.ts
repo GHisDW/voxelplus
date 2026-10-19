@@ -204,6 +204,11 @@ export class InstanceManager {
       return null;
     }
 
+    // Use temp directory for atomic import
+    const baseDir = ConfigStore.getInstanceDirectory();
+    const tempDir = path.join(baseDir, '.temp-import-' + crypto.randomUUID());
+    let finalTargetDir: string | null = null;
+
     try {
       // First validate the VPack to give better error messages
       const validation = VPackManager.validateVPack(importZipPath);
@@ -221,19 +226,19 @@ export class InstanceManager {
         return null;
       }
 
-      const baseDir = ConfigStore.getInstanceDirectory();
       const suggestedName = customName || path.basename(importZipPath, path.extname(importZipPath));
       const folderName = PathManager.sanitizeFilename(suggestedName);
-      let targetDir = path.join(baseDir, folderName);
-
+      
+      // Determine final target directory
+      finalTargetDir = path.join(baseDir, folderName);
       let counter = 1;
-      while (fs.existsSync(targetDir)) {
-        targetDir = path.join(baseDir, `${folderName} (${counter++})`);
+      while (fs.existsSync(finalTargetDir)) {
+        finalTargetDir = path.join(baseDir, `${folderName} (${counter++})`);
       }
 
-      PathManager.ensureDirectory(targetDir);
-
-      const extractResult = await VPackManager.extractVPack(importZipPath, targetDir);
+      // Extract to temp directory first
+      PathManager.ensureDirectory(tempDir);
+      const extractResult = await VPackManager.extractVPack(importZipPath, tempDir);
       if (!extractResult.success) {
         throw new Error(extractResult.error || 'Failed to extract package.');
       }
@@ -241,10 +246,10 @@ export class InstanceManager {
       // A Modrinth .mrpack may contain only its content and index metadata.
       // Imported VPacks still need the launcher's Loom project scaffold so the
       // instance can be started through the normal ProcessManager path.
-      if (!fs.existsSync(path.join(targetDir, 'build.gradle')) || !fs.existsSync(path.join(targetDir, 'gradlew.bat'))) {
+      if (!fs.existsSync(path.join(tempDir, 'build.gradle')) || !fs.existsSync(path.join(tempDir, 'gradlew.bat'))) {
         const packManifest = extractResult.manifest;
         if (packManifest) {
-          await LoomProjectGenerator.generateProject(targetDir, {
+          await LoomProjectGenerator.generateProject(tempDir, {
             name: customName || packManifest.name || suggestedName,
             description: packManifest.description,
             minecraftVersion: packManifest.minecraft?.version || '1.21.1',
@@ -260,7 +265,7 @@ export class InstanceManager {
       }
 
       // Re-read or synthesize metadata from extracted manifest
-      let meta = InstanceMetadataStore.readMetadata(targetDir);
+      let meta = InstanceMetadataStore.readMetadata(tempDir);
       if (!meta) {
         // Use manifest if available, otherwise create default
         if (extractResult.manifest) {
@@ -312,9 +317,22 @@ export class InstanceManager {
       // Mark as VPack import
       meta.isVPack = true;
 
-      InstanceMetadataStore.writeMetadata(targetDir, meta);
+      InstanceMetadataStore.writeMetadata(tempDir, meta);
+
+      // Atomic move: rename temp directory to final target
+      fs.renameSync(tempDir, finalTargetDir);
+      
       return meta;
     } catch (e) {
+      // Cleanup temp directory on failure
+      try {
+        if (fs.existsSync(tempDir)) {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+      } catch (cleanupError) {
+        console.error('Failed to cleanup temp import directory:', cleanupError);
+      }
+      
       new VoxelError({
         title: 'Instance Import Failed',
         message: 'The selected package could not be imported as an instance.',

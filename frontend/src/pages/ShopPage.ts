@@ -3,6 +3,16 @@ import { CosmeticDefinition, CosmeticEffect, WalletState } from '../../../electr
 import { NotificationToast } from '../components/NotificationToast';
 import { getItemDataUrl } from '../assets/items';
 
+function escapeHtml(text: string | null | undefined): string {
+  if (text === null || text === undefined) return '';
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 export class ShopPage {
   private container: HTMLElement;
   private activeTab: 'cosmetics' | 'effects' | 'vpacks' = 'vpacks';
@@ -80,11 +90,10 @@ export class ShopPage {
     this.container.querySelectorAll('[data-buy-vpack]').forEach(btn => {
       (btn as HTMLElement).onclick = async () => {
         const filePath = btn.getAttribute('data-buy-vpack')!;
-        const price = parseInt(btn.getAttribute('data-price') || '0', 10);
         NotificationToast.show('Purchasing and extracting VPack...', 'info');
 
         try {
-          const res = await api.purchaseVPack(filePath, price);
+          const res = await api.purchaseVPack(filePath);
           if (res.success && res.instance) {
             NotificationToast.show(`Unlocked & Installed "${res.instance.name}"! Available under Instances.`, 'success');
             this.render();
@@ -175,10 +184,10 @@ export class ShopPage {
             </div>
             <div>
               <h2 style="font-size: 1.3rem; font-weight: 800; color: var(--text-primary); margin: 0;">
-                ${manifest.name}
+                ${escapeHtml(manifest.name)}
               </h2>
               <div style="font-size: 0.82rem; color: var(--text-secondary); margin-top: 2px;">
-                by ${manifest.author || 'Voxel+ Studio'} • Fabric Loader ${manifest.loader?.version || '0.16.0'}
+                by ${escapeHtml(manifest.author || 'Voxel+ Studio')} • Fabric Loader ${escapeHtml(manifest.loader?.version || '0.16.0')}
               </div>
             </div>
           </div>
@@ -186,7 +195,7 @@ export class ShopPage {
         </div>
 
         <p style="font-size: 0.9rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 20px;">
-          ${manifest.description}
+          ${escapeHtml(manifest.description)}
         </p>
 
         <!-- Technical Specs -->
@@ -203,11 +212,11 @@ export class ShopPage {
         ">
           <div>
             <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Minecraft</div>
-            <div style="font-size: 0.92rem; font-weight: 800; color: #10b981;">v${manifest.minecraft?.version || '1.21.1'}</div>
+            <div style="font-size: 0.92rem; font-weight: 800; color: #10b981;">v${escapeHtml(manifest.minecraft?.version || '1.21.1')}</div>
           </div>
           <div>
             <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Loader</div>
-            <div style="font-size: 0.92rem; font-weight: 800; color: #38bdf8;">${manifest.loader?.type || 'fabric'}</div>
+            <div style="font-size: 0.92rem; font-weight: 800; color: #38bdf8;">${escapeHtml(manifest.loader?.type || 'fabric')}</div>
           </div>
           <div>
             <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Pack Price</div>
@@ -223,8 +232,8 @@ export class ShopPage {
           <div style="max-height: 160px; overflow-y: auto; background: var(--bg-input); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 10px;">
             ${contentList.map((c: any) => `
               <div style="display: flex; justify-content: space-between; padding: 6px 8px; font-size: 0.8rem; font-family: var(--font-mono); border-bottom: 1px solid rgba(255,255,255,0.04);">
-                <span style="color: var(--text-primary);">${c.relativePath}</span>
-                <span style="color: var(--text-muted);">${c.type}</span>
+                <span style="color: var(--text-primary);">${escapeHtml(c.relativePath)}</span>
+                <span style="color: var(--text-muted);">${escapeHtml(c.type)}</span>
               </div>
             `).join('') || '<div style="font-size: 0.8rem; color: var(--text-muted); padding: 8px;">Standard Fabric Loom project files included.</div>'}
           </div>
@@ -252,7 +261,7 @@ export class ShopPage {
         closeModal();
         NotificationToast.show('Purchasing and extracting VPack...', 'info');
         try {
-          const res = await api.purchaseVPack(item.filePath, price);
+          const res = await api.purchaseVPack(item.filePath);
           if (res.success && res.instance) {
             NotificationToast.show(`Unlocked & Installed "${res.instance.name}"!`, 'success');
             this.render();
@@ -302,7 +311,7 @@ export class ShopPage {
                 color: #818cf8;
                 border: 1px solid rgba(99, 102, 241, 0.4);
               ">📦 VPACK MODPACK</span>
-              <span style="font-size: 0.75rem; color: #10b981; font-weight: 700;">MC ${manifest.minecraft?.version || '1.21.1'}</span>
+              <span style="font-size: 0.75rem; color: #10b981; font-weight: 700;">MC ${escapeHtml(manifest.minecraft?.version || '1.21.1')}</span>
             </div>
 
             <!-- Item Texture / Visual Header -->
@@ -326,20 +335,20 @@ export class ShopPage {
                 justify-content: center;
                 flex-shrink: 0;
               ">
-                <img src="${textureUrl}" style="width: 38px; height: 38px; image-rendering: pixelated; object-fit: contain;" alt="${manifest.name}" />
+                <img src="${textureUrl}" style="width: 38px; height: 38px; image-rendering: pixelated; object-fit: contain;" alt="${escapeHtml(manifest.name)}" />
               </div>
               <div style="flex: 1; min-width: 0;">
                 <div style="font-size: 1.1rem; font-weight: 800; color: var(--text-primary); margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                  ${manifest.name}
+                  ${escapeHtml(manifest.name)}
                 </div>
                 <div style="font-size: 0.78rem; color: var(--text-secondary);">
-                  by ${manifest.author || 'Voxel+ Studio'} • Fabric ${manifest.loader?.version || '0.16.0'}
+                  by ${escapeHtml(manifest.author || 'Voxel+ Studio')} • Fabric ${escapeHtml(manifest.loader?.version || '0.16.0')}
                 </div>
               </div>
             </div>
 
             <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 20px; line-height: 1.5; flex: 1;">
-              ${manifest.description || 'Packed Voxel+ Minecraft instance ready to install and play.'}
+              ${escapeHtml(manifest.description || 'Packed Voxel+ Minecraft instance ready to install and play.')}
             </div>
 
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: auto; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.06); gap: 10px;">
@@ -401,7 +410,7 @@ export class ShopPage {
                 background: ${badgeColor}22;
                 color: ${badgeColor};
               ">${item.rarity}</span>
-              <span style="font-size: 0.72rem; color: var(--text-muted); font-family: var(--font-mono);">${item.artworkPath}</span>
+              <span style="font-size: 0.72rem; color: var(--text-muted); font-family: var(--font-mono);">${escapeHtml(item.artworkPath)}</span>
             </div>
 
             <!-- Item Texture Visual with Aura -->
@@ -426,10 +435,10 @@ export class ShopPage {
             </div>
 
             <div style="font-size: 1rem; font-weight: 800; color: var(--text-primary); margin-bottom: 4px;">
-              ${item.name}
+              ${escapeHtml(item.name)}
             </div>
             <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 16px; flex: 1;">
-              ${item.description}
+              ${escapeHtml(item.description)}
             </div>
 
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: auto;">
@@ -492,8 +501,8 @@ export class ShopPage {
                 <img src="${getItemDataUrl('minecraft:enchanted_book')}" style="width: 32px; height: 32px; image-rendering: pixelated; object-fit: contain;" />
               </div>
               <div>
-                <div style="font-size: 1.05rem; font-weight: 800; color: var(--text-primary);">${fx.name}</div>
-                <div style="font-size: 0.82rem; color: var(--text-secondary);">Family: ${fx.family} • Animated Ambient Aura</div>
+                <div style="font-size: 1.05rem; font-weight: 800; color: var(--text-primary);">${escapeHtml(fx.name)}</div>
+                <div style="font-size: 0.82rem; color: var(--text-secondary);">Family: ${escapeHtml(fx.family)} • Animated Ambient Aura</div>
               </div>
             </div>
             <button class="btn btn-sm ${isEquipped ? 'btn-secondary' : 'btn-primary'}" data-equip-effect="${fx.id}">

@@ -87,7 +87,7 @@ const api = {
   importInstance: (zipPath: string, customName?: string): Promise<InstanceMetadata | null> => ipcRenderer.invoke('instance:import', zipPath, customName),
   validateVPack: (zipPath: string): Promise<VPackValidationResult> => ipcRenderer.invoke('vpack:validate', zipPath),
   listRepositoryVPacks: (): Promise<any[]> => ipcRenderer.invoke('vpack:listRepository'),
-  purchaseVPack: (zipPath: string, price: number): Promise<{ success: boolean; instance?: InstanceMetadata; error?: string }> => ipcRenderer.invoke('vpack:purchase', zipPath, price),
+  purchaseVPack: (zipPath: string): Promise<{ success: boolean; instance?: InstanceMetadata; error?: string }> => ipcRenderer.invoke('vpack:purchase', zipPath),
 
   // Player & Economy
   getPlayerProfile: (): Promise<PlayerProfile> => ipcRenderer.invoke('player:getProfile'),

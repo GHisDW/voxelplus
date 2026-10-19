@@ -22,9 +22,13 @@ export class VPackManager {
 
   /** Resolve catalog assets relative to the application, not the process launch directory. */
   public static getRepositoryDirectory(): string {
+    // In development, __dirname points to dist-electron/backend/vpack
+    // In production, it points to app.asar or similar
+    // We need to resolve to the vpacks directory at the root
+    const appBase = path.resolve(__dirname, '../../../');
     const candidates = [
-      path.resolve(__dirname, '../../../vpacks'),
-      path.resolve(process.cwd(), 'vpacks')
+      path.join(appBase, 'vpacks'),
+      path.join(process.resourcesPath || appBase, 'vpacks')
     ];
     return candidates.find(candidate => fs.existsSync(candidate)) || candidates[0];
   }

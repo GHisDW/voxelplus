@@ -101,7 +101,7 @@ function registerIpcHandlers() {
   handle('instance:import', 'INSTANCE', async (_, zipPath, name) => CommandManager.importInstance(zipPath, name));
   handle('vpack:validate', 'INSTANCE', async (_, zipPath) => CommandManager.validateVPack(zipPath));
   handle('vpack:listRepository', 'INSTANCE', async () => CommandManager.listRepositoryVPacks());
-  handle('vpack:purchase', 'INSTANCE', async (_, zipPath, price) => CommandManager.purchaseVPack(zipPath, price));
+  handle('vpack:purchase', 'INSTANCE', async (_, zipPath) => CommandManager.purchaseVPack(zipPath));
 
   // Player & Economy
   handle('player:getProfile', 'IPC', async () => CommandManager.getPlayerProfile());
@@ -140,12 +140,40 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: true,
+      webSecurity: true
     }
   });
 
   // Remove default menu for clean launcher look
   mainWindow.setMenuBarVisibility(false);
+
+  // Security: Restrict navigation to prevent loading external content
+  mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+    const parsedUrl = new URL(navigationUrl);
+    if (parsedUrl.protocol !== 'file:' && parsedUrl.protocol !== 'devtools:') {
+      event.preventDefault();
+    }
+  });
+
+  // Security: Block new window creation
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    // Allow only devtools
+    if (url.startsWith('devtools://')) {
+      return { action: 'allow' };
+    }
+    return { action: 'deny' };
+  });
+
+  // Security: Set restrictive CSP
+  mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': ["default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self';"]
+      }
+    });
+  });
 
   // Hook event streamers to send live events to renderer
   LogStreamer.onLog((entry) => {
