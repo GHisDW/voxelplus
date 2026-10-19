@@ -1,6 +1,6 @@
 {
   "name": "voxelplus-launcher",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "V+ — Modern Minecraft development & mod-testing launcher for Fabric Loom and Gradle",
   "main": "dist-electron/main.js",
   "repository": {
