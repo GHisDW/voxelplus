@@ -35,6 +35,7 @@ const api = {
   // Settings
   getAppSettings: (): Promise<AppSettings> => ipcRenderer.invoke('settings:get'),
   setAppSettings: (settings: Partial<AppSettings>): Promise<AppSettings> => ipcRenderer.invoke('settings:set', settings),
+  resetEverything: (): Promise<boolean> => ipcRenderer.invoke('system:resetAllData'),
 
   // System & Environment
   scanSystem: (): Promise<SystemScanResult> => ipcRenderer.invoke('system:scan'),
@@ -86,7 +87,7 @@ const api = {
   importInstance: (zipPath: string, customName?: string): Promise<InstanceMetadata | null> => ipcRenderer.invoke('instance:import', zipPath, customName),
   validateVPack: (zipPath: string): Promise<VPackValidationResult> => ipcRenderer.invoke('vpack:validate', zipPath),
   listRepositoryVPacks: (): Promise<any[]> => ipcRenderer.invoke('vpack:listRepository'),
-  purchaseVPack: (zipPath: string, price: number): Promise<{ success: boolean; instance?: InstanceMetadata; error?: string }> => ipcRenderer.invoke('vpack:purchase', zipPath, price),
+  purchaseVPack: (zipPath: string): Promise<{ success: boolean; instance?: InstanceMetadata; error?: string }> => ipcRenderer.invoke('vpack:purchase', zipPath),
 
   // Player & Economy
   getPlayerProfile: (): Promise<PlayerProfile> => ipcRenderer.invoke('player:getProfile'),

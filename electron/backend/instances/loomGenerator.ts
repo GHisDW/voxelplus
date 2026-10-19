@@ -118,7 +118,7 @@ zipStorePath=wrapper/dists
     return metadata;
   }
 
-  private static ensureWrapperFiles(targetDir: string): void {
+  public static ensureWrapperFiles(targetDir: string): void {
     const destBat = path.join(targetDir, 'gradlew.bat');
     const destSh = path.join(targetDir, 'gradlew');
     const destJar = path.join(targetDir, 'gradle/wrapper/gradle-wrapper.jar');

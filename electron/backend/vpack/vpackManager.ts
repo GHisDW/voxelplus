@@ -1,8 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import https from 'node:https';
 import AdmZip from 'adm-zip';
 import { VPackManifest, VPackValidationResult, VPackContentEntry, InstanceMetadata } from '../../types';
+import { LoomProjectGenerator } from '../instances/loomGenerator';
+import { generateBuildGradle, generateGradleProperties, generateSettingsGradle, getGradleDistributionUrl } from '../instances/fabricVersions';
 
 export class VPackManager {
   public static readonly MANIFEST_FILENAME = 'manifest.json';
@@ -12,11 +15,22 @@ export class VPackManager {
    * Sanitizes relative archive paths against zip-slip directory traversal vulnerabilities.
    */
   public static isSafePath(entryPath: string): boolean {
-    const normalized = path.normalize(entryPath).replace(/^(\.\.(\/|\\|$))+/, '');
-    if (normalized.includes('..') || path.isAbsolute(entryPath)) {
-      return false;
-    }
-    return true;
+    if (!entryPath || entryPath.includes('\0') || path.isAbsolute(entryPath)) return false;
+    const normalized = path.posix.normalize(entryPath.replace(/\\/g, '/'));
+    return normalized !== '..' && !normalized.startsWith('../') && !normalized.includes('/:');
+  }
+
+  /** Resolve catalog assets relative to the application, not the process launch directory. */
+  public static getRepositoryDirectory(): string {
+    // In development, __dirname points to dist-electron/backend/vpack
+    // In production, it points to app.asar or similar
+    // We need to resolve to the vpacks directory at the root
+    const appBase = path.resolve(__dirname, '../../../');
+    const candidates = [
+      path.join(appBase, 'vpacks'),
+      path.join(process.resourcesPath || appBase, 'vpacks')
+    ];
+    return candidates.find(candidate => fs.existsSync(candidate)) || candidates[0];
   }
 
   /**
@@ -82,9 +96,22 @@ export class VPackManager {
           const raw = manifestEntry.getData().toString('utf-8');
           const parsed = JSON.parse(raw) as VPackManifest;
           // Be more lenient - accept even if formatId is wrong
+          if (parsed.formatId !== 'voxelplus-vpack') errors.push('Unsupported VPack format.');
+          if (parsed.formatVersion !== 1) errors.push(`Unsupported VPack version: ${parsed.formatVersion ?? 'missing'}.`);
           if (!parsed.name) errors.push('Pack manifest is missing a name.');
           if (!parsed.minecraft?.version) errors.push('Pack manifest missing Minecraft version.');
           if (!parsed.loader?.type) errors.push('Pack manifest missing loader type.');
+          if (!parsed.packId) errors.push('Pack manifest missing a stable pack ID.');
+
+          for (const content of parsed.content || []) {
+            if (!content.relativePath || !this.isSafePath(content.relativePath)) {
+              errors.push(`Pack contains an unsafe content path: ${content.relativePath || '(empty)'}.`);
+              continue;
+            }
+            if (!zip.getEntry(content.relativePath) && !content.downloadUrl) {
+              errors.push(`Pack is missing declared content: ${content.relativePath}.`);
+            }
+          }
 
           return {
             valid: errors.length === 0,
@@ -115,14 +142,8 @@ export class VPackManager {
         }
       }
 
-      // If no manifest found, still allow import as "generic zip" - will create default instance
-      warnings.push('No manifest found. Will create default instance configuration.');
-      return {
-        valid: true,
-        manifest: null,
-        errors: [],
-        warnings
-      };
+      errors.push('Archive does not contain manifest.json or voxel-instance.json.');
+      return { valid: false, manifest: null, errors, warnings };
     } catch (e: any) {
       return { valid: false, manifest: null, errors: [`Failed to inspect archive: ${e.message}`], warnings };
     }
@@ -182,7 +203,7 @@ export class VPackManager {
   /**
    * Securely extracts a VPack into an instance destination directory with zip-slip verification.
    */
-  public static extractVPack(zipPath: string, destDir: string): { success: boolean; manifest: VPackManifest | null; error?: string } {
+  public static async extractVPack(zipPath: string, destDir: string): Promise<{ success: boolean; manifest: VPackManifest | null; error?: string }> {
     const val = this.validateVPack(zipPath);
     if (!val.valid || !val.manifest) {
       return { success: false, manifest: null, error: val.errors.join(', ') };
@@ -192,6 +213,24 @@ export class VPackManager {
       const zip = new AdmZip(zipPath);
       const entries = zip.getEntries();
 
+      // Make pack artwork portable. A manifest may point at an image entry
+      // instead of embedding a large data URL; imported instances must not
+      // keep depending on the original archive for their icon.
+      if (val.manifest.artwork && !val.manifest.artwork.startsWith('data:')) {
+        const artworkEntry = zip.getEntry(val.manifest.artwork);
+        if (artworkEntry) {
+          const extension = path.extname(val.manifest.artwork).toLowerCase();
+          const mime = extension === '.jpg' || extension === '.jpeg'
+            ? 'image/jpeg'
+            : extension === '.webp'
+              ? 'image/webp'
+              : extension === '.svg'
+                ? 'image/svg+xml'
+                : 'image/png';
+          val.manifest.artwork = `data:${mime};base64,${artworkEntry.getData().toString('base64')}`;
+        }
+      }
+
       for (const entry of entries) {
         if (entry.isDirectory) continue;
         if (!this.isSafePath(entry.entryName)) {
@@ -200,7 +239,8 @@ export class VPackManager {
 
         const outTarget = path.join(destDir, entry.entryName);
         const resolvedOut = path.resolve(outTarget);
-        if (!resolvedOut.startsWith(path.resolve(destDir))) {
+        const resolvedRoot = path.resolve(destDir) + path.sep;
+        if (resolvedOut !== path.resolve(destDir) && !resolvedOut.startsWith(resolvedRoot)) {
           return { success: false, manifest: null, error: `Zip Slip path traversal blocked: ${entry.entryName}` };
         }
 
@@ -209,10 +249,89 @@ export class VPackManager {
         fs.writeFileSync(resolvedOut, entry.getData());
       }
 
+      // Catalog VPacks keep large mod/resource/shader binaries out of git and
+      // carry their verified Modrinth download URLs instead. Materialize those
+      // files into the instance before it is shown as ready.
+      for (const content of val.manifest.content || []) {
+        if (!content.downloadUrl || zip.getEntry(content.relativePath)) continue;
+        if (!this.isSafePath(content.relativePath)) {
+          return { success: false, manifest: null, error: `Unsafe remote content path: ${content.relativePath}` };
+        }
+        const target = path.resolve(destDir, content.relativePath);
+        const root = path.resolve(destDir) + path.sep;
+        if (!target.startsWith(root)) {
+          return { success: false, manifest: null, error: `Remote content escaped instance directory: ${content.relativePath}` };
+        }
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        await this.downloadFile(content.downloadUrl, target, content.sha1);
+      }
+
+      // Ensure cross-platform Loom / Gradle wrapper build files exist in destination
+      const mcVer = val.manifest.minecraft?.version || '1.21.1';
+      const cleanName = (val.manifest.name || 'voxelplus-instance')
+        .toLowerCase()
+        .replace(/\s+/g, '-')
+        .replace(/[^a-z0-9-]/g, '');
+
+      if (!fs.existsSync(path.join(destDir, 'build.gradle'))) {
+        fs.writeFileSync(path.join(destDir, 'build.gradle'), generateBuildGradle(mcVer, cleanName, 4096), 'utf-8');
+      }
+      if (!fs.existsSync(path.join(destDir, 'settings.gradle'))) {
+        fs.writeFileSync(path.join(destDir, 'settings.gradle'), generateSettingsGradle(mcVer, cleanName), 'utf-8');
+      }
+      if (!fs.existsSync(path.join(destDir, 'gradle.properties'))) {
+        fs.writeFileSync(path.join(destDir, 'gradle.properties'), generateGradleProperties(mcVer, cleanName, 4096), 'utf-8');
+      }
+      const wrapperPropsPath = path.join(destDir, 'gradle/wrapper/gradle-wrapper.properties');
+      if (!fs.existsSync(wrapperPropsPath)) {
+        if (!fs.existsSync(path.dirname(wrapperPropsPath))) {
+          fs.mkdirSync(path.dirname(wrapperPropsPath), { recursive: true });
+        }
+        const propsContent = `distributionBase=GRADLE_USER_HOME\ndistributionPath=wrapper/dists\ndistributionUrl=${getGradleDistributionUrl(mcVer)}\nnetworkTimeout=10000\nvalidateDistributionUrl=true\nzipStoreBase=GRADLE_USER_HOME\nzipStorePath=wrapper/dists\n`;
+        fs.writeFileSync(wrapperPropsPath, propsContent, 'utf-8');
+      }
+
+      LoomProjectGenerator.ensureWrapperFiles(destDir);
+
       return { success: true, manifest: val.manifest };
     } catch (e: any) {
       return { success: false, manifest: null, error: e.message };
     }
+  }
+
+  private static downloadFile(url: string, destination: string, expectedSha1?: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const request = https.get(url, response => {
+        if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+          response.resume();
+          this.downloadFile(response.headers.location, destination, expectedSha1).then(resolve, reject);
+          return;
+        }
+        if (response.statusCode !== 200) {
+          response.resume();
+          reject(new Error(`Download failed with HTTP ${response.statusCode}: ${url}`));
+          return;
+        }
+
+        const chunks: Buffer[] = [];
+        response.on('data', chunk => chunks.push(Buffer.from(chunk)));
+        response.on('end', () => {
+          const data = Buffer.concat(chunks);
+          if (expectedSha1) {
+            const actual = crypto.createHash('sha1').update(data).digest('hex');
+            if (actual !== expectedSha1) {
+              reject(new Error(`Checksum mismatch for ${path.basename(destination)}.`));
+              return;
+            }
+          }
+          fs.writeFileSync(destination, data);
+          resolve();
+        });
+        response.on('error', reject);
+      });
+      request.on('error', reject);
+      request.setTimeout(120000, () => request.destroy(new Error(`Download timed out: ${url}`)));
+    });
   }
 
   /**
@@ -220,7 +339,7 @@ export class VPackManager {
    */
   public static scanVPackRepository(): { fileName: string; filePath: string; manifest: VPackManifest; price: number }[] {
     const results: { fileName: string; filePath: string; manifest: VPackManifest; price: number }[] = [];
-    const vpacksDir = path.join(process.cwd(), 'vpacks');
+    const vpacksDir = this.getRepositoryDirectory();
     if (!fs.existsSync(vpacksDir)) {
       try { fs.mkdirSync(vpacksDir, { recursive: true }); } catch (_) {}
       return results;

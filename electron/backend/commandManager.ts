@@ -30,6 +30,7 @@ import {
   ArcadeRewardResult
 } from '../types';
 import { ConfigStore } from './storage/configStore';
+import { PathManager } from './storage/paths';
 import { SystemScanner } from './system/systemScanner';
 import { JavaDetector } from './java/javaDetector';
 import { JavaTester } from './java/javaTester';
@@ -58,6 +59,33 @@ export class CommandManager {
 
   public static async setAppSettings(settings: Partial<AppSettings>): Promise<AppSettings> {
     return ConfigStore.saveSettings(settings);
+  }
+
+  public static async resetEverything(): Promise<boolean> {
+    // Validate that we're only deleting within the allowed user data directory
+    const allowedBase = PathManager.getBaseDir();
+    const normalizedBase = path.resolve(allowedBase);
+    
+    // 1. Delete all user instances with path validation
+    const instances = await InstanceManager.listInstances();
+    for (const inst of instances) {
+      if (inst.instancePath) {
+        const normalizedPath = path.resolve(inst.instancePath);
+        // Ensure instance path is within allowed base directory
+        if (!normalizedPath.startsWith(normalizedBase + path.sep)) {
+          console.error(`Factory reset blocked: instance path outside allowed directory: ${inst.instancePath}`);
+          continue;
+        }
+      }
+      await InstanceManager.deleteInstance(inst.id);
+    }
+
+    // 2. Reset stores (these use the validated PathManager paths)
+    ConfigStore.resetToDefaults();
+    PlayerDataStore.getInstance().resetToDefaults();
+    ArcadeStore.getInstance().resetToDefaults();
+
+    return true;
   }
 
   // System & Environment
@@ -242,19 +270,46 @@ export class CommandManager {
     return VPackManager.scanVPackRepository();
   }
 
-  public static async purchaseVPack(zipPath: string, price: number): Promise<{ success: boolean; instance?: InstanceMetadata; error?: string }> {
+  public static async purchaseVPack(zipPath: string): Promise<{ success: boolean; instance?: InstanceMetadata; error?: string }> {
     const store = PlayerDataStore.getInstance();
-    if (price > 0) {
-      const tx = store.addTransaction('spend', price, `Purchased VPack: ${path.basename(zipPath)}`);
+    const val = VPackManager.validateVPack(zipPath);
+    
+    if (!val.valid || !val.manifest) {
+      return { success: false, error: 'Invalid VPack file.' };
+    }
+    
+    const packId = val.manifest.packId || path.basename(zipPath, path.extname(zipPath));
+    
+    // Backend determines authoritative price from manifest, never trust renderer
+    const authoritativePrice = val.manifest.price ?? 200;
+    
+    // Validate price is non-negative and reasonable
+    if (authoritativePrice < 0 || !Number.isFinite(authoritativePrice) || !Number.isInteger(authoritativePrice)) {
+      return { success: false, error: 'Invalid pack price in manifest.' };
+    }
+
+    if (store.isVPackOwned(packId)) {
+      const meta = await InstanceManager.importInstance(zipPath);
+      if (!meta) return { success: false, error: 'Failed to extract VPack.' };
+      return { success: true, instance: meta };
+    }
+
+    if (authoritativePrice > 0) {
+      const tx = store.addTransaction('spend', authoritativePrice, `Purchased VPack: ${val.manifest.name || path.basename(zipPath)}`);
       if (!tx.success) {
-        return { success: false, error: tx.error || 'Insufficient Voxel Points' };
+        return { success: false, error: tx.error || 'Insufficient Voxel Points (VP).' };
       }
     }
+
     const meta = await InstanceManager.importInstance(zipPath);
     if (!meta) {
-      if (price > 0) store.addTransaction('earn', price, 'Refund for failed VPack installation');
+      if (authoritativePrice > 0) {
+        store.addTransaction('earn', authoritativePrice, 'Refund for failed VPack installation');
+      }
       return { success: false, error: 'Failed to extract and initialize VPack.' };
     }
+
+    store.recordVPackPurchase(packId, authoritativePrice);
     new AchievementEngine(store).trackProgress('vpack_import', 1);
     return { success: true, instance: meta };
   }

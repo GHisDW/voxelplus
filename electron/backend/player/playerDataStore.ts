@@ -10,12 +10,20 @@ import {
   CosmeticOwnership
 } from '../../types';
 
+export interface VPackOwnership {
+  packId: string;
+  acquiredAt: string;
+  price: number;
+}
+
 export interface PlayerDataSchema {
   profile: PlayerProfile;
   wallet: WalletState;
   transactions: WalletTransaction[];
   achievements: Record<string, AchievementProgress>;
   cosmetics: Record<string, CosmeticOwnership>;
+  vpacks: Record<string, VPackOwnership>;
+  _starterBonusGranted?: boolean;
 }
 
 export class PlayerDataStore {
@@ -53,8 +61,8 @@ export class PlayerDataStore {
         lastActiveAt: now
       },
       wallet: {
-        balance: 250,
-        lifetimeEarned: 250,
+        balance: 1000,
+        lifetimeEarned: 1000,
         lifetimeSpent: 0,
         lastTransactionId: null
       },
@@ -62,7 +70,7 @@ export class PlayerDataStore {
         {
           id: crypto.randomUUID(),
           type: 'earn',
-          amount: 250,
+          amount: 1000,
           reason: 'Welcome to Voxel+!',
           sourceId: 'starter-bonus',
           timestamp: now
@@ -75,7 +83,9 @@ export class PlayerDataStore {
           acquiredAt: now,
           source: 'default'
         }
-      }
+      },
+      vpacks: {},
+      _starterBonusGranted: true
     };
   }
 
@@ -84,18 +94,30 @@ export class PlayerDataStore {
       if (fs.existsSync(this.filePath)) {
         const raw = fs.readFileSync(this.filePath, 'utf-8');
         const parsed = JSON.parse(raw);
+        
+        // Check if starter bonus was already granted
+        const starterBonusGranted = parsed._starterBonusGranted === true;
+        
+        const defaultData = this.getDefaultData();
+        
+        // If starter bonus was already granted, use the existing wallet balance
+        // Otherwise, grant the starter bonus
+        const wallet = starterBonusGranted 
+          ? { ...defaultData.wallet, ...(parsed.wallet || {}) }
+          : defaultData.wallet;
+        
+        const transactions = starterBonusGranted && Array.isArray(parsed.transactions)
+          ? parsed.transactions
+          : defaultData.transactions;
+        
         return {
-          profile: { ...this.getDefaultData().profile, ...(parsed.profile || {}) },
-          wallet: { ...this.getDefaultData().wallet, ...(parsed.wallet || {}) },
-          transactions: Array.isArray(parsed.transactions) ? parsed.transactions : [],
+          profile: { ...defaultData.profile, ...(parsed.profile || {}) },
+          wallet,
+          transactions,
           achievements: parsed.achievements || {},
-          cosmetics: parsed.cosmetics || {
-            'cosmetic-gem-emerald': {
-              cosmeticId: 'cosmetic-gem-emerald',
-              acquiredAt: new Date().toISOString(),
-              source: 'default'
-            }
-          }
+          cosmetics: parsed.cosmetics || defaultData.cosmetics,
+          vpacks: parsed.vpacks || {},
+          _starterBonusGranted: true
         };
       }
     } catch (e) {
@@ -209,5 +231,26 @@ export class PlayerDataStore {
     this.data.cosmetics[id] = ownership;
     this.save();
     return ownership;
+  }
+
+  public isVPackOwned(packId: string): boolean {
+    return !!this.data.vpacks[packId];
+  }
+
+  public recordVPackPurchase(packId: string, price: number): VPackOwnership {
+    const ownership: VPackOwnership = {
+      packId,
+      acquiredAt: new Date().toISOString(),
+      price
+    };
+    this.data.vpacks[packId] = ownership;
+    this.save();
+    return ownership;
+  }
+
+  public resetToDefaults(): PlayerDataSchema {
+    this.data = this.getDefaultData();
+    this.save();
+    return this.data;
   }
 }

@@ -38,14 +38,20 @@ Instead, please:
 The Voxel⁺ team follows these security practices:
 
 - **Electron Security**: 
-  - `contextIsolation: true`
-  - `nodeIntegration: false`
+  - `contextIsolation: true` - Renderer process is isolated from Node.js
+  - `nodeIntegration: false` - Renderer cannot access Node.js APIs directly
+  - `sandbox: true` - Renderer process runs in a sandboxed environment
   - No arbitrary shell command execution from renderer
+  - Restrictive Content Security Policy (CSP) to prevent XSS
+  - Navigation restrictions to prevent loading untrusted content
+  - New window creation blocked except for devtools
   
 - **Data Protection**:
   - No storage of sensitive credentials
-  - Secure IPC communication
+  - Secure IPC communication with type-safe bridge
   - Input validation and sanitization
+  - HTML escaping for all user-controlled content
+  - Path validation for file operations
   
 - **Dependencies**:
   - Regular dependency updates
@@ -56,11 +62,18 @@ The Voxel⁺ team follows these security practices:
 
 Voxel⁺ includes several security features:
 
-- **Sandboxed Renderer Process**: The frontend runs in a sandboxed environment
+- **Sandboxed Renderer Process**: The frontend runs in a sandboxed environment with `sandbox: true`
+- **Context Isolation**: Renderer and main process are isolated with `contextIsolation: true`
+- **No Node Integration**: Renderer cannot access Node.js APIs directly (`nodeIntegration: false`)
 - **Typed IPC Bridge**: All communication between renderer and main process is type-safe
+- **Restrictive CSP**: Content Security Policy limits script sources to self and prevents unsafe eval
+- **Navigation Controls**: External navigation and new window creation are restricted
 - **No Arbitrary Shell Execution**: Renderer cannot execute arbitrary commands
 - **Input Validation**: All user inputs are validated before processing
-- **Secure File Operations**: File operations are restricted to designated directories
+- **HTML Escaping**: All user-controlled content is escaped before insertion into DOM
+- **Secure File Operations**: File operations are restricted to designated directories with path validation
+- **Atomic Imports**: VPack imports use temporary staging to prevent partial installations
+- **Price Validation**: VPack purchases use backend-determined prices from manifests, not renderer values
 
 ## Responsible Disclosure
 

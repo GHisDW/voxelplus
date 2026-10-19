@@ -16,7 +16,7 @@
     "minecraft-client",
     "singleplayer"
   ],
-  "author": "GHisDW <mokshadshetty@gmail.com>",
+  "author": "GHisDW <voxelplusstudio@gmail.com>",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/GHisDW/voxelplus/issues"
@@ -28,7 +28,9 @@
     "app:dev": "vite",
     "start": "electron .",
     "test": "vitest run",
-    "dist": "npm run build && electron-builder --win --x64"
+    "catalog:build": "node tools/generate-catalog-vpacks.mjs",
+    "dist": "npm run build && electron-builder --win --x64",
+    "dist:portable": "npm run build && electron-builder --win --x64"
   },
   "dependencies": {
     "adm-zip": "^0.5.16"
@@ -56,12 +58,21 @@
       "dist/**/*",
       "dist-electron/**/*",
       "electron/**/*",
+      "vpacks/**/*",
       "logo.png"
     ],
     "win": {
-      "target": "portable",
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
       "icon": "logo.png",
       "signAndEditExecutable": false
+    },
+    "portable": {
+      "artifactName": "VoxelPlus-Portable-${version}.${ext}"
     }
   }
 }

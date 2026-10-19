@@ -6,6 +6,7 @@ import { getItemDataUrl } from '../assets/items';
 export class PlayerPage {
   private container: HTMLElement;
   private activeTab: 'profile' | 'achievements' | 'transactions' = 'profile';
+  private achievementCategoryFilter: string = 'all';
 
   constructor() {
     this.container = document.createElement('div');
@@ -53,9 +54,9 @@ export class PlayerPage {
             box-shadow: ${equippedEffect ? '0 0 20px var(--accent-glow)' : 'none'};
           ">
             ${equippedCosmetic ? `
-              <img src="${getItemDataUrl(equippedCosmetic.artworkPath)}" style="width: 52px; height: 52px; image-rendering: pixelated;" />
+              <img src="${getItemDataUrl(equippedCosmetic.artworkPath)}" style="width: 52px; height: 52px; image-rendering: pixelated; object-fit: contain;" />
             ` : `
-              <img src="${getItemDataUrl('minecraft:grass_block')}" style="width: 52px; height: 52px; image-rendering: pixelated;" />
+              <img src="${getItemDataUrl('minecraft:grass_block')}" style="width: 52px; height: 52px; image-rendering: pixelated; object-fit: contain;" />
             `}
           </div>
 
@@ -113,7 +114,7 @@ export class PlayerPage {
           Minecraft Collection
         </button>
         <button class="btn ${this.activeTab === 'achievements' ? 'btn-primary' : 'btn-secondary'}" id="tab-player-achievements">
-          Achievements (${unlockedCount}/${totalAchievements})
+          🏆 Achievements (${unlockedCount}/${totalAchievements})
         </button>
         <button class="btn ${this.activeTab === 'transactions' ? 'btn-primary' : 'btn-secondary'}" id="tab-player-tx">
           VP Ledger History
@@ -124,6 +125,9 @@ export class PlayerPage {
       <div id="player-tab-stage">
         ${this.renderTabContent(profile, cosmeticsData, achievementsData, transactions)}
       </div>
+
+      <!-- Unrolling Achievement Banner Modal Placeholder -->
+      <div id="ach-banner-modal" style="display: none;" class="modal-overlay"></div>
     `;
 
     // Hook tab switches
@@ -134,6 +138,26 @@ export class PlayerPage {
     tabOverview.onclick = () => { this.activeTab = 'profile'; this.render(); };
     tabAch.onclick = () => { this.activeTab = 'achievements'; this.render(); };
     tabTx.onclick = () => { this.activeTab = 'transactions'; this.render(); };
+
+    // Hook achievement category filters
+    this.container.querySelectorAll('[data-ach-filter]').forEach(b => {
+      (b as HTMLElement).onclick = () => {
+        this.achievementCategoryFilter = b.getAttribute('data-ach-filter') || 'all';
+        this.render();
+      };
+    });
+
+    // Hook achievement inspection modal trigger
+    this.container.querySelectorAll('[data-inspect-ach]').forEach(card => {
+      (card as HTMLElement).onclick = () => {
+        const id = card.getAttribute('data-inspect-ach')!;
+        const def = achievementsData.definitions.find(d => d.id === id);
+        const prog = achievementsData.progress.find(p => p.achievementId === id);
+        if (def && prog) {
+          this.showUnrollingBannerModal(def, prog);
+        }
+      };
+    });
 
     // Hook cosmetic toggle
     this.container.querySelectorAll('[data-cosmetic-toggle]').forEach(btn => {
@@ -147,6 +171,121 @@ export class PlayerPage {
     });
 
     return this.container;
+  }
+
+  private showUnrollingBannerModal(def: AchievementDefinition, prog: AchievementProgress): void {
+    const modal = this.container.querySelector('#ach-banner-modal') as HTMLElement;
+    if (!modal) return;
+
+    const color = def.color || '#6366f1';
+    const shape = def.shape || 'hexagon';
+
+    let shapeClip = 'polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)';
+    if (shape === 'diamond') shapeClip = 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)';
+    if (shape === 'shield') shapeClip = 'polygon(0% 0%, 100% 0%, 100% 70%, 50% 100%, 0% 70%)';
+    if (shape === 'octagon') shapeClip = 'polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%)';
+    if (shape === 'badge') shapeClip = 'polygon(50% 0%, 80% 10%, 100% 35%, 85% 70%, 50% 100%, 15% 70%, 0% 35%, 20% 10%)';
+
+    modal.style.display = 'flex';
+    modal.innerHTML = `
+      <div class="achievement-banner-unroll" style="
+        position: relative;
+        width: 100%;
+        max-width: 580px;
+        background: radial-gradient(circle at 50% 20%, ${color}33 0%, #0a0d14 85%);
+        border: 2px solid ${color};
+        border-radius: var(--radius-xl);
+        padding: 36px 28px;
+        text-align: center;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.8), 0 0 30px ${color}55;
+        overflow: hidden;
+      ">
+        <!-- Rotating Ambient Rays -->
+        <div class="banner-ray-glow" style="
+          position: absolute;
+          inset: -100px;
+          background: conic-gradient(from 0deg at 50% 50%, transparent 0deg, ${color}22 30deg, transparent 60deg, ${color}22 90deg, transparent 120deg, ${color}22 150deg, transparent 180deg, ${color}22 210deg, transparent 240deg, ${color}22 270deg, transparent 300deg, ${color}22 330deg, transparent 360deg);
+          pointer-events: none;
+          z-index: 1;
+        "></div>
+
+        <div style="position: relative; z-index: 2;">
+          <!-- Unrolling Banner Title Header -->
+          <div style="
+            display: inline-block;
+            padding: 6px 24px;
+            background: linear-gradient(90deg, transparent 0%, ${color}aa 30%, ${color}aa 70%, transparent 100%);
+            color: #ffffff;
+            font-size: 0.85rem;
+            font-weight: 900;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            margin-bottom: 20px;
+            text-shadow: 0 2px 6px rgba(0,0,0,0.8);
+          ">
+            ${prog.unlocked ? '✨ ACHIEVEMENT UNLOCKED ✨' : '🔒 TROPHY IN PROGRESS'}
+          </div>
+
+          <!-- Crest Badge Container -->
+          <div style="
+            width: 84px;
+            height: 84px;
+            margin: 0 auto 20px auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: ${prog.unlocked ? `radial-gradient(circle, ${color} 0%, rgba(15,23,42,0.9) 100%)` : 'rgba(30,41,59,0.9)'};
+            clip-path: ${shapeClip};
+            filter: drop-shadow(0 6px 18px ${color}aa);
+          ">
+            <span style="font-size: 42px; filter: drop-shadow(0 2px 8px rgba(0,0,0,0.8));">
+              ${def.icon || '🏆'}
+            </span>
+          </div>
+
+          <h2 style="font-size: 1.6rem; font-weight: 900; color: #ffffff; margin-bottom: 6px;">
+            ${def.name}
+          </h2>
+
+          <p style="font-size: 0.92rem; color: var(--text-secondary); max-width: 440px; margin: 0 auto 20px auto; line-height: 1.5;">
+            ${def.description}
+          </p>
+
+          <div style="
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 18px;
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-pill);
+            margin-bottom: 24px;
+          ">
+            <span style="color: #f59e0b; font-family: var(--font-mono); font-weight: 800;">
+              +${def.rewardVP} VP REWARD
+            </span>
+            <span style="color: var(--text-muted);">•</span>
+            <span style="color: ${color}; font-weight: 800; text-transform: uppercase;">
+              ${def.rarity}
+            </span>
+          </div>
+
+          <div>
+            <button class="btn btn-primary" id="btn-close-ach-banner" style="padding: 10px 32px; font-weight: 800;">
+              CLOSE BANNER
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const closeBtn = modal.querySelector('#btn-close-ach-banner') as HTMLElement;
+    closeBtn.onclick = () => {
+      modal.style.display = 'none';
+    };
+    modal.onclick = (e) => {
+      if (e.target === modal) modal.style.display = 'none';
+    };
   }
 
   private renderTabContent(
@@ -174,7 +313,7 @@ export class PlayerPage {
             border-radius: var(--radius-md);
           ">
             <div style="display: flex; align-items: center; gap: 14px;">
-              <img src="${texture}" style="width: 40px; height: 40px; image-rendering: pixelated;" />
+              <img src="${texture}" style="width: 40px; height: 40px; image-rendering: pixelated; object-fit: contain;" />
               <div>
                 <div style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary);">${item.name}</div>
                 <div style="font-size: 0.75rem; color: var(--text-muted);">${item.description}</div>
@@ -199,44 +338,116 @@ export class PlayerPage {
 
     if (this.activeTab === 'achievements') {
       const progressMap = new Map(achievementsData.progress.map(p => [p.achievementId, p]));
+      const totalCount = achievementsData.definitions.length;
+      const unlockedCount = achievementsData.progress.filter(p => p.unlocked).length;
+      const percent = Math.round((unlockedCount / totalCount) * 100);
 
-      const itemsHtml = achievementsData.definitions.map(def => {
+      // Filter definitions
+      let filteredDefs = achievementsData.definitions;
+      if (this.achievementCategoryFilter !== 'all') {
+        if (this.achievementCategoryFilter === 'arcade') {
+          filteredDefs = filteredDefs.filter(d => d.category === 'stocker' || d.category === 'cookie');
+        } else {
+          filteredDefs = filteredDefs.filter(d => d.category === this.achievementCategoryFilter);
+        }
+      }
+
+      const categoryTabs = [
+        { id: 'all', label: 'All' },
+        { id: 'launcher', label: 'Launcher' },
+        { id: 'vpack', label: 'VPack' },
+        { id: 'content', label: 'Content' },
+        { id: 'arcade', label: 'Arcade' },
+        { id: 'player', label: 'Player & Economy' }
+      ];
+
+      const categoryFilterButtons = categoryTabs.map(cat => {
+        const isActive = this.achievementCategoryFilter === cat.id;
+        return `
+          <button class="btn btn-sm ${isActive ? 'btn-primary' : 'btn-secondary'}" data-ach-filter="${cat.id}">
+            ${cat.label}
+          </button>
+        `;
+      }).join('');
+
+      const itemsHtml = filteredDefs.map(def => {
         const p = progressMap.get(def.id) || { currentValue: 0, unlocked: false };
         const isComplete = p.unlocked;
+        const color = def.color || '#6366f1';
+        const shape = def.shape || 'hexagon';
+
+        let shapeClip = 'polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)'; // hexagon
+        if (shape === 'diamond') shapeClip = 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)';
+        if (shape === 'shield') shapeClip = 'polygon(0% 0%, 100% 0%, 100% 70%, 50% 100%, 0% 70%)';
+        if (shape === 'octagon') shapeClip = 'polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%)';
+        if (shape === 'badge') shapeClip = 'polygon(50% 0%, 80% 10%, 100% 35%, 85% 70%, 50% 100%, 15% 70%, 0% 35%, 20% 10%)';
+
+        const curr = Math.min(p.currentValue, def.target);
+        const itemPercent = Math.min(100, Math.round((curr / def.target) * 100));
 
         return `
-          <div class="card" style="
+          <div class="card" data-inspect-ach="${def.id}" style="
             display: flex;
             align-items: center;
-            gap: 16px;
-            padding: 16px;
-            background: var(--bg-surface);
-            border: 1px solid ${isComplete ? '#10b98133' : 'var(--border-subtle)'};
-            border-radius: var(--radius-md);
-            opacity: ${isComplete ? '1' : '0.8'};
+            gap: 18px;
+            padding: 16px 20px;
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(8px);
+            border: 1px solid ${isComplete ? color + '88' : 'var(--border-subtle)'};
+            border-radius: var(--radius-lg);
+            position: relative;
+            overflow: hidden;
+            box-shadow: ${isComplete ? '0 0 20px ' + color + '33' : 'none'};
+            cursor: pointer;
+            transition: transform 0.15s, border-color 0.15s;
           ">
+            <!-- Custom Geometric Shape Badge Container -->
             <div style="
-              width: 44px;
-              height: 44px;
-              border-radius: var(--radius-md);
-              background: ${isComplete ? 'rgba(16,185,129,0.15)' : 'var(--bg-card)'};
-              border: 1px solid var(--border-subtle);
+              width: 56px;
+              height: 56px;
               display: flex;
               align-items: center;
               justify-content: center;
+              background: ${isComplete ? `radial-gradient(circle, ${color} 0%, rgba(15,23,42,0.9) 100%)` : 'rgba(30,41,59,0.8)'};
+              clip-path: ${shapeClip};
+              filter: drop-shadow(0 4px 10px ${isComplete ? color + 'aa' : 'rgba(0,0,0,0.5)'});
+              flex-shrink: 0;
             ">
-              <img src="${getItemDataUrl(def.rewardCosmeticId ? 'minecraft:nether_star' : 'minecraft:diamond')}" style="width: 28px; height: 28px; image-rendering: pixelated;" />
+              <span style="font-size: 26px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.6));">
+                ${def.icon || '🏆'}
+              </span>
             </div>
 
-            <div style="flex: 1;">
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <div style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary);">${def.name}</div>
-                ${isComplete ? '<span style="color: #10b981; font-size: 0.75rem; font-weight: 700;">✓ UNLOCKED</span>' : ''}
+            <div style="flex: 1; min-width: 0;">
+              <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 2px;">
+                <div style="font-size: 1rem; font-weight: 800; color: var(--text-primary);">${def.name}</div>
+                <span style="
+                  font-size: 0.68rem;
+                  font-weight: 800;
+                  text-transform: uppercase;
+                  padding: 2px 8px;
+                  border-radius: 999px;
+                  background: ${color}22;
+                  color: ${color};
+                  border: 1px solid ${color}44;
+                ">${def.rarity}</span>
+                ${isComplete ? `<span style="color: #10b981; font-size: 0.78rem; font-weight: 800; margin-left: auto;">✓ UNLOCKED</span>` : ''}
               </div>
-              <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">${def.description}</div>
+
+              <div style="font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 8px;">${def.description}</div>
+
+              <!-- Progress Bar -->
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="flex: 1; height: 6px; background: rgba(255,255,255,0.08); border-radius: 999px; overflow: hidden;">
+                  <div style="width: ${itemPercent}%; height: 100%; background: ${isComplete ? color : 'var(--accent-primary)'}; transition: width 0.3s ease;"></div>
+                </div>
+                <div style="font-size: 0.75rem; font-family: var(--font-mono); color: var(--text-muted); font-weight: 700;">
+                  ${curr} / ${def.target}
+                </div>
+              </div>
             </div>
 
-            <div style="text-align: right; font-family: var(--font-mono); font-size: 0.85rem; font-weight: 700; color: #f59e0b;">
+            <div style="text-align: right; font-family: var(--font-mono); font-size: 0.9rem; font-weight: 800; color: #f59e0b; flex-shrink: 0; padding-left: 8px;">
               +${def.rewardVP} VP
             </div>
           </div>
@@ -244,8 +455,37 @@ export class PlayerPage {
       }).join('');
 
       return `
-        <div style="display: flex; flex-direction: column; gap: 10px;">
-          ${itemsHtml}
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+          <!-- Overall Progress Banner -->
+          <div style="
+            padding: 20px 24px;
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-lg);
+          ">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <div>
+                <div style="font-size: 1.1rem; font-weight: 800; color: var(--text-primary);">Trophy Completion</div>
+                <div style="font-size: 0.82rem; color: var(--text-secondary);">${unlockedCount} of ${totalCount} achievements unlocked • Click any achievement to unroll crest banner</div>
+              </div>
+              <div style="font-size: 1.6rem; font-weight: 900; color: #10b981; font-family: var(--font-mono);">
+                ${percent}%
+              </div>
+            </div>
+            <div style="width: 100%; height: 10px; background: rgba(255,255,255,0.08); border-radius: 999px; overflow: hidden;">
+              <div style="width: ${percent}%; height: 100%; background: var(--accent-gradient); transition: width 0.5s ease;"></div>
+            </div>
+          </div>
+
+          <!-- Category Filters -->
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            ${categoryFilterButtons}
+          </div>
+
+          <!-- Achievement Cards Grid -->
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            ${itemsHtml || '<div style="color: var(--text-muted); padding: 20px 0;">No achievements found in this category.</div>'}
+          </div>
         </div>
       `;
     }

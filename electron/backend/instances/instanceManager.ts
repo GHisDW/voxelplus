@@ -204,6 +204,11 @@ export class InstanceManager {
       return null;
     }
 
+    // Use temp directory for atomic import
+    const baseDir = ConfigStore.getInstanceDirectory();
+    const tempDir = path.join(baseDir, '.temp-import-' + crypto.randomUUID());
+    let finalTargetDir: string | null = null;
+
     try {
       // First validate the VPack to give better error messages
       const validation = VPackManager.validateVPack(importZipPath);
@@ -221,25 +226,46 @@ export class InstanceManager {
         return null;
       }
 
-      const baseDir = ConfigStore.getInstanceDirectory();
       const suggestedName = customName || path.basename(importZipPath, path.extname(importZipPath));
       const folderName = PathManager.sanitizeFilename(suggestedName);
-      let targetDir = path.join(baseDir, folderName);
-
+      
+      // Determine final target directory
+      finalTargetDir = path.join(baseDir, folderName);
       let counter = 1;
-      while (fs.existsSync(targetDir)) {
-        targetDir = path.join(baseDir, `${folderName} (${counter++})`);
+      while (fs.existsSync(finalTargetDir)) {
+        finalTargetDir = path.join(baseDir, `${folderName} (${counter++})`);
       }
 
-      PathManager.ensureDirectory(targetDir);
-
-      const extractResult = VPackManager.extractVPack(importZipPath, targetDir);
+      // Extract to temp directory first
+      PathManager.ensureDirectory(tempDir);
+      const extractResult = await VPackManager.extractVPack(importZipPath, tempDir);
       if (!extractResult.success) {
         throw new Error(extractResult.error || 'Failed to extract package.');
       }
 
+      // A Modrinth .mrpack may contain only its content and index metadata.
+      // Imported VPacks still need the launcher's Loom project scaffold so the
+      // instance can be started through the normal ProcessManager path.
+      if (!fs.existsSync(path.join(tempDir, 'build.gradle')) || !fs.existsSync(path.join(tempDir, 'gradlew.bat'))) {
+        const packManifest = extractResult.manifest;
+        if (packManifest) {
+          await LoomProjectGenerator.generateProject(tempDir, {
+            name: customName || packManifest.name || suggestedName,
+            description: packManifest.description,
+            minecraftVersion: packManifest.minecraft?.version || '1.21.1',
+            loaderType: (packManifest.loader?.type as any) || 'fabric',
+            loaderVersion: packManifest.loader?.version,
+            javaRuntime: 'auto',
+            memoryMb: 4096,
+            artwork: packManifest.artwork || null,
+            item: packManifest.item,
+            shareSource: packManifest.shareSource
+          });
+        }
+      }
+
       // Re-read or synthesize metadata from extracted manifest
-      let meta = InstanceMetadataStore.readMetadata(targetDir);
+      let meta = InstanceMetadataStore.readMetadata(tempDir);
       if (!meta) {
         // Use manifest if available, otherwise create default
         if (extractResult.manifest) {
@@ -263,17 +289,50 @@ export class InstanceManager {
             loaderType: 'fabric'
           });
         }
+      }
+
+      // The manifest is authoritative for pack identity and appearance. Legacy
+      // voxel-instance.json files often contain stale/default icons, which used
+      // to overwrite the icon selected by the pack creator during import.
+      if (extractResult.manifest) {
+        meta.id = crypto.randomUUID();
+        meta.name = customName || extractResult.manifest.name || meta.name;
+        meta.description = extractResult.manifest.description || meta.description;
+        meta.minecraft.version = extractResult.manifest.minecraft.version;
+        meta.loader = {
+          type: extractResult.manifest.loader.type,
+          version: extractResult.manifest.loader.version
+        };
+        meta.appearance = {
+          ...meta.appearance,
+          item: extractResult.manifest.item || meta.appearance.item,
+          artwork: extractResult.manifest.artwork || meta.appearance.artwork
+        };
+        meta.shareSource = extractResult.manifest.shareSource || meta.shareSource;
       } else {
-        meta.id = crypto.randomUUID(); // Assign new fresh ID
+        meta.id = crypto.randomUUID();
         if (customName) meta.name = customName;
       }
 
       // Mark as VPack import
       meta.isVPack = true;
 
-      InstanceMetadataStore.writeMetadata(targetDir, meta);
+      InstanceMetadataStore.writeMetadata(tempDir, meta);
+
+      // Atomic move: rename temp directory to final target
+      fs.renameSync(tempDir, finalTargetDir);
+      
       return meta;
     } catch (e) {
+      // Cleanup temp directory on failure
+      try {
+        if (fs.existsSync(tempDir)) {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+      } catch (cleanupError) {
+        console.error('Failed to cleanup temp import directory:', cleanupError);
+      }
+      
       new VoxelError({
         title: 'Instance Import Failed',
         message: 'The selected package could not be imported as an instance.',

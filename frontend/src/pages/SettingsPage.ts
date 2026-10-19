@@ -101,13 +101,18 @@ export class SettingsPage {
         </div>
 
         <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--border-subtle);">
-          <h5 style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary); margin-bottom: 8px;">First-Run Experience</h5>
+          <h5 style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary); margin-bottom: 8px;">First-Run & System Reset</h5>
           <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 12px;">
-            Re-run the 7-step onboarding wizard to re-scan hardware, Java installations, and environment status.
+            Re-run the 7-step onboarding wizard or perform a total factory reset of all launcher settings, instances, profiles, and minigame scores.
           </p>
-          <button class="btn btn-secondary" id="btn-redo-onboarding">
-            Redo Startup Introduction
-          </button>
+          <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <button class="btn btn-secondary" id="btn-redo-onboarding">
+              Redo Startup Introduction
+            </button>
+            <button class="btn btn-danger" id="btn-reset-everything" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171;">
+              Reset Everything
+            </button>
+          </div>
         </div>
       `;
 
@@ -132,6 +137,10 @@ export class SettingsPage {
         } else {
           window.location.reload();
         }
+      };
+
+      (div.querySelector('#btn-reset-everything') as HTMLElement).onclick = () => {
+        this.showResetConfirmationModal();
       };
     } else if (this.activeSection === 'minecraft') {
       div.innerHTML = `
@@ -255,10 +264,8 @@ export class SettingsPage {
     } else if (this.activeSection === 'about') {
       div.innerHTML = `
         <div style="text-align: center; padding: 20px 0;">
-          <img src="logo.png" alt="Voxel+" style="width: 56px; height: 56px; border-radius: var(--radius-lg); margin-bottom: 12px; box-shadow: 0 4px 18px var(--accent-glow);" />
-          <div class="brand-title" style="font-size: 1.8rem; justify-content: center; margin-bottom: 4px;">
-            VOXEL<span class="plus-badge">⁺</span>
-          </div>
+          <img src="logo.png" alt="Voxel+" style="width: 112px; height: 112px; border-radius: var(--radius-lg); margin-bottom: 12px; object-fit: cover; box-shadow: 0 4px 18px var(--accent-glow);" />
+          <div style="font-size: 1.8rem; font-weight: 800; letter-spacing: -0.03em; color: var(--text-primary); margin-bottom: 4px;">Voxel+</div>
           <div style="font-size: 0.88rem; font-weight: 700; color: var(--text-accent);">Version 1.0.0 (Windows x64)</div>
 
           <p style="color: var(--text-secondary); font-size: 0.9rem; margin: 16px auto; max-width: 440px; line-height: 1.6;">
@@ -289,5 +296,67 @@ export class SettingsPage {
     }
 
     return div;
+  }
+
+  private showResetConfirmationModal(): void {
+    const modalBg = document.createElement('div');
+    modalBg.style.position = 'fixed';
+    modalBg.style.top = '0';
+    modalBg.style.left = '0';
+    modalBg.style.right = '0';
+    modalBg.style.bottom = '0';
+    modalBg.style.backgroundColor = 'rgba(0, 0, 0, 0.75)';
+    modalBg.style.backdropFilter = 'blur(6px)';
+    modalBg.style.display = 'flex';
+    modalBg.style.alignItems = 'center';
+    modalBg.style.justifyContent = 'center';
+    modalBg.style.zIndex = '9999';
+    modalBg.className = 'animate-fade-in';
+
+    modalBg.innerHTML = `
+      <div style="background: var(--bg-card); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: var(--radius-xl); padding: 28px; width: 480px; max-width: 90vw; box-shadow: 0 20px 40px rgba(0,0,0,0.6);">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+          <div style="width: 40px; height: 40px; border-radius: 50%; background: rgba(239, 68, 68, 0.2); display: flex; align-items: center; justify-content: center; color: #f87171; font-size: 1.4rem; font-weight: 800;">⚠️</div>
+          <h3 style="font-size: 1.3rem; font-weight: 800; color: #f87171; margin: 0;">Factory Reset Voxel⁺</h3>
+        </div>
+
+        <p style="font-size: 0.9rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 20px;">
+          Are you sure you want to <strong>reset everything</strong>? This action is permanent and cannot be undone.
+        </p>
+
+        <ul style="font-size: 0.85rem; color: var(--text-muted); padding-left: 20px; margin-bottom: 24px; line-height: 1.6;">
+          <li>All local Minecraft Loom instances will be permanently deleted.</li>
+          <li>Launcher preferences, themes, and storage settings will be restored to defaults.</li>
+          <li>Player profile, Voxel Points (VP), transactions, and owned cosmetics will be wiped.</li>
+          <li>Arcade records (Cookie Clicker & Stocker high scores) will be reset to zero.</li>
+        </ul>
+
+        <div style="display: flex; justify-content: flex-end; gap: 12px;">
+          <button class="btn btn-secondary" id="btn-cancel-reset">Cancel</button>
+          <button class="btn" id="btn-confirm-reset" style="background: #dc2626; color: #fff; font-weight: 700;">Yes, Reset Everything</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modalBg);
+
+    modalBg.querySelector('#btn-cancel-reset')!.addEventListener('click', () => {
+      document.body.removeChild(modalBg);
+    });
+
+    modalBg.querySelector('#btn-confirm-reset')!.addEventListener('click', async () => {
+      try {
+        await api.resetEverything();
+        NotificationToast.show('Voxel⁺ has been reset to factory defaults.', 'info');
+        document.body.removeChild(modalBg);
+        if (this.events?.onRedoOnboarding) {
+          this.events.onRedoOnboarding();
+        } else {
+          window.location.reload();
+        }
+      } catch (err: any) {
+        NotificationToast.show(`Reset failed: ${err.message || err}`, 'error');
+      }
+    });
   }
 }

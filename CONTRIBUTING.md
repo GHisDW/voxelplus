@@ -219,7 +219,7 @@ If you need help contributing:
 
 * **Open an issue** with your question
 * **Join discussions** in existing issues
-* **Email**: [mokshadshetty@gmail.com](mailto:mokshadshetty@gmail.com)
+* **Email**: [voxelplusstudio@gmail.com](mailto:voxelplusstudio@gmail.com)
 * **GitHub**: [@GHisDW](https://github.com/GHisDW)
 
 ## 🎉 Recognition

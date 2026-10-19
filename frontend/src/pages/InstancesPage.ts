@@ -4,6 +4,7 @@ import { InstanceCard } from '../components/InstanceCard';
 import { InstanceDetails } from '../components/InstanceDetails';
 import { HeaderFilters } from '../components/Header';
 import { CreateInstanceModal } from '../components/CreateInstanceModal';
+import { NotificationToast } from '../components/NotificationToast';
 import { getItemDataUrl } from '../assets/items';
 
 export interface InstancesPageEvents {
@@ -101,44 +102,6 @@ export class InstancesPage {
     }
 
     this.container.innerHTML = '';
-
-    // Add info banner at the top
-    const infoBanner = document.createElement('div');
-    infoBanner.style.cssText = `
-      display: flex;
-      gap: 12px;
-      padding: 16px 20px;
-      background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(139, 92, 246, 0.1) 100%);
-      border: 1px solid rgba(139, 92, 246, 0.3);
-      border-radius: var(--radius-lg);
-      margin-bottom: 20px;
-    `;
-    infoBanner.innerHTML = `
-      <div style="flex: 1; display: flex; gap: 20px; align-items: center;">
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <span style="font-size: 1.2rem;">📦</span>
-          <div>
-            <div style="font-size: 0.88rem; font-weight: 700; color: var(--text-primary);">V+ Pack Support</div>
-            <div style="font-size: 0.75rem; color: var(--text-secondary);">Export & Import instances</div>
-          </div>
-        </div>
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <span style="font-size: 1.2rem;">📥</span>
-          <div>
-            <div style="font-size: 0.88rem; font-weight: 700; color: var(--text-primary);">Import</div>
-            <div style="font-size: 0.75rem; color: var(--text-secondary);">ZIP, JAR, V+ files</div>
-          </div>
-        </div>
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <span style="font-size: 1.2rem;">🔗</span>
-          <div>
-            <div style="font-size: 0.88rem; font-weight: 700; color: var(--text-primary);">CurseForge</div>
-            <div style="font-size: 0.75rem; color: var(--text-secondary);">Mod support integrated</div>
-          </div>
-        </div>
-      </div>
-    `;
-    this.container.appendChild(infoBanner);
 
     // Add import button at the top
     const headerActions = document.createElement('div');

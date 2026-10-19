@@ -480,6 +480,12 @@ export interface VPackManifest {
   price?: number; // VP price in marketplace
   createdAt: string;
   generatorVersion: string;
+  source?: {
+    platform: 'modrinth';
+    projectId: string;
+    versionId: string;
+    url: string;
+  };
 }
 
 export interface VPackListing {
@@ -494,6 +500,9 @@ export interface VPackContentEntry {
   type: 'mod' | 'resourcepack' | 'shaderpack' | 'config' | 'other';
   sizeBytes: number;
   sha256?: string;
+  sha1?: string;
+  /** Optional remote source used when a catalog pack intentionally keeps large binaries out of git. */
+  downloadUrl?: string;
 }
 
 export interface VPackValidationResult {

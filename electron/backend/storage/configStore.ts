@@ -121,5 +121,16 @@ export class ConfigStore {
   public static setFirstRunCompleted(completed: boolean): void {
     this.saveSettings({ firstRunCompleted: completed });
   }
+
+  public static resetToDefaults(): AppSettings {
+    const initialSettings: AppSettings = {
+      ...DEFAULT_SETTINGS,
+      instanceDirectory: PathManager.getDefaultInstancesDir()
+    };
+    this.cachedSettings = null;
+    this.persistToFile(initialSettings);
+    this.cachedSettings = initialSettings;
+    return initialSettings;
+  }
 }
 
