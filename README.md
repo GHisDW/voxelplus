@@ -19,38 +19,6 @@ It's free, it's offline after first setup, and it's fully moddable. We've basica
 
 > **TL;DR:** Voxel⁺ turns `./gradlew runClient` into a proper, isolated Minecraft instance. No launcher faff — just Minecraft, mods, and excessive logging. ⚡
 
-## 🎨 Skin Manager — Issue #13
-
-**Status:** ✅ Implemented
-
-Voxel⁺ now includes a built-in Skin Manager for managing Minecraft skins across your instances.
-
-### Features
-
-* 🖼️ Import local Minecraft skin PNG files
-* ✅ Validate standard `64×32` and `64×64` skin formats
-* 🔎 Download skins by Minecraft username using the vrc.lol API
-* 📚 Maintain a personal skin library
-* ✏️ Rename saved skins
-* 🗑️ Delete skins
-* ⭐ Select an active skin
-* 🎮 Associate skins with specific Minecraft instances
-* 👀 Browse and preview skins before applying them
-
-### Key Components
-
-* **Backend:** `electron/backend/skins/`
-
-  * Skin validation
-  * Local storage
-  * API integration
-* **Frontend:** `frontend/src/components/SkinManagerModal.ts`
-* **Skins Page:** `frontend/src/pages/SkinsPage.ts`
-* **Integration:** Instance details, skin selection, and settings persistence
-
-### Testing
-
-See [`SKIN_MANAGER_TEST.md`](SKIN_MANAGER_TEST.md) for the comprehensive testing guide.
 
 ---
 
