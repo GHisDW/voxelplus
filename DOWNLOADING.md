@@ -82,9 +82,3 @@ Important
 - Open an issue: [/GHisDW/voxelplus/issues](/GHisDW/voxelplus/issues)
 
 ---
-
-If you want, I can:
-- add a brief RELEASE_NOTES.md and prepare a draft release entry (no assets) so a Release body exists for future uploads, or
-- add a minimal GitHub Actions workflow to build and attach artifacts on tag pushes (you must opt in before I add CI). 
-
-Tell me if you want RELEASE_NOTES.md committed and whether to draft a release (no assets) for now.
