@@ -456,8 +456,16 @@ export class InstanceDetails {
         <div style="padding: 48px; text-align: center; background: var(--bg-card); border: 1px dashed var(--border-subtle); border-radius: var(--radius-lg);">
           <h4 style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin-bottom: 6px;">No Resource Packs Installed</h4>
           <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 16px;">Import a custom resource pack or search Modrinth.</p>
+          <button class="btn btn-primary" id="btn-empty-add-pack">+ ADD PACK</button>
         </div>
       `;
+      (list.querySelector('#btn-empty-add-pack') as HTMLElement).onclick = () => {
+        AddContentModal.show(
+          this.instance.id,
+          () => this.events.onOpenModrinthForInstance(this.instance),
+          async () => await this.renderTabContent()
+        );
+      };
       return div;
     }
 
@@ -537,8 +545,16 @@ export class InstanceDetails {
         <div style="padding: 48px; text-align: center; background: var(--bg-card); border: 1px dashed var(--border-subtle); border-radius: var(--radius-lg);">
           <h4 style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin-bottom: 6px;">No Shaderpacks Installed</h4>
           <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 16px;">Import shaderpacks (e.g. Complementary, Iris-compatible shaders).</p>
+          <button class="btn btn-primary" id="btn-empty-add-shader">+ ADD SHADER</button>
         </div>
       `;
+      (list.querySelector('#btn-empty-add-shader') as HTMLElement).onclick = () => {
+        AddContentModal.show(
+          this.instance.id,
+          () => this.events.onOpenModrinthForInstance(this.instance),
+          async () => await this.renderTabContent()
+        );
+      };
       return div;
     }
 

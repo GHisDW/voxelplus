@@ -51,8 +51,8 @@ export class Header {
 
       <!-- Action Buttons -->
       <div style="display: flex; gap: 10px;">
-        <button class="btn btn-secondary" id="btn-header-import-vpack" title="Import a .vpack / .voxelplus package">
-          📦 IMPORT VPACK
+        <button class="btn btn-secondary" id="btn-header-import-vpack" title="Import a .vpack, .mrpack (Modrinth), or CurseForge package">
+          📦 IMPORT MODPACK
         </button>
         <button class="btn btn-primary" id="btn-header-create">
           + CREATE INSTANCE
