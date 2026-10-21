@@ -1,7 +1,7 @@
 {
   "name": "voxelplus-launcher",
   "version": "1.1.0",
-  "description": "V+ — Modern Minecraft development & mod-testing launcher for Fabric Loom and Gradle",
+  "description": "Voxel+ — Minecraft launcher supporting Fabric mod development via Fabric Loom and Gradle (Windows x64)",
   "main": "dist-electron/main.js",
   "repository": {
     "type": "git",
@@ -24,13 +24,14 @@
   "homepage": "https://github.com/GHisDW/voxelplus#readme",
   "scripts": {
     "dev": "vite",
+    "electron:compile": "tsc -p electron/tsconfig.json",
     "build": "tsc -p electron/tsconfig.json && vite build",
-    "app:dev": "vite",
+    "app:dev": "npm run electron:compile && concurrently -k -n VITE,ELECTRON -c cyan,magenta \"vite\" \"cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron . --enable-logging\"",
     "start": "electron .",
     "test": "vitest run",
     "catalog:build": "node tools/generate-catalog-vpacks.mjs",
-    "dist": "npm run build && electron-builder --win --x64",
-    "dist:portable": "npm run build && electron-builder --win --x64"
+    "dist": "npm run build && electron-builder --win --x64 --config.win.target=nsis",
+    "dist:portable": "npm run build && electron-builder --win --x64 --config.win.target=portable"
   },
   "dependencies": {
     "adm-zip": "^0.5.16"
@@ -38,6 +39,8 @@
   "devDependencies": {
     "@types/adm-zip": "^0.5.5",
     "@types/node": "^22.10.2",
+    "concurrently": "^9.2.5",
+    "cross-env": "^7.0.3",
     "electron": "^33.2.1",
     "electron-builder": "^25.1.8",
     "typescript": "^5.7.2",
@@ -65,7 +68,9 @@
       "target": [
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "logo.png",

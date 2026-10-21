@@ -24,11 +24,11 @@ If a release is available, download the asset for Windows and follow the include
 
 This is the fastest way to try Voxel⁺ if you have Node.js installed. This runs the app in development mode and is intended for contributors and testers.
 
-Requirements
-- Node.js (18+ recommended)
+**Requirements**
+- Node.js 18+ (recommended: LTS)
 - npm (bundled with Node.js)
 
-Commands
+**Commands**
 ```bash
 git clone https://github.com/GHisDW/voxelplus.git
 cd voxelplus
@@ -36,34 +36,41 @@ npm install
 npm run app:dev
 ```
 
-Notes
-- `npm run app:dev` runs the Electron + frontend in development mode using the repo's existing scripts.
+**Notes**
+- `npm run app:dev` compiles the Electron TypeScript backend first, then starts the Vite dev server and Electron together using `concurrently`.
+- Electron loads the frontend from the Vite dev server (`http://localhost:5173`) during development.
 - This is not a packaged installer — expect developer console output and a live dev server for the UI.
+- The `dev` script (`npm run dev`) only starts Vite and **does not** launch Electron. Use `app:dev` to run the full application.
 
 ---
 
 ## 3) Building a packaged copy locally (Windows-first)
 
-If you prefer a packaged, distributable folder (portable app) for Windows you can produce one locally. This guide uses `electron-packager` via `npx` so you don't need to permanently add packaging tools to the repo.
+The repository uses **electron-builder** (already configured in `package.json`) to produce a Windows portable executable.
 
-1. Build the project (compile TypeScript and frontend assets):
+### Portable `.exe` (no installer)
+
 ```bash
 npm install
-npm run build
+npm run dist:portable
 ```
 
-2. Package for Windows (example, Windows x64):
+The packaged `.exe` will be placed in `dist-portable/`. This produces an unsigned, portable Windows x64 executable — no installer, no setup wizard.
+
+### NSIS installer (Windows)
+
 ```bash
-# from the repo root
-npx electron-packager . VoxelPlus --platform=win32 --arch=x64 --out=release --overwrite --prune=true
+npm install
+npm run dist
 ```
 
-3. The packaged folder will be in `release/VoxelPlus-win32-x64/`. You can zip that folder and distribute the zip — the result is a portable app, not a signed installer.
+This produces a standard Windows NSIS installer in `dist-portable/`.
 
-Important
-- The repository does not currently include official installer scripts or signed binaries. The steps above create an unsigned portable app for local testing and distribution.
-- Building installers (MSI/NSIS/etc.) requires additional tooling (e.g., `electron-builder`) and configuration which are not present in this repository.
-- The project is Windows-first; do not assume Linux/macOS builds are officially supported unless you add platform-specific CI and packaging.
+**Important notes**
+- Both commands compile TypeScript and build the Vite frontend before packaging.
+- Builds are unsigned. Windows Defender or SmartScreen may warn on first launch of unsigned executables.
+- The project is Windows-first. Linux/macOS builds are not officially supported unless you add platform-specific CI and packaging configuration.
+- Do not use `electron-packager` — the repository uses `electron-builder` for all packaging.
 
 ---
 
