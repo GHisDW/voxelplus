@@ -137,7 +137,8 @@ dependencies {
 `;
     }
 
-    throw new Error(`Unsupported loader type: ${loaderType}`);
+    // Fabric (and any unknown type) delegates to the dedicated Fabric/Loom generator
+    return generateBuildGradle(mcVersion, projectName, memoryMb);
   }
 
   /**
