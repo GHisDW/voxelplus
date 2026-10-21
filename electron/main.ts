@@ -135,9 +135,12 @@ function createWindow() {
     minHeight: 650,
     frame: true,
     titleBarStyle: 'default',
-    title: 'V+ Launcher',
+    title: 'Voxel+ Launcher',
     backgroundColor: '#0a0d14',
-    icon: path.join(__dirname, '../../logo.png'),
+    // dist-electron is next to logo.png in development and inside the packaged app.
+    // The previous ../../ path escaped the application directory and silently
+    // produced a window without the Voxel+ icon.
+    icon: path.join(__dirname, '../logo.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -172,7 +175,7 @@ function createWindow() {
     callback({
       responseHeaders: {
         ...details.responseHeaders,
-        'Content-Security-Policy': ["default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self';"]
+        'Content-Security-Policy': ["default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://cdn.modrinth.com; font-src 'self' data:; connect-src 'self';"]
       }
     });
   });

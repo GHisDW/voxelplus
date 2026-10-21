@@ -207,7 +207,10 @@ export class ModrinthPackImporter {
 
       if (!downloaded) {
         unresolvedCount++;
-        warnings.push(`Could not download required mod file: ${file.path}`);
+        const required = file.env?.client !== 'optional';
+        const message = `Could not download ${required ? 'required' : 'optional'} mod file: ${file.path}`;
+        if (required) errors.push(message);
+        else warnings.push(message);
       }
     }
 
@@ -231,7 +234,7 @@ export class ModrinthPackImporter {
     metadata.isVPack = true;
 
     return {
-      success: true,
+      success: errors.length === 0,
       metadata,
       downloadedCount,
       unresolvedCount,

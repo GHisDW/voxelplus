@@ -22,6 +22,13 @@ const SUPPORTED_MC_VERSIONS = [
   { ver: '1.15.2', label: '1.15.2 (Legacy Java 8)' }
 ];
 
+const LOADER_MC_VERSIONS: Record<string, string[]> = {
+  fabric: SUPPORTED_MC_VERSIONS.map(v => v.ver),
+  quilt: ['1.21.4', '1.21.1', '1.20.4', '1.20.1', '1.19.4', '1.19.2', '1.18.2'],
+  neoforge: ['1.21.4', '1.21.3', '1.21.1', '1.21', '1.20.6', '1.20.4'],
+  forge: ['1.20.4', '1.20.2', '1.20.1', '1.19.4', '1.19.2', '1.18.2', '1.16.5']
+};
+
 export class CreateInstanceModal {
   public static async show(): Promise<InstanceMetadata | null> {
     const javaList = await api.scanJava();
@@ -137,7 +144,7 @@ export class CreateInstanceModal {
                   Downloading Engine & Dependencies
                 </h4>
                 <p style="font-size: 0.85rem; color: var(--text-secondary);" id="dl-status-text">
-                  Initializing Gradle daemon & Fabric Loom workspace…
+                  Initializing the selected loader and Gradle workspace…
                 </p>
               </div>
 
@@ -194,6 +201,23 @@ export class CreateInstanceModal {
           selectedArtwork = e.target.value;
           artworkPreview.style.background = getArtworkStyle(selectedArtwork);
         };
+
+        const mcSelect = overlay.querySelector('#inst-mc-ver') as HTMLSelectElement;
+        const loaderSelect = overlay.querySelector('#inst-loader') as HTMLSelectElement;
+        const refreshCompatibleVersions = () => {
+          const allowed = new Set(LOADER_MC_VERSIONS[loaderSelect.value] || []);
+          const previous = mcSelect.value;
+          mcSelect.innerHTML = SUPPORTED_MC_VERSIONS
+            .filter(version => allowed.has(version.ver))
+            .map(version => `<option value="${version.ver}">${version.label}</option>`)
+            .join('');
+          if (allowed.has(previous)) {
+            mcSelect.value = previous;
+          } else if (mcSelect.options.length > 0) {
+            mcSelect.value = mcSelect.options[0].value;
+          }
+        };
+        loaderSelect.onchange = refreshCompatibleVersions;
 
         // Item picker button
         const itemBtn = overlay.querySelector('#btn-pick-item') as HTMLElement;
@@ -253,8 +277,6 @@ export class CreateInstanceModal {
           const nameInput = overlay.querySelector('#inst-name') as HTMLInputElement;
           const descInput = overlay.querySelector('#inst-desc') as HTMLInputElement;
           const shareInput = overlay.querySelector('#inst-share') as HTMLInputElement;
-          const mcSelect = overlay.querySelector('#inst-mc-ver') as HTMLSelectElement;
-          const loaderSelect = overlay.querySelector('#inst-loader') as HTMLSelectElement;
           const javaSelect = overlay.querySelector('#inst-java') as HTMLSelectElement;
 
           const payload: CreateInstancePayload = {

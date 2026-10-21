@@ -28,6 +28,9 @@ export class InstanceDetails {
 
   public async render(): Promise<HTMLElement> {
     const isRunning = ['PREPARING', 'STARTING', 'LAUNCHING', 'RUNNING'].includes(this.instance.status);
+    const loaderName = this.instance.loader.type === 'neoforge'
+      ? 'NeoForge'
+      : this.instance.loader.type.charAt(0).toUpperCase() + this.instance.loader.type.slice(1);
 
     this.container.innerHTML = `
       <!-- Top Navigation & Actions -->
@@ -41,7 +44,7 @@ export class InstanceDetails {
               ${this.escapeHtml(this.instance.name)}
             </h2>
             <div style="font-size: 0.86rem; color: var(--text-secondary);">
-              Minecraft ${this.instance.minecraft.version} · Fabric Loader ·
+              Minecraft ${this.instance.minecraft.version} · ${loaderName} ${this.instance.loader.version} ·
               <span class="status-pill ${this.instance.status.toLowerCase()}" style="font-size: 0.72rem; padding: 2px 8px;">
                 ${this.instance.status}
               </span>
@@ -217,7 +220,7 @@ export class InstanceDetails {
           <div class="horizontal-card" style="padding: 16px; background: var(--bg-card); border-radius: var(--radius-md);">
             <div style="font-size: 0.78rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Minecraft Version</div>
             <div style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin-top: 4px;">${this.instance.minecraft.version}</div>
-            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">Fabric Loader ${this.instance.loader.version}</div>
+            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">${loaderName} ${this.instance.loader.version}</div>
           </div>
 
           <div class="horizontal-card" style="padding: 16px; background: var(--bg-card); border-radius: var(--radius-md);">
@@ -236,7 +239,7 @@ export class InstanceDetails {
 
           <div class="horizontal-card" style="padding: 16px; background: var(--bg-card); border-radius: var(--radius-md);">
             <div style="font-size: 0.78rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Development Engine</div>
-            <div style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin-top: 4px;">Gradle & Fabric Loom</div>
+            <div style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin-top: 4px;">Gradle & ${loaderName}</div>
             <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">Target: <code>gradlew.bat runClient</code></div>
           </div>
         </div>
@@ -323,7 +326,7 @@ export class InstanceDetails {
           border-radius: var(--radius-lg);
         ">
           <h4 style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin-bottom: 6px;">No Mods Installed</h4>
-          <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 16px;">Add a local Fabric .jar mod or discover one on Modrinth.</p>
+          <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 16px;">Add a compatible .jar mod or discover one on Modrinth.</p>
           <button class="btn btn-primary" id="btn-empty-add-mod">+ ADD CONTENT</button>
         </div>
       `;

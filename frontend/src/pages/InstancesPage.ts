@@ -107,14 +107,42 @@ export class InstancesPage {
     const headerActions = document.createElement('div');
     headerActions.style.cssText = 'display: flex; justify-content: flex-end; margin-bottom: 16px;';
     headerActions.innerHTML = `
-      <button class="btn btn-primary" id="btn-import-vpack" style="padding: 10px 20px;">
-        📦 Import VPack
-      </button>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end;">
+        <button class="btn btn-secondary" id="btn-convert-modpack" style="padding: 10px 20px;">
+          🔄 Convert Modpack to VPack
+        </button>
+        <button class="btn btn-primary" id="btn-import-vpack" style="padding: 10px 20px;">
+          📦 Import VPack / Modpack
+        </button>
+      </div>
     `;
     this.container.appendChild(headerActions);
 
+    (this.container.querySelector('#btn-convert-modpack') as HTMLElement).onclick = async () => {
+      const inputPath = await api.selectFileDialog([
+        { name: 'Modpack', extensions: ['mrpack', 'zip'] }
+      ]);
+      if (!inputPath) return;
+      const defaultName = inputPath.split(/[\\/]/).pop()?.replace(/\.(mrpack|zip)$/i, '') || 'converted-pack';
+      const outputPath = await api.selectSaveFileDialog(`${defaultName}.vpack`, [
+        { name: 'Voxel+ VPack', extensions: ['vpack'] }
+      ]);
+      if (!outputPath) return;
+      NotificationToast.show('Converting modpack to VPack...', 'info');
+      try {
+        const result = await api.convertModpack(inputPath, outputPath);
+        if (!result.success) {
+          NotificationToast.show(result.error || 'The modpack could not be converted.', 'error');
+          return;
+        }
+        NotificationToast.show(`VPack created: ${result.remoteFilesCount} downloadable file(s), ${result.physicalFilesCount} bundled file(s).`, 'success');
+      } catch (error: any) {
+        NotificationToast.show(`Conversion failed: ${error?.message || error}`, 'error');
+      }
+    };
+
     (this.container.querySelector('#btn-import-vpack') as HTMLElement).onclick = async () => {
-      const filePath = await api.selectFileDialog([{ name: 'VPack', extensions: ['voxelplus', 'zip', 'jar'] }]);
+      const filePath = await api.selectFileDialog([{ name: 'Voxel+ or Modrinth Pack', extensions: ['voxelplus', 'vpack', 'mrpack', 'zip'] }]);
       if (filePath) {
         console.log('Importing VPack from:', filePath);
         NotificationToast.show('Importing VPack...', 'info');
@@ -125,7 +153,7 @@ export class InstancesPage {
             NotificationToast.show(`Successfully imported "${instance.name}"!`, 'success');
             this.render();
           } else {
-            NotificationToast.show('Failed to import VPack - file may not be a valid VPack format', 'error');
+            NotificationToast.show('Failed to import package - check that it is a valid VPack, Modrinth, or CurseForge pack.', 'error');
           }
         } catch (error: any) {
           console.error('Import error:', error);
@@ -159,7 +187,7 @@ export class InstancesPage {
         </h3>
         <p style="color: var(--text-secondary); font-size: 0.95rem; max-width: 440px; margin-bottom: 24px;">
           ${this.instances.length === 0
-            ? 'Create your first Minecraft development instance powered by Fabric Loom and Gradle, or import a VPack.'
+            ? 'Create your first Minecraft development instance with a supported loader and Gradle, or import a VPack.'
             : 'No instances matched your active search or filters.'
           }
         </p>

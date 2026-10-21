@@ -1,4 +1,18 @@
-# Voxel⁺ 1.1.0 Implementation Log (PR #26)
+# Voxel⁺ 1.1.1 Implementation Log (PR #26)
+
+## 1.1.1 release-preparation pass
+
+- Bumped application/package metadata to 1.1.1.
+- Fixed packaged/development BrowserWindow icon resolution and standardized the window title.
+- Configured distinct NSIS installer and portable build outputs.
+- Fixed first-launch portable storage detection.
+- Propagated the selected loader into compatibility checks and dependency prefetching.
+- Removed shell interpolation from Windows process termination.
+- Added regression coverage for UNC archive paths.
+
+Automated verification: `npm test` (65 tests), `npm run build`.
+
+Packaging verification: `npm run dist` produced `dist-installer/VoxelPlus-Setup-1.1.1.exe`; `npm run dist:portable` produced `dist-portable/VoxelPlus-Portable-1.1.1.exe`. The unpacked packaged application contains `dist-electron/main.js`, `dist-electron/preload.js`, `dist/index.html`, `logo.png`, and the catalog `vpacks/` entries in `app.asar`. The unpacked portable executable launched for an eight-second smoke check with isolated user data and exited cleanly when stopped. Installer wizard, uninstaller, clean-machine installation, and actual Minecraft client launches were not run here.
 
 This log records the implementation steps and verification milestones completed for PR #26.
 

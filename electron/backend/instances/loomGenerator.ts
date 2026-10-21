@@ -33,7 +33,8 @@ export class LoomProjectGenerator {
     const metadata = InstanceMetadataStore.createDefaultMetadata(payload, instanceId);
     const mcVersion = metadata.minecraft.version;
     
-    const compatibility = MinecraftCompatibilityResolver.resolveCompatibility(mcVersion);
+    const loaderType = metadata.loader?.type || 'fabric';
+    const compatibility = MinecraftCompatibilityResolver.resolveCompatibility(mcVersion, loaderType);
     const versionSpec = resolveVersionConfig(mcVersion);
 
     const cleanProjectName = PathManager.sanitizeFilename(metadata.name)
@@ -55,8 +56,6 @@ export class LoomProjectGenerator {
     for (const dir of subdirs) {
       PathManager.ensureDirectory(path.join(targetDir, dir));
     }
-
-    const loaderType = metadata.loader?.type || 'fabric';
 
     fs.writeFileSync(
       path.join(targetDir, 'settings.gradle'),
@@ -131,7 +130,7 @@ zipStorePath=wrapper/dists
 
     InstanceMetadataStore.writeMetadata(targetDir, metadata);
 
-    this.preDownloadDependencies(targetDir, metadata.id, metadata.name, mcVersion, compatibility)
+    this.preDownloadDependencies(targetDir, metadata.id, metadata.name, mcVersion, loaderType, compatibility)
       .catch(err => console.warn('[LoomGenerator] Pre-download error:', err));
 
     return metadata;
@@ -172,10 +171,11 @@ zipStorePath=wrapper/dists
     instanceId: string,
     instanceName: string,
     mcVersion: string,
+    loaderType: 'fabric' | 'quilt' | 'forge' | 'neoforge',
     compatibility: any
   ): Promise<void> {
     const javaList = await JavaDetector.scanSystemJava();
-    const resolvedEnv = MinecraftCompatibilityResolver.resolveEnvironment(mcVersion, javaList);
+    const resolvedEnv = MinecraftCompatibilityResolver.resolveEnvironment(mcVersion, javaList, undefined, loaderType);
 
     if (!resolvedEnv.isCompatible || !resolvedEnv.javaRuntime) {
       LogStreamer.addLog(
@@ -186,7 +186,7 @@ zipStorePath=wrapper/dists
     }
 
     LogStreamer.addLog(
-      `[Voxel+ Setup] Pre-downloading Minecraft ${mcVersion} assets and Fabric Loom dependencies...`,
+      `[Voxel+ Setup] Pre-downloading Minecraft ${mcVersion} assets and ${loaderType} dependencies...`,
       'INFO', instanceId, instanceName
     );
 

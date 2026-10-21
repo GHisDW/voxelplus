@@ -6,6 +6,9 @@ package-lock.json
 dist/
 dist-electron/
 dist-portable/
+dist-installer/
+dist-installer-final/
+dist-portable-final/
 *.js
 *.js.map
 *.d.ts
@@ -50,9 +53,12 @@ tests/.test-temp-*/
 *.temp
 .cache/
 downloads/
+work/
 
 # Electron build artifacts
 out/
+dist-installer-final*/
+dist-portable-final*/
 *.app
 *.dmg
 *.exe

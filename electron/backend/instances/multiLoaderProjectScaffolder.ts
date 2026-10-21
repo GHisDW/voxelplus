@@ -137,8 +137,7 @@ dependencies {
 `;
     }
 
-    // Default to Fabric Loom generator
-    return generateBuildGradle(mcVersion, projectName, memoryMb);
+    throw new Error(`Unsupported loader type: ${loaderType}`);
   }
 
   /**
@@ -223,8 +222,10 @@ forge_version=${config.loaderVersion}
    * Generates mods.toml for Forge / NeoForge instances.
    */
   public static generateModsToml(instanceName: string, loaderType: 'forge' | 'neoforge', mcVersion: string): string {
-    return `modLoader="${loaderType}"
-loaderVersion="[1,)"
+    const provider = LoaderRegistry.getProvider(loaderType);
+    const config = provider.resolveConfig(mcVersion);
+    return `modLoader="javafml"
+loaderVersion="[${config.loaderVersion.split('.')[0]},)"
 license="MIT"
 
 [[mods]]
@@ -246,6 +247,7 @@ side="BOTH"
    * Generates quilt.mod.json for Quilt instances.
    */
   public static generateQuiltModJson(instanceName: string, mcVersion: string): string {
+    const loaderVersion = LoaderRegistry.getProvider('quilt').getDefaultLoaderVersion(mcVersion);
     return JSON.stringify({
       schema_version: 1,
       quilt_loader: {
@@ -260,11 +262,11 @@ side="BOTH"
         depends: [
           {
             id: "quilt_loader",
-            versions: ">=0.20.0"
+            versions: `>=${loaderVersion}`
           },
           {
             id: "minecraft",
-            versions: `>=${mcVersion}`
+            versions: `=${mcVersion}`
           }
         ]
       }

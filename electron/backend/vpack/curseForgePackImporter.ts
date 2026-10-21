@@ -175,6 +175,9 @@ export class CurseForgePackImporter {
       // In a self-contained local import, files that cannot be resolved via public mirror
       // are logged as unresolved so the user gets an explicit report.
       unresolvedCount++;
+      if (f.required !== false) {
+        errors.push(`Required CurseForge file ${f.projectID}/${f.fileID} could not be resolved without an authorized CurseForge download service.`);
+      }
     }
 
     if (declaredFiles.length > 0) {
@@ -204,7 +207,7 @@ export class CurseForgePackImporter {
     metadata.isVPack = true;
 
     return {
-      success: true,
+      success: errors.length === 0,
       metadata,
       resolvedCount,
       unresolvedCount,

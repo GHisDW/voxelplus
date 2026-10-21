@@ -1,6 +1,6 @@
 # Downloading & Installing Voxel⁺
 
-Voxel⁺ is a Windows-first, single-player Minecraft helper that sets up isolated Loom/Gradle instances per world. This document explains how to get a working copy today and clearly separates:
+Voxel⁺ is a Windows-first, single-player Minecraft launcher that sets up isolated instances for Fabric, Quilt, Forge, and NeoForge. This document explains how to get a working copy today and clearly separates:
 
 1. Downloading a published release (if/when a Release is published)
 2. Running from source (developer workflow)
@@ -46,7 +46,7 @@ npm run app:dev
 
 ## 3) Building a packaged copy locally (Windows-first)
 
-The repository uses **electron-builder** (already configured in `package.json`) to produce a Windows portable executable.
+The repository uses **electron-builder** to produce a Windows installer and a Windows portable executable.
 
 ### Portable `.exe` (no installer)
 
@@ -55,7 +55,7 @@ npm install
 npm run dist:portable
 ```
 
-The packaged `.exe` will be placed in `dist-portable/`. This produces an unsigned, portable Windows x64 executable — no installer, no setup wizard.
+The packaged `.exe` will be placed in `dist-portable/`. This produces an unsigned, portable Windows x64 executable — no installer, no setup wizard. Portable user data is stored in a `portable/` folder next to the executable when the portable runtime exposes its executable directory.
 
 ### NSIS installer (Windows)
 
@@ -64,7 +64,7 @@ npm install
 npm run dist
 ```
 
-This produces a standard Windows NSIS installer in `dist-portable/`.
+This produces `dist-installer/VoxelPlus-Setup-1.1.1.exe`, a standard Windows NSIS installer.
 
 **Important notes**
 - Both commands compile TypeScript and build the Vite frontend before packaging.
@@ -76,10 +76,25 @@ This produces a standard Windows NSIS installer in `dist-portable/`.
 
 ## First run notes and troubleshooting
 
-- On first launch Voxel⁺ will download Gradle/Fabric Loom artifacts for the selected Minecraft version and try to auto-detect installed Java runtimes. This may take several minutes.
+- On first launch Voxel⁺ will download the Gradle and selected loader artifacts for the chosen Minecraft version and try to auto-detect installed Java runtimes. This may take several minutes.
 - If a run fails due to a Java mismatch, open the instance settings in the app and select a compatible JRE/JDK.
 - If Gradle hangs, clear the instance Gradle cache from the instance UI and retry setup.
 - For runtime issues, attach the instance logs when opening an issue — the app exposes live Minecraft + Gradle logs.
+
+## Importing and converting modpacks
+
+You can import a Modrinth `.mrpack` directly from **Instances → Import VPack / Modpack**. Voxel⁺ reads the pack manifest, preserves client-side files and overrides, and stages the instance atomically.
+
+To create a reusable `.vpack` file instead:
+
+1. Open **Instances** and choose **Convert Modpack to VPack**.
+2. Select the `.mrpack` (or a supported CurseForge modpack ZIP).
+3. Choose an output filename ending in `.vpack`.
+4. Import the resulting file with **Import VPack / Modpack**.
+
+The converter keeps authorized remote download references in the VPack manifest. It does not bypass CurseForge restrictions; a pack with unresolved required CurseForge files must be downloaded through an authorized source before it can be converted successfully.
+
+Loader instance creation is version-aware. The create dialog filters Minecraft versions to those supported by the selected loader, and the backend rejects unsupported combinations with a clear error instead of writing incomplete metadata.
 
 ---
 

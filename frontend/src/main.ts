@@ -101,14 +101,14 @@ class VPlusApp {
       },
       onImportVPack: async () => {
         const zipFile = await api.selectFileDialog([
-          { name: 'Voxel⁺ Instance Packages (*.vpack, *.voxelplus, *.zip)', extensions: ['vpack', 'voxelplus', 'zip'] },
+          { name: 'Voxel⁺ or Modrinth Packages', extensions: ['vpack', 'voxelplus', 'mrpack', 'zip'] },
           { name: 'All Files', extensions: ['*'] }
         ]);
         if (zipFile) {
-          NotificationToast.show('Importing VPack package...', 'info');
+          NotificationToast.show('Importing package...', 'info');
           const imported = await api.importInstance(zipFile);
           if (imported) {
-            NotificationToast.show(`Successfully imported VPack: ${imported.name}`, 'success');
+            NotificationToast.show(`Successfully imported package: ${imported.name}`, 'success');
             this.navigateTo('instances');
             this.instancesPage.render();
           } else {

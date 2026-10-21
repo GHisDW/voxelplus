@@ -76,6 +76,10 @@ describe('VPackManager.isSafePath — production implementation', () => {
     expect(VPackManager.isSafePath('C:/Windows/System32')).toBe(false);
   });
 
+  it('rejects UNC paths', () => {
+    expect(VPackManager.isSafePath('\\\\server\\share\\file.jar')).toBe(false);
+  });
+
   it('rejects single dot-dot traversal', () => {
     expect(VPackManager.isSafePath('../etc/passwd')).toBe(false);
     expect(VPackManager.isSafePath('..')).toBe(false);

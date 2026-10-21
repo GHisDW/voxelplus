@@ -1,6 +1,6 @@
-# Voxel⁺ 1.1.0 Implementation Roadmap & Architectural Plan
+# Voxel⁺ 1.1.1 Implementation Roadmap & Architectural Plan
 
-This document details the architecture and step-by-step implementation for delivering all requirements for Voxel⁺ 1.1.0 (PR #26).
+This document records the architecture, verified support boundaries, and remaining work for Voxel⁺ 1.1.1 (PR #26).
 
 ---
 

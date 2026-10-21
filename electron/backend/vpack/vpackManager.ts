@@ -15,8 +15,14 @@ export class VPackManager {
    * Sanitizes relative archive paths against zip-slip directory traversal vulnerabilities.
    */
   public static isSafePath(entryPath: string): boolean {
-    if (!entryPath || entryPath.includes('\0') || path.isAbsolute(entryPath)) return false;
-    const normalized = path.posix.normalize(entryPath.replace(/\\/g, '/'));
+    if (!entryPath || entryPath.includes('\0')) return false;
+    const portablePath = entryPath.replace(/\\/g, '/');
+    // path.isAbsolute follows the host platform; reject Windows drive and UNC
+    // paths explicitly as archives can be inspected on a different platform.
+    if (path.isAbsolute(entryPath) || /^\/?[A-Za-z]:\//.test(portablePath) || portablePath.startsWith('//')) {
+      return false;
+    }
+    const normalized = path.posix.normalize(portablePath);
     return normalized !== '..' && !normalized.startsWith('../') && !normalized.includes('/:');
   }
 

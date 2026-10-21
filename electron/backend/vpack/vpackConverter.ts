@@ -75,7 +75,7 @@ export class VPackConverter {
         const downloadUrl = (f.downloads && f.downloads.length > 0) ? f.downloads[0] : undefined;
         if (downloadUrl) {
           remoteFilesCount++;
-        } else {
+        } else if (f.env?.client !== 'optional') {
           unresolvedCount++;
         }
 
@@ -86,6 +86,16 @@ export class VPackConverter {
           sha1: f.hashes.sha1,
           downloadUrl
         });
+      }
+
+      if (unresolvedCount > 0) {
+        return {
+          success: false,
+          physicalFilesCount,
+          remoteFilesCount,
+          unresolvedCount,
+          error: `${unresolvedCount} required Modrinth file reference(s) have no authorized download URL.`
+        };
       }
 
       // 3. Assemble VPack Manifest
@@ -159,6 +169,16 @@ export class VPackConverter {
 
     try {
       const manifest = val.manifest;
+      const unresolvedFiles = manifest.files || [];
+      if (unresolvedFiles.length > 0) {
+        return {
+          success: false,
+          physicalFilesCount: 0,
+          remoteFilesCount: 0,
+          unresolvedCount: unresolvedFiles.length,
+          error: `${unresolvedFiles.length} CurseForge file reference(s) cannot be converted into an importable VPack without authorized file resolution.`
+        };
+      }
       const srcZip = new AdmZip(curseForgeZipPath);
       const outZip = new AdmZip();
 

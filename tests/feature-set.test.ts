@@ -12,6 +12,7 @@ import { CurseForgePackImporter } from '../electron/backend/vpack/curseForgePack
 import { VPackConverter } from '../electron/backend/vpack/vpackConverter';
 import { PreflightChecker } from '../electron/backend/instances/preflightChecker';
 import { VPackManager } from '../electron/backend/vpack/vpackManager';
+import { InstanceMetadataStore } from '../electron/backend/instances/metadata';
 
 describe('Voxel+ 1.1.0 Feature Set: Multi-Loader, Importers, Converter & Preflight', () => {
   let tempDir: string;
@@ -94,6 +95,33 @@ describe('Voxel+ 1.1.0 Feature Set: Multi-Loader, Importers, Converter & Preflig
 
       const neoForgeBuild = MultiLoaderProjectScaffolder.generateBuildGradle('neoforge', '1.21.1', 'neo-test');
       expect(neoForgeBuild).toContain('net.neoforged.moddev');
+    });
+
+    it('writes loader-specific metadata defaults instead of Fabric metadata for every loader', () => {
+      const expected: Record<string, string> = {
+        fabric: '0.16.10',
+        quilt: '0.26.4',
+        forge: '47.3.0',
+        neoforge: '21.1.72'
+      };
+      for (const [loaderType, loaderVersion] of Object.entries(expected)) {
+        const metadata = InstanceMetadataStore.createDefaultMetadata({
+          name: `${loaderType} instance`,
+          minecraftVersion: '1.21.1',
+          loaderType: loaderType as any
+        });
+        expect(metadata.loader.type).toBe(loaderType);
+        expect(metadata.loader.version).toBe(loaderVersion);
+      }
+    });
+
+    it('generates valid Forge-family mod metadata', () => {
+      const forgeToml = MultiLoaderProjectScaffolder.generateModsToml('Forge Test', 'forge', '1.20.1');
+      expect(forgeToml).toContain('modLoader="javafml"');
+      expect(forgeToml).toContain('loaderVersion="[47,)"');
+      const neoForgeToml = MultiLoaderProjectScaffolder.generateModsToml('NeoForge Test', 'neoforge', '1.21.1');
+      expect(neoForgeToml).toContain('modLoader="javafml"');
+      expect(neoForgeToml).toContain('loaderVersion="[21,)"');
     });
   });
 
@@ -315,13 +343,9 @@ describe('Voxel+ 1.1.0 Feature Set: Multi-Loader, Importers, Converter & Preflig
       zip.writeZip(cfZipPath);
 
       const res = await VPackConverter.convertCurseForgeToVPack(cfZipPath, vpackPath);
-      expect(res.success).toBe(true);
-      expect(fs.existsSync(vpackPath)).toBe(true);
-
-      const val = VPackManager.validateVPack(vpackPath);
-      expect(val.valid).toBe(true);
-      expect(val.manifest?.name).toBe('CF Converted');
-      expect(val.manifest?.loader.type).toBe('forge');
+      expect(res.success).toBe(false);
+      expect(res.error).toContain('CurseForge file reference');
+      expect(fs.existsSync(vpackPath)).toBe(false);
     });
   });
 

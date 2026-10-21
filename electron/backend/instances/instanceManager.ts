@@ -13,6 +13,7 @@ import { VoxelError } from '../diagnostics';
 import { VPackManager } from '../vpack/vpackManager';
 import { ModrinthPackImporter } from '../vpack/modrinthPackImporter';
 import { CurseForgePackImporter } from '../vpack/curseForgePackImporter';
+import { LoaderRegistry } from './loaderProvider';
 
 export class InstanceManager {
   public static async listInstances(): Promise<InstanceMetadata[]> {
@@ -60,6 +61,20 @@ export class InstanceManager {
   }
 
   public static async createInstance(payload: CreateInstancePayload): Promise<InstanceMetadata> {
+    const loaderType = payload.loaderType || 'fabric';
+    const minecraftVersion = payload.minecraftVersion || '1.21.1';
+    if (!LoaderRegistry.isCombinationSupported(loaderType, minecraftVersion)) {
+      const provider = LoaderRegistry.getProvider(loaderType);
+      throw new VoxelError({
+        title: 'Unsupported loader combination',
+        message: `${provider.displayName} does not support Minecraft ${minecraftVersion} in this release.`,
+        cause: 'The selected loader and Minecraft version do not have a verified Voxel+ setup profile.',
+        suggestedAction: `Choose one of the supported ${provider.displayName} versions: ${provider.supportedMinecraftVersions.join(', ')}.`,
+        code: 'LOADER_VERSION_UNSUPPORTED',
+        category: 'INSTANCE',
+        severity: 'ERROR'
+      });
+    }
     const baseDir = ConfigStore.getInstanceDirectory();
     PathManager.ensureDirectory(baseDir);
 
