@@ -100,6 +100,8 @@ function registerIpcHandlers() {
   handle('instance:export', 'INSTANCE', async (_, id, targetPath) => CommandManager.exportInstance(id, targetPath));
   handle('instance:import', 'INSTANCE', async (_, zipPath, name) => CommandManager.importInstance(zipPath, name));
   handle('vpack:validate', 'INSTANCE', async (_, zipPath) => CommandManager.validateVPack(zipPath));
+  handle('vpack:convert', 'INSTANCE', async (_, inPath, outPath) => CommandManager.convertModpackToVPack(inPath, outPath));
+  handle('system:preflight', 'INSTANCE', async (_, mcVer, loader, mem, dir, javaId) => CommandManager.runPreflight(mcVer, loader, mem, dir, javaId));
   handle('vpack:listRepository', 'INSTANCE', async () => CommandManager.listRepositoryVPacks());
   handle('vpack:purchase', 'INSTANCE', async (_, zipPath) => CommandManager.purchaseVPack(zipPath));
 

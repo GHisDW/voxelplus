@@ -48,6 +48,10 @@ import { PlayerDataStore } from './player/playerDataStore';
 import { AchievementEngine } from './player/achievementEngine';
 import { CosmeticCatalogue } from './player/cosmeticCatalogue';
 import { VPackManager } from './vpack/vpackManager';
+import { VPackConverter } from './vpack/vpackConverter';
+import { ModrinthPackImporter } from './vpack/modrinthPackImporter';
+import { CurseForgePackImporter } from './vpack/curseForgePackImporter';
+import { PreflightChecker } from './instances/preflightChecker';
 import { ArcadeStore } from './arcade/arcadeStore';
 
 
@@ -264,6 +268,23 @@ export class CommandManager {
 
   public static async validateVPack(zipPath: string): Promise<VPackValidationResult> {
     return VPackManager.validateVPack(zipPath);
+  }
+
+  public static async convertModpackToVPack(inputPath: string, outputPath: string): Promise<any> {
+    if (inputPath.endsWith('.mrpack') || ModrinthPackImporter.validateMrpack(inputPath).valid) {
+      return VPackConverter.convertMrpackToVPack(inputPath, outputPath);
+    }
+    return VPackConverter.convertCurseForgeToVPack(inputPath, outputPath);
+  }
+
+  public static async runPreflight(
+    minecraftVersion: string,
+    loaderType: any,
+    allocatedMemoryMb: number = 4096,
+    instanceDir?: string,
+    preferredJavaId?: string
+  ): Promise<any> {
+    return PreflightChecker.runPreflight(minecraftVersion, loaderType, allocatedMemoryMb, instanceDir, preferredJavaId);
   }
 
   public static async listRepositoryVPacks(): Promise<any[]> {

@@ -73,7 +73,10 @@ export class CreateInstanceModal {
                 <div class="form-group">
                   <label class="form-label">Mod Loader</label>
                   <select class="select-field" id="inst-loader">
-                    <option value="fabric" selected>Fabric Loom</option>
+                    <option value="fabric" selected>Fabric</option>
+                    <option value="quilt">Quilt</option>
+                    <option value="neoforge">NeoForge</option>
+                    <option value="forge">Forge</option>
                   </select>
                 </div>
               </div>

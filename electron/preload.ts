@@ -86,6 +86,8 @@ const api = {
   exportInstance: (instanceId: string, targetZipPath: string): Promise<boolean> => ipcRenderer.invoke('instance:export', instanceId, targetZipPath),
   importInstance: (zipPath: string, customName?: string): Promise<InstanceMetadata | null> => ipcRenderer.invoke('instance:import', zipPath, customName),
   validateVPack: (zipPath: string): Promise<VPackValidationResult> => ipcRenderer.invoke('vpack:validate', zipPath),
+  convertModpack: (inPath: string, outPath: string): Promise<any> => ipcRenderer.invoke('vpack:convert', inPath, outPath),
+  runPreflight: (mcVer: string, loader: string, mem?: number, dir?: string, javaId?: string): Promise<any> => ipcRenderer.invoke('system:preflight', mcVer, loader, mem, dir, javaId),
   listRepositoryVPacks: (): Promise<any[]> => ipcRenderer.invoke('vpack:listRepository'),
   purchaseVPack: (zipPath: string): Promise<{ success: boolean; instance?: InstanceMetadata; error?: string }> => ipcRenderer.invoke('vpack:purchase', zipPath),
 

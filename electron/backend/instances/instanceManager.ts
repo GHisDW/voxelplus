@@ -11,6 +11,8 @@ import { PathManager } from '../storage/paths';
 import { ProcessManager } from '../processes/processManager';
 import { VoxelError } from '../diagnostics';
 import { VPackManager } from '../vpack/vpackManager';
+import { ModrinthPackImporter } from '../vpack/modrinthPackImporter';
+import { CurseForgePackImporter } from '../vpack/curseForgePackImporter';
 
 export class InstanceManager {
   public static async listInstances(): Promise<InstanceMetadata[]> {
@@ -210,13 +212,50 @@ export class InstanceManager {
     let finalTargetDir: string | null = null;
 
     try {
-      // First validate the VPack to give better error messages
+      const suggestedName = customName || path.basename(importZipPath, path.extname(importZipPath));
+      const folderName = PathManager.sanitizeFilename(suggestedName);
+      
+      finalTargetDir = path.join(baseDir, folderName);
+      let counter = 1;
+      while (fs.existsSync(finalTargetDir)) {
+        finalTargetDir = path.join(baseDir, `${folderName} (${counter++})`);
+      }
+
+      PathManager.ensureDirectory(tempDir);
+
+      // 1. Check if the file is a Modrinth .mrpack
+      const mrpackVal = ModrinthPackImporter.validateMrpack(importZipPath);
+      if (mrpackVal.valid) {
+        const mrpackRes = await ModrinthPackImporter.importMrpack(importZipPath, tempDir, suggestedName);
+        if (!mrpackRes.success || !mrpackRes.metadata) {
+          throw new Error(mrpackRes.errors.join(', ') || 'Failed to import Modrinth pack.');
+        }
+        fs.renameSync(tempDir, finalTargetDir);
+        mrpackRes.metadata.instancePath = finalTargetDir;
+        InstanceMetadataStore.writeMetadata(finalTargetDir, mrpackRes.metadata);
+        return mrpackRes.metadata;
+      }
+
+      // 2. Check if the file is a CurseForge modpack zip
+      const cfVal = CurseForgePackImporter.validateCurseForgePack(importZipPath);
+      if (cfVal.valid) {
+        const cfRes = await CurseForgePackImporter.importCurseForgePack(importZipPath, tempDir, suggestedName);
+        if (!cfRes.success || !cfRes.metadata) {
+          throw new Error(cfRes.errors.join(', ') || 'Failed to import CurseForge pack.');
+        }
+        fs.renameSync(tempDir, finalTargetDir);
+        cfRes.metadata.instancePath = finalTargetDir;
+        InstanceMetadataStore.writeMetadata(finalTargetDir, cfRes.metadata);
+        return cfRes.metadata;
+      }
+
+      // 3. Fallback to standard Voxel⁺ VPack validation
       const validation = VPackManager.validateVPack(importZipPath);
       if (!validation.valid) {
         new VoxelError({
-          title: 'Invalid VPack File',
-          message: 'The selected file is not a valid Voxel⁺ VPack.',
-          cause: 'The file may be corrupt, missing required metadata, or not a VPack format.',
+          title: 'Invalid Modpack or VPack File',
+          message: 'The selected file is not a valid Voxel⁺ VPack, Modrinth .mrpack, or CurseForge package.',
+          cause: 'The file may be corrupt, missing required metadata, or an unsupported format.',
           suggestedAction: `Validation errors: ${validation.errors.join(', ')}`,
           code: 'INVALID_VPACK',
           category: 'INSTANCE',
@@ -226,18 +265,7 @@ export class InstanceManager {
         return null;
       }
 
-      const suggestedName = customName || path.basename(importZipPath, path.extname(importZipPath));
-      const folderName = PathManager.sanitizeFilename(suggestedName);
-      
-      // Determine final target directory
-      finalTargetDir = path.join(baseDir, folderName);
-      let counter = 1;
-      while (fs.existsSync(finalTargetDir)) {
-        finalTargetDir = path.join(baseDir, `${folderName} (${counter++})`);
-      }
-
-      // Extract to temp directory first
-      PathManager.ensureDirectory(tempDir);
+      // Extract VPack to temp directory
       const extractResult = await VPackManager.extractVPack(importZipPath, tempDir);
       if (!extractResult.success) {
         throw new Error(extractResult.error || 'Failed to extract package.');

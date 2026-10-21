@@ -1,5 +1,5 @@
-import { JavaRuntime } from '../../types';
-import { resolveVersionConfig, FabricVersionSpec } from './fabricVersions';
+import { JavaRuntime, LoaderType } from '../../types';
+import { LoaderRegistry } from './loaderProvider';
 import { JavaCompatibilityResolver } from '../java/compatibility';
 
 export interface MinecraftCompatibility {
@@ -11,7 +11,7 @@ export interface MinecraftCompatibility {
     buildTool: number;
   };
   loader: {
-    type: 'fabric';
+    type: LoaderType;
     version: string;
   };
   buildTool: {
@@ -23,6 +23,7 @@ export interface MinecraftCompatibility {
     provider: string;
     version?: string;
   };
+  apiDependency?: string;
   fabricApiVersion?: string;
   isNonObfuscated: boolean;
 }
@@ -37,42 +38,45 @@ export interface ResolvedEnvironment {
 }
 
 export class MinecraftCompatibilityResolver {
-  public static resolveCompatibility(minecraftVersion: string): MinecraftCompatibility {
-    const spec = resolveVersionConfig(minecraftVersion);
+  public static resolveCompatibility(minecraftVersion: string, loaderType: LoaderType = 'fabric'): MinecraftCompatibility {
+    const provider = LoaderRegistry.getProvider(loaderType);
+    const config = provider.resolveConfig(minecraftVersion);
     const requiredJava = JavaCompatibilityResolver.getRequiredJavaMajorVersion(minecraftVersion);
 
     return {
       minecraftVersion,
       java: {
-        min: requiredJava,
+        min: config.javaMinVersion || requiredJava,
         max: undefined,
-        recommended: spec.javaVersion,
-        buildTool: spec.javaVersion
+        recommended: config.javaRecommendedVersion || requiredJava,
+        buildTool: config.javaRecommendedVersion || requiredJava
       },
       loader: {
-        type: 'fabric',
-        version: spec.loaderVersion
+        type: loaderType,
+        version: config.loaderVersion
       },
       buildTool: {
-        loomVersion: spec.loomVersion,
-        gradleVersion: spec.gradleVersion,
-        pluginId: spec.pluginId
+        loomVersion: config.buildPluginVersion,
+        gradleVersion: config.gradleVersion,
+        pluginId: config.buildPlugin
       },
-      mappings: spec.yarnMappings ? {
-        provider: 'yarn',
-        version: spec.yarnMappings
+      mappings: config.mappingsVersion ? {
+        provider: loaderType === 'quilt' ? 'quilt' : (loaderType === 'fabric' ? 'yarn' : 'official'),
+        version: config.mappingsVersion
       } : undefined,
-      fabricApiVersion: spec.fabricApiVersion || undefined,
-      isNonObfuscated: spec.isNonObfuscated
+      apiDependency: config.apiDependency,
+      fabricApiVersion: loaderType === 'fabric' && config.apiDependency ? config.apiDependency.split(':').pop() : undefined,
+      isNonObfuscated: minecraftVersion.startsWith('26.')
     };
   }
 
   public static resolveEnvironment(
     minecraftVersion: string,
     installedJavaRuntimes: JavaRuntime[],
-    preferredJavaId?: string
+    preferredJavaId?: string,
+    loaderType: LoaderType = 'fabric'
   ): ResolvedEnvironment {
-    const compatibility = this.resolveCompatibility(minecraftVersion);
+    const compatibility = this.resolveCompatibility(minecraftVersion, loaderType);
     
     if (preferredJavaId && preferredJavaId !== 'auto') {
       const preferred = installedJavaRuntimes.find(j => 
@@ -112,7 +116,7 @@ export class MinecraftCompatibilityResolver {
     };
   }
 
-  private static isJavaCompatible(java: JavaRuntime, compatibility: MinecraftCompatibility): boolean {
+  public static isJavaCompatible(java: JavaRuntime, compatibility: MinecraftCompatibility): boolean {
     if (!java.isValid) return false;
     
     const required = compatibility.java.recommended;
@@ -124,6 +128,7 @@ export class MinecraftCompatibilityResolver {
     if (required === 8 && java.majorVersion >= 8 && java.majorVersion < 11) return true;
     if (required === 17 && java.majorVersion >= 17) return true;
     if (required === 21 && java.majorVersion >= 21) return true;
+    if (required === 25 && java.majorVersion >= 25) return true;
     
     return java.majorVersion >= required;
   }
@@ -138,48 +143,28 @@ export class MinecraftCompatibilityResolver {
     if (valid.length === 0) return null;
 
     const exactLts64 = valid.find(j => 
-      j.majorVersion === required && j.isLts && j.architecture === 'x64'
+      j.majorVersion === required && 
+      j.isLts && 
+      j.architecture === 'x64'
     );
     if (exactLts64) return exactLts64;
 
-    const exact = valid.find(j => j.majorVersion === required);
-    if (exact) return exact;
+    const exact64 = valid.find(j => 
+      j.majorVersion === required && 
+      j.architecture === 'x64'
+    );
+    if (exact64) return exact64;
 
-    const compatibleLts64 = valid
-      .filter(j => j.majorVersion > required && j.isLts && j.architecture === 'x64')
-      .sort((a, b) => a.majorVersion - b.majorVersion)[0];
+    const exactAny = valid.find(j => j.majorVersion === required);
+    if (exactAny) return exactAny;
+
+    const compatibleLts64 = valid.find(j => 
+      j.majorVersion >= required && 
+      j.isLts && 
+      j.architecture === 'x64'
+    );
     if (compatibleLts64) return compatibleLts64;
 
-    const anyCompatible = valid
-      .filter(j => j.majorVersion >= required)
-      .sort((a, b) => a.majorVersion - b.majorVersion)[0];
-
-    return anyCompatible || null;
-  }
-
-  public static getCompatibilityDescription(compatibility: MinecraftCompatibility): string {
-    const javaDesc = compatibility.java.min === compatibility.java.recommended
-      ? `Java ${compatibility.java.recommended}`
-      : `Java ${compatibility.java.min}+ (recommended: ${compatibility.java.recommended})`;
-    
-    return `Minecraft ${compatibility.minecraftVersion} requires ${javaDesc}, ` +
-           `Fabric Loader ${compatibility.loader.version}, ` +
-           `Gradle ${compatibility.buildTool.gradleVersion}, ` +
-           `Loom ${compatibility.buildTool.loomVersion}`;
-  }
-
-  public static validateProjectConfig(
-    minecraftVersion: string,
-    generatedGradleVersion: string,
-    generatedLoomVersion: string,
-    generatedJavaVersion: number
-  ): boolean {
-    const compatibility = this.resolveCompatibility(minecraftVersion);
-    
-    const gradleMatch = generatedGradleVersion === compatibility.buildTool.gradleVersion;
-    const loomMatch = generatedLoomVersion === compatibility.buildTool.loomVersion;
-    const javaMatch = generatedJavaVersion === compatibility.java.recommended;
-    
-    return gradleMatch && loomMatch && javaMatch;
+    return valid[0] || null;
   }
 }

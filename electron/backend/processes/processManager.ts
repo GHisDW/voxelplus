@@ -66,7 +66,8 @@ export class ProcessManager {
     const resolvedEnv = MinecraftCompatibilityResolver.resolveEnvironment(
       metadata.minecraft.version,
       javaList,
-      metadata.runtime.java !== 'auto' ? metadata.runtime.java : undefined
+      metadata.runtime.java !== 'auto' ? metadata.runtime.java : undefined,
+      metadata.loader?.type || 'fabric'
     );
 
     if (!resolvedEnv.isCompatible || !resolvedEnv.javaRuntime) {

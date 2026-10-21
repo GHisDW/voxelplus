@@ -14,6 +14,7 @@ import {
 import { JavaDetector } from '../java/javaDetector';
 import { MinecraftCompatibilityResolver } from './minecraftCompatibilityResolver';
 import { LogStreamer } from '../processes/logStreamer';
+import { MultiLoaderProjectScaffolder } from './multiLoaderProjectScaffolder';
 
 const EMBEDDED_GRADLEW_BAT = "@rem\n@rem Copyright 2015 the original author or authors.\n@rem\n@rem Licensed under the Apache License, Version 2.0 (the \"License\");\n@rem you may not use this file except in compliance with the License.\n@rem You may obtain a copy of the License at\n@rem\n@rem      https://www.apache.org/licenses/LICENSE-2.0\n@rem\n@rem Unless required by applicable law or agreed to in writing, software\n@rem distributed under the License is distributed on an \"AS IS\" BASIS,\n@rem WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n@rem See the License for the specific language governing permissions and\n@rem limitations under the License.\n@rem\n@rem SPDX-License-Identifier: Apache-2.0\n@rem\n\n@if \"%DEBUG%\"==\"\" @echo off\n@rem ##########################################################################\n@rem\n@rem  Gradle startup script for Windows\n@rem\n@rem ##########################################################################\n\n@rem Set local scope for the variables, and ensure extensions are enabled\nsetlocal EnableExtensions\n\nset DIRNAME=%~dp0\nif \"%DIRNAME%\"==\"\" set DIRNAME=.\n@rem This is normally unused\nset APP_BASE_NAME=%~n0\nset APP_HOME=%DIRNAME%\n\n@rem Resolve any \".\" and \"..\" in APP_HOME to make it shorter.\nfor %%i in (\"%APP_HOME%\") do set APP_HOME=%%~fi\n\n@rem Add default JVM options here. You can also use JAVA_OPTS and GRADLE_OPTS to pass JVM options to this script.\nset DEFAULT_JVM_OPTS=\"-Xmx64m\" \"-Xms64m\"\n\n@rem Find java.exe\nif defined JAVA_HOME goto findJavaFromJavaHome\n\nset JAVA_EXE=java.exe\n%JAVA_EXE% -version >NUL 2>&1\nif %ERRORLEVEL% equ 0 goto execute\n\necho. 1>&2\necho ERROR: JAVA_HOME is not set and no 'java' command could be found in your PATH. 1>&2\necho. 1>&2\necho Please set the JAVA_HOME variable in your environment to match the 1>&2\necho location of your Java installation. 1>&2\n\n\"%COMSPEC%\" /c exit 1\n\n:findJavaFromJavaHome\nset JAVA_HOME=%JAVA_HOME:\"=%\nset JAVA_EXE=%JAVA_HOME%\\bin\\java.exe\n\nif exist \"%JAVA_EXE%\" goto execute\n\necho. 1>&2\necho ERROR: JAVA_HOME is set to an invalid directory: %JAVA_HOME% 1>&2\necho. 1>&2\necho Please set the JAVA_HOME variable in your environment to match the 1>&2\necho location of your Java installation. 1>&2\n\n\"%COMSPEC%\" /c exit 1\n\n:execute\n@rem Setup the command line\n\nset CLASSPATH=%APP_HOME%\\gradle\\wrapper\\gradle-wrapper.jar\n\n\n@rem Execute Gradle\n\"%JAVA_EXE%\" %DEFAULT_JVM_OPTS% %JAVA_OPTS% %GRADLE_OPTS% \"-Dorg.gradle.appname=%APP_BASE_NAME%\" -classpath \"%CLASSPATH%\" org.gradle.wrapper.GradleWrapperMain %*\n";
 
@@ -55,44 +56,62 @@ export class LoomProjectGenerator {
       PathManager.ensureDirectory(path.join(targetDir, dir));
     }
 
+    const loaderType = metadata.loader?.type || 'fabric';
+
     fs.writeFileSync(
       path.join(targetDir, 'settings.gradle'),
-      generateSettingsGradle(mcVersion, cleanProjectName),
+      MultiLoaderProjectScaffolder.generateSettingsGradle(loaderType, mcVersion, cleanProjectName),
       'utf-8'
     );
 
     fs.writeFileSync(
       path.join(targetDir, 'gradle.properties'),
-      generateGradleProperties(mcVersion, cleanProjectName, metadata.runtime.memoryMb || 4096),
+      MultiLoaderProjectScaffolder.generateGradleProperties(loaderType, mcVersion, cleanProjectName, metadata.runtime.memoryMb || 4096),
       'utf-8'
     );
 
     fs.writeFileSync(
       path.join(targetDir, 'build.gradle'),
-      generateBuildGradle(mcVersion, cleanProjectName, metadata.runtime.memoryMb || 4096),
+      MultiLoaderProjectScaffolder.generateBuildGradle(loaderType, mcVersion, cleanProjectName, metadata.runtime.memoryMb || 4096),
       'utf-8'
     );
 
-    const fabricModJson: Record<string, any> = {
-      schemaVersion: 1,
-      id: 'voxelplus_instance',
-      version: '1.0.0',
-      name: metadata.name,
-      description: 'Voxel+ Fabric instance. Drop mods into the mods/ folder.',
-      authors: ['Voxel+'],
-      contact: {},
-      license: 'MIT',
-      environment: 'client',
-      depends: {
-        fabricloader: `>=${versionSpec.loaderVersion}`,
-        minecraft: `~${mcVersion}`
-      }
-    };
-    fs.writeFileSync(
-      path.join(targetDir, 'src/main/resources/fabric.mod.json'),
-      JSON.stringify(fabricModJson, null, 2),
-      'utf-8'
-    );
+    if (loaderType === 'quilt') {
+      fs.writeFileSync(
+        path.join(targetDir, 'src/main/resources/quilt.mod.json'),
+        MultiLoaderProjectScaffolder.generateQuiltModJson(metadata.name, mcVersion),
+        'utf-8'
+      );
+    } else if (loaderType === 'forge' || loaderType === 'neoforge') {
+      const metaInfDir = path.join(targetDir, 'src/main/resources/META-INF');
+      PathManager.ensureDirectory(metaInfDir);
+      fs.writeFileSync(
+        path.join(metaInfDir, 'mods.toml'),
+        MultiLoaderProjectScaffolder.generateModsToml(metadata.name, loaderType, mcVersion),
+        'utf-8'
+      );
+    } else {
+      const fabricModJson: Record<string, any> = {
+        schemaVersion: 1,
+        id: 'voxelplus_instance',
+        version: '1.0.0',
+        name: metadata.name,
+        description: 'Voxel+ Fabric instance. Drop mods into the mods/ folder.',
+        authors: ['Voxel+'],
+        contact: {},
+        license: 'MIT',
+        environment: 'client',
+        depends: {
+          fabricloader: `>=${versionSpec.loaderVersion}`,
+          minecraft: `~${mcVersion}`
+        }
+      };
+      fs.writeFileSync(
+        path.join(targetDir, 'src/main/resources/fabric.mod.json'),
+        JSON.stringify(fabricModJson, null, 2),
+        'utf-8'
+      );
+    }
 
     const gradleWrapperProps = `distributionBase=GRADLE_USER_HOME
 distributionPath=wrapper/dists
@@ -177,10 +196,16 @@ zipStorePath=wrapper/dists
       PATH: `${path.join(resolvedEnv.javaHome || '', 'bin')};${process.env.PATH || ''}`
     };
 
+    if (!fs.existsSync(instanceDir)) {
+      return;
+    }
+
     const gradlewBat = path.join(instanceDir, 'gradlew.bat');
     if (!fs.existsSync(gradlewBat)) {
       LogStreamer.addLog('[Voxel+ Setup] gradlew.bat missing, writing fallback wrapper...', 'WARN', instanceId, instanceName);
-      fs.writeFileSync(gradlewBat, EMBEDDED_GRADLEW_BAT, 'utf-8');
+      try {
+        fs.writeFileSync(gradlewBat, EMBEDDED_GRADLEW_BAT, 'utf-8');
+      } catch (_) {}
     }
 
     return new Promise<void>((resolve) => {
