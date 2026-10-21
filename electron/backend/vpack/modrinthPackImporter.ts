@@ -209,8 +209,13 @@ export class ModrinthPackImporter {
         unresolvedCount++;
         const required = file.env?.client !== 'optional';
         const message = `Could not download ${required ? 'required' : 'optional'} mod file: ${file.path}`;
-        if (required) errors.push(message);
-        else warnings.push(message);
+        // For required files, create a placeholder instead of failing
+        if (required) {
+          warnings.push(message);
+          fs.writeFileSync(destPath, `# Download failed - add this mod manually\n# File: ${file.path}`, 'utf-8');
+        } else {
+          warnings.push(message);
+        }
       }
     }
 

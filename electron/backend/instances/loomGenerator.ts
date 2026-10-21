@@ -128,6 +128,9 @@ zipStorePath=wrapper/dists
 
     this.ensureWrapperFiles(targetDir);
 
+    // Set instancePath on metadata
+    metadata.instancePath = targetDir;
+
     InstanceMetadataStore.writeMetadata(targetDir, metadata);
 
     this.preDownloadDependencies(targetDir, metadata.id, metadata.name, mcVersion, loaderType, compatibility)

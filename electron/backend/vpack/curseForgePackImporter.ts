@@ -175,15 +175,14 @@ export class CurseForgePackImporter {
       // In a self-contained local import, files that cannot be resolved via public mirror
       // are logged as unresolved so the user gets an explicit report.
       unresolvedCount++;
-      if (f.required !== false) {
-        errors.push(`Required CurseForge file ${f.projectID}/${f.fileID} could not be resolved without an authorized CurseForge download service.`);
-      }
+      // Don't fail on unresolved CurseForge files - just warn
+      warnings.push(`CurseForge file ${f.projectID}/${f.fileID} could not be resolved. You may need to add this mod manually.`);
     }
 
     if (declaredFiles.length > 0) {
       warnings.push(
         `${declaredFiles.length} CurseForge mod references recorded. ` +
-        `Required project files must be present or downloaded through authorized distribution endpoints.`
+        `These mods will need to be added manually since CurseForge downloads require API authentication.`
       );
     }
 

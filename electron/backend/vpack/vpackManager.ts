@@ -269,7 +269,14 @@ export class VPackManager {
           return { success: false, manifest: null, error: `Remote content escaped instance directory: ${content.relativePath}` };
         }
         fs.mkdirSync(path.dirname(target), { recursive: true });
-        await this.downloadFile(content.downloadUrl, target, content.sha1);
+        try {
+          await this.downloadFile(content.downloadUrl, target, content.sha1);
+        } catch (downloadError: any) {
+          // If download fails, log it but continue - user can add files manually
+          console.warn(`Failed to download ${content.relativePath}: ${downloadError.message}`);
+          // Create a placeholder file to indicate missing content
+          fs.writeFileSync(target, `# Download failed: ${downloadError.message}\n# URL: ${content.downloadUrl}`, 'utf-8');
+        }
       }
 
       // Ensure cross-platform Loom / Gradle wrapper build files exist in destination

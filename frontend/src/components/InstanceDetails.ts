@@ -118,9 +118,14 @@ export class InstanceDetails {
 
     // Tab buttons
     this.container.querySelectorAll('[data-tab]').forEach(tabBtn => {
-      (tabBtn as HTMLElement).onclick = () => {
-        this.activeTab = tabBtn.getAttribute('data-tab') as any;
-        this.render();
+      (tabBtn as HTMLElement).onclick = async () => {
+        try {
+          this.activeTab = tabBtn.getAttribute('data-tab') as any;
+          await this.render();
+        } catch (error: any) {
+          console.error('Error switching tab:', error);
+          NotificationToast.show(`Failed to load tab: ${error?.message || 'Unknown error'}`, 'error');
+        }
       };
     });
 
@@ -133,16 +138,28 @@ export class InstanceDetails {
     if (!target) return;
     target.innerHTML = '';
 
-    if (this.activeTab === 'overview') {
-      target.appendChild(this.renderOverview());
-    } else if (this.activeTab === 'mods') {
-      target.appendChild(await this.renderMods());
-    } else if (this.activeTab === 'packs') {
-      target.appendChild(await this.renderResourcePacks());
-    } else if (this.activeTab === 'shaders') {
-      target.appendChild(await this.renderShaders());
-    } else if (this.activeTab === 'extras') {
-      target.appendChild(this.renderExtras());
+    try {
+      if (this.activeTab === 'overview') {
+        target.appendChild(this.renderOverview());
+      } else if (this.activeTab === 'mods') {
+        target.appendChild(await this.renderMods());
+      } else if (this.activeTab === 'packs') {
+        target.appendChild(await this.renderResourcePacks());
+      } else if (this.activeTab === 'shaders') {
+        target.appendChild(await this.renderShaders());
+      } else if (this.activeTab === 'extras') {
+        target.appendChild(this.renderExtras());
+      }
+    } catch (error: any) {
+      console.error('Error rendering tab content:', error);
+      target.innerHTML = `
+        <div style="padding: 48px; text-align: center; background: var(--bg-card); border: 1px dashed var(--border-subtle); border-radius: var(--radius-lg);">
+          <h4 style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin-bottom: 6px;">Error Loading Content</h4>
+          <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 16px;">${error?.message || 'An unexpected error occurred'}</p>
+          <button class="btn btn-secondary" id="btn-retry">Retry</button>
+        </div>
+      `;
+      (target.querySelector('#btn-retry') as HTMLElement).onclick = () => this.renderTabContent();
     }
   }
 
@@ -291,7 +308,13 @@ export class InstanceDetails {
     const div = document.createElement('div');
     div.className = 'animate-fade-in';
 
-    const mods = await api.scanMods(this.instance.id);
+    let mods: any[] = [];
+    try {
+      mods = await api.scanMods(this.instance.id);
+    } catch (error: any) {
+      console.error('Failed to scan mods:', error);
+      mods = [];
+    }
 
     div.innerHTML = `
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
@@ -428,7 +451,13 @@ export class InstanceDetails {
     const div = document.createElement('div');
     div.className = 'animate-fade-in';
 
-    const packs = await api.scanResourcePacks(this.instance.id);
+    let packs: any[] = [];
+    try {
+      packs = await api.scanResourcePacks(this.instance.id);
+    } catch (error: any) {
+      console.error('Failed to scan resource packs:', error);
+      packs = [];
+    }
 
     div.innerHTML = `
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
@@ -517,7 +546,13 @@ export class InstanceDetails {
     const div = document.createElement('div');
     div.className = 'animate-fade-in';
 
-    const shaders = await api.scanShaders(this.instance.id);
+    let shaders: any[] = [];
+    try {
+      shaders = await api.scanShaders(this.instance.id);
+    } catch (error: any) {
+      console.error('Failed to scan shaders:', error);
+      shaders = [];
+    }
 
     div.innerHTML = `
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">

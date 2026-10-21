@@ -115,7 +115,6 @@ export class QuiltLoaderProvider implements ILoaderProvider {
       buildPlugin: 'org.quiltmc.loom',
       buildPluginVersion: loomVer,
       mappingsVersion: `org.quiltmc:quilt-mappings:${minecraftVersion}+build.1:intermediary-v2`,
-      apiDependency: `org.quiltmc.quilted-fabric-api:quilted-fabric-api:9.0.0-beta.29+${minecraftVersion}`,
       gradleVersion: gradleVer,
       javaMinVersion: javaMin,
       javaRecommendedVersion: javaRec

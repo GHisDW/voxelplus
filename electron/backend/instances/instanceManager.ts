@@ -63,6 +63,21 @@ export class InstanceManager {
   public static async createInstance(payload: CreateInstancePayload): Promise<InstanceMetadata> {
     const loaderType = payload.loaderType || 'fabric';
     const minecraftVersion = payload.minecraftVersion || '1.21.1';
+
+    try {
+      const provider = LoaderRegistry.getProvider(loaderType);
+    } catch (err: any) {
+      throw new VoxelError({
+        title: 'Invalid Loader Type',
+        message: `The loader type "${loaderType}" is not recognized.`,
+        cause: err.message,
+        suggestedAction: 'Please select a valid loader: fabric, quilt, forge, or neoforge.',
+        code: 'INVALID_LOADER_TYPE',
+        category: 'INSTANCE',
+        severity: 'ERROR'
+      });
+    }
+
     if (!LoaderRegistry.isCombinationSupported(loaderType, minecraftVersion)) {
       const provider = LoaderRegistry.getProvider(loaderType);
       throw new VoxelError({
@@ -229,7 +244,7 @@ export class InstanceManager {
     try {
       const suggestedName = customName || path.basename(importZipPath, path.extname(importZipPath));
       const folderName = PathManager.sanitizeFilename(suggestedName);
-      
+
       finalTargetDir = path.join(baseDir, folderName);
       let counter = 1;
       while (fs.existsSync(finalTargetDir)) {

@@ -48,7 +48,13 @@ export class InstancesPage {
 
     // If looking at details for a specific instance
     if (this.activeDetailsId) {
-      const target = await api.getInstance(this.activeDetailsId);
+      let target: InstanceMetadata | null = null;
+      try {
+        target = await api.getInstance(this.activeDetailsId);
+      } catch (error: any) {
+        console.error('Failed to get instance:', error);
+        NotificationToast.show(`Failed to load instance: ${error?.message || 'Unknown error'}`, 'error');
+      }
       if (renderId !== this.currentRenderId) return this.container;
 
       if (target) {
@@ -68,10 +74,19 @@ export class InstancesPage {
         return this.container;
       } else {
         this.activeDetailsId = null;
+        // Re-render to show the list view
+        return this.render();
       }
     }
 
-    const fetchedInstances = await api.listInstances();
+    let fetchedInstances: InstanceMetadata[] = [];
+    try {
+      fetchedInstances = await api.listInstances();
+    } catch (error: any) {
+      console.error('Failed to list instances:', error);
+      NotificationToast.show(`Failed to load instances: ${error?.message || 'Unknown error'}`, 'error');
+      fetchedInstances = [];
+    }
     if (renderId !== this.currentRenderId) return this.container;
 
     this.instances = fetchedInstances;

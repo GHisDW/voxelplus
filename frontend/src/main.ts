@@ -136,12 +136,7 @@ class VPlusApp {
 
   private async navigateTo(page: PageId): Promise<void> {
     this.activePage = page;
-    const appEl = document.getElementById('app')!;
-    const sidebarEl = appEl.querySelector('.sidebar') as HTMLElement;
-    if (sidebarEl) {
-      sidebarEl.replaceWith(this.sidebar.render(this.activePage));
-    }
-
+    this.sidebar.render(this.activePage);
     await this.renderCurrentPage();
   }
 

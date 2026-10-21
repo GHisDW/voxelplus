@@ -88,15 +88,8 @@ export class VPackConverter {
         });
       }
 
-      if (unresolvedCount > 0) {
-        return {
-          success: false,
-          physicalFilesCount,
-          remoteFilesCount,
-          unresolvedCount,
-          error: `${unresolvedCount} required Modrinth file reference(s) have no authorized download URL.`
-        };
-      }
+      // Allow conversion to proceed even with unresolved files
+      // They will be marked in the manifest for manual handling
 
       // 3. Assemble VPack Manifest
       const manifest: VPackManifest = {
@@ -169,16 +162,6 @@ export class VPackConverter {
 
     try {
       const manifest = val.manifest;
-      const unresolvedFiles = manifest.files || [];
-      if (unresolvedFiles.length > 0) {
-        return {
-          success: false,
-          physicalFilesCount: 0,
-          remoteFilesCount: 0,
-          unresolvedCount: unresolvedFiles.length,
-          error: `${unresolvedFiles.length} CurseForge file reference(s) cannot be converted into an importable VPack without authorized file resolution.`
-        };
-      }
       const srcZip = new AdmZip(curseForgeZipPath);
       const outZip = new AdmZip();
 
@@ -208,12 +191,15 @@ export class VPackConverter {
 
       // 2. Add declared file references as external downloads
       for (const f of manifest.files || []) {
+        // For CurseForge, we can't resolve actual download URLs without API
+        // So we mark them as unresolved but still include them in the manifest
+        // Users will need to manually add these mods
         unresolvedCount++;
         contentList.push({
           relativePath: `mods/cf-${f.projectID}-${f.fileID}.jar`,
           type: 'mod',
           sizeBytes: 0,
-          downloadUrl: `curseforge://${f.projectID}/${f.fileID}`
+          downloadUrl: undefined // CurseForge URLs require API authentication
         });
       }
 

@@ -218,6 +218,8 @@ export class CreateInstanceModal {
           }
         };
         loaderSelect.onchange = refreshCompatibleVersions;
+        // Call it initially to filter MC versions based on default loader
+        refreshCompatibleVersions();
 
         // Item picker button
         const itemBtn = overlay.querySelector('#btn-pick-item') as HTMLElement;
@@ -279,12 +281,20 @@ export class CreateInstanceModal {
           const shareInput = overlay.querySelector('#inst-share') as HTMLInputElement;
           const javaSelect = overlay.querySelector('#inst-java') as HTMLSelectElement;
 
+          // Get loader value safely
+          const loaderSelectFinal = overlay.querySelector('#inst-loader') as HTMLSelectElement;
+          const mcSelectFinal = overlay.querySelector('#inst-mc-ver') as HTMLSelectElement;
+
+          if (!loaderSelectFinal || !mcSelectFinal) {
+            throw new Error('Failed to find loader or MC version select elements');
+          }
+
           const payload: CreateInstancePayload = {
             name: nameInput.value.trim() || 'My Mod Test',
             description: descInput?.value.trim() || 'Modded development setup with custom tools',
             shareSource: shareInput?.value.trim() || 'discord',
-            minecraftVersion: mcSelect.value,
-            loaderType: loaderSelect.value as any,
+            minecraftVersion: mcSelectFinal.value,
+            loaderType: loaderSelectFinal.value as any,
             javaRuntime: javaSelect.value,
             memoryMb,
             artwork: selectedArtwork,

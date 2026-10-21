@@ -271,10 +271,23 @@ export class CommandManager {
   }
 
   public static async convertModpackToVPack(inputPath: string, outputPath: string): Promise<any> {
-    if (inputPath.endsWith('.mrpack') || ModrinthPackImporter.validateMrpack(inputPath).valid) {
-      return VPackConverter.convertMrpackToVPack(inputPath, outputPath);
+    try {
+      // First check if it's a Modrinth pack
+      const mrpackVal = ModrinthPackImporter.validateMrpack(inputPath);
+      if (mrpackVal.valid) {
+        return VPackConverter.convertMrpackToVPack(inputPath, outputPath);
+      }
+      // Otherwise try CurseForge
+      return VPackConverter.convertCurseForgeToVPack(inputPath, outputPath);
+    } catch (error: any) {
+      return {
+        success: false,
+        physicalFilesCount: 0,
+        remoteFilesCount: 0,
+        unresolvedCount: 0,
+        error: error?.message || 'Unknown conversion error'
+      };
     }
-    return VPackConverter.convertCurseForgeToVPack(inputPath, outputPath);
   }
 
   public static async runPreflight(
