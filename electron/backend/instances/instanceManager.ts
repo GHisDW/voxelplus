@@ -304,10 +304,12 @@ export class InstanceManager {
       // A Modrinth .mrpack may contain only its content and index metadata.
       // Imported VPacks still need the launcher's Loom project scaffold so the
       // instance can be started through the normal ProcessManager path.
+      let meta = InstanceMetadataStore.readMetadata(tempDir);
+
       if (!fs.existsSync(path.join(tempDir, 'build.gradle')) || !fs.existsSync(path.join(tempDir, 'gradlew.bat'))) {
         const packManifest = extractResult.manifest;
         if (packManifest) {
-          await LoomProjectGenerator.generateProject(tempDir, {
+          const scaffolded = await LoomProjectGenerator.generateProject(tempDir, {
             name: customName || packManifest.name || suggestedName,
             description: packManifest.description,
             minecraftVersion: packManifest.minecraft?.version || '1.21.1',
@@ -319,11 +321,12 @@ export class InstanceManager {
             item: packManifest.item,
             shareSource: packManifest.shareSource
           });
+          // Re-read metadata after scaffolding to get the instancePath
+          meta = InstanceMetadataStore.readMetadata(tempDir);
         }
       }
 
       // Re-read or synthesize metadata from extracted manifest
-      let meta = InstanceMetadataStore.readMetadata(tempDir);
       if (!meta) {
         // Use manifest if available, otherwise create default
         if (extractResult.manifest) {
@@ -339,6 +342,9 @@ export class InstanceManager {
           if (extractResult.manifest.artwork) {
             meta.appearance.artwork = extractResult.manifest.artwork;
           }
+          // Set instancePath
+          meta.instancePath = tempDir;
+          InstanceMetadataStore.writeMetadata(tempDir, meta);
         } else {
           // No manifest - create default instance
           meta = InstanceMetadataStore.createDefaultMetadata({
@@ -346,7 +352,13 @@ export class InstanceManager {
             minecraftVersion: '1.21.1',
             loaderType: 'fabric'
           });
+          meta.instancePath = tempDir;
+          InstanceMetadataStore.writeMetadata(tempDir, meta);
         }
+      } else {
+        // Ensure instancePath is set
+        meta.instancePath = tempDir;
+        InstanceMetadataStore.writeMetadata(tempDir, meta);
       }
 
       // The manifest is authoritative for pack identity and appearance. Legacy
@@ -379,7 +391,11 @@ export class InstanceManager {
 
       // Atomic move: rename temp directory to final target
       fs.renameSync(tempDir, finalTargetDir);
-      
+
+      // Update instancePath to final location
+      meta.instancePath = finalTargetDir;
+      InstanceMetadataStore.writeMetadata(finalTargetDir, meta);
+
       return meta;
     } catch (e) {
       // Cleanup temp directory on failure

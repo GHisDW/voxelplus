@@ -237,6 +237,7 @@ export class ModrinthPackImporter {
     });
 
     metadata.isVPack = true;
+    metadata.instancePath = targetDir;
 
     return {
       success: errors.length === 0,

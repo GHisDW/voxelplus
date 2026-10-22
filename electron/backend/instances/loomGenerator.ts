@@ -128,7 +128,7 @@ zipStorePath=wrapper/dists
 
     this.ensureWrapperFiles(targetDir);
 
-    // Set instancePath on metadata
+    // Always set instancePath on metadata
     metadata.instancePath = targetDir;
 
     InstanceMetadataStore.writeMetadata(targetDir, metadata);
