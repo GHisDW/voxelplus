@@ -101,19 +101,24 @@ export class AddContentModal {
     };
 
     (overlay.querySelector('#opt-local') as HTMLElement).onclick = async () => {
-      const filePath = await api.selectFileDialog([
-        { name: 'Minecraft Mod / Pack (*.jar, *.zip)', extensions: ['jar', 'zip'] }
-      ]);
+      try {
+        const filePath = await api.selectFileDialog([
+          { name: 'Minecraft Mod / Pack (*.jar, *.zip)', extensions: ['jar', 'zip'] }
+        ]);
 
-      if (filePath) {
-        const res = await api.importFile(instanceId, filePath, filePath.endsWith('.jar') ? 'mod' : 'resourcepack');
-        if (res.success) {
-          NotificationToast.show(`Imported "${res.filename}" successfully!`, 'success');
-          onContentChanged();
-          close();
-        } else {
-          NotificationToast.show(`Failed to import file: ${res.error}`, 'error');
+        if (filePath) {
+          const res = await api.importFile(instanceId, filePath, filePath.endsWith('.jar') ? 'mod' : 'resourcepack');
+          if (res.success) {
+            NotificationToast.show(`Imported "${res.filename}" successfully!`, 'success');
+            onContentChanged();
+            close();
+          } else {
+            NotificationToast.show(`Failed to import file: ${res.error}`, 'error');
+          }
         }
+      } catch (error: any) {
+        console.error('Import error:', error);
+        NotificationToast.show(`Import failed: ${error?.message || 'Unknown error'}`, 'error');
       }
     };
   }

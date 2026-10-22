@@ -71,7 +71,7 @@ export class Sidebar {
       ">
         <span class="status-dot" style="background: #10b981;"></span>
         <div style="flex: 1; min-width: 0;">
-          <div style="font-size: 0.78rem; font-weight: 700; color: var(--text-primary);">Gradle & Loom</div>
+          <div style="font-size: 0.78rem; font-weight: 700; color: var(--text-primary);">Gradle Engine</div>
           <div style="font-size: 0.72rem; color: var(--text-muted);">Engine Ready</div>
         </div>
       </div>

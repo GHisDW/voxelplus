@@ -13,7 +13,17 @@ export class ContentPage {
 
   public async render(): Promise<HTMLElement> {
     this.container.innerHTML = '';
-    this.container.appendChild(await this.browser.render());
+    try {
+      this.container.appendChild(await this.browser.render());
+    } catch (error) {
+      console.error('[ContentPage] Failed to render content browser:', error);
+      this.container.innerHTML = `
+        <div style="padding: 56px 32px; text-align: center; background: var(--bg-card); border: 1px dashed var(--border-subtle); border-radius: var(--radius-lg);">
+          <h2 style="font-size: 1.25rem; font-weight: 800; color: var(--text-primary); margin-bottom: 8px;">Content could not be loaded</h2>
+          <p style="color: var(--text-muted); max-width: 520px; margin: 0 auto;">The content browser encountered an error while loading. Check your connection and try again.</p>
+        </div>
+      `;
+    }
     return this.container;
   }
 }

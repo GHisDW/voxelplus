@@ -13,11 +13,11 @@
 
 </div>
 
-Voxel⁺ is what happens when you take Fabric Loom, Gradle, a bit of Electron, and a healthy disrespect for "intended use" and turn them into an actual playable singleplayer Minecraft client.
+Voxel⁺ is a Windows-first Electron launcher for isolated, moddable singleplayer Minecraft instances, with loader-specific support for Fabric, Quilt, Forge, and NeoForge.
 
-It's free, it's offline after first setup, and it's fully moddable. We've basically taught `./gradlew runClient` to behave like a proper game launcher — with snacks. 🍪
+It's free, it's offline after the required files are downloaded, and it's fully moddable. Each instance owns its loader and Gradle setup so it can be prepared and launched independently. 🍪
 
-> **TL;DR:** Voxel⁺ turns `./gradlew runClient` into a proper, isolated Minecraft instance. No launcher faff — just Minecraft, mods, and excessive logging. ⚡
+> **TL;DR:** Voxel⁺ creates isolated Minecraft instances with loader-aware setup, mod management, imports, logs, and preflight checks. ⚡
 
 
 ---
@@ -60,7 +60,7 @@ We'll continue monitoring Fabric and Loom development as Voxel⁺ grows, but use
 ## ✨ Features
 
 * 🎮 Real free Java Edition singleplayer experience
-* 🧩 Full Fabric mod support
+* 🧩 Loader-aware mod support for Fabric, Quilt, Forge, and NeoForge
 * ☕ Automatic Java detection and version matching
 * 🗃️ Proper isolated Minecraft instances
 * 📋 Create, duplicate, import, and export instances
@@ -126,6 +126,10 @@ npm start
 Or grab a release from the Releases page and follow [`DOWNLOADING.md`](DOWNLOADING.md) for the user-friendly installation process.
 
 This saves you from accidentally summoning Gradle demons. 👹
+
+### Import or convert a Modrinth pack
+
+Use **Instances → Import VPack / Modpack** to import an `.mrpack` directly. To make a `.vpack`, choose **Convert Modpack to VPack**, select the `.mrpack`, save the `.vpack`, and then import it. Required files without an authorized download URL are reported as unresolved rather than silently omitted.
 
 ## 🗂️ Project Structure
 

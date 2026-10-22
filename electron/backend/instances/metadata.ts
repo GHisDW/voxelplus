@@ -3,23 +3,31 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { InstanceMetadata, CreateInstancePayload } from '../../types';
 import { VoxelError } from '../diagnostics';
+import { LoaderRegistry } from './loaderProvider';
+import { LoaderType } from '../../types';
 
 export class InstanceMetadataStore {
   public static readonly METADATA_FILENAME = 'voxel-instance.json';
 
   public static createDefaultMetadata(payload: CreateInstancePayload, instanceId?: string): InstanceMetadata {
     const id = instanceId || crypto.randomUUID();
+    const minecraftVersion = payload.minecraftVersion || '1.21.1';
+    const loaderType = payload.loaderType || 'fabric';
+    const loaderProvider = LoaderRegistry.getProvider(loaderType);
+    const loaderVersion = payload.loaderVersion && payload.loaderVersion !== 'auto'
+      ? payload.loaderVersion
+      : loaderProvider.getDefaultLoaderVersion(minecraftVersion);
     return {
       schemaVersion: 1,
       id,
       name: payload.name.trim() || 'New Instance',
       description: payload.description?.trim() || `Minecraft ${payload.minecraftVersion || '1.21.1'} instance`,
       minecraft: {
-        version: payload.minecraftVersion || '1.21.1'
+        version: minecraftVersion
       },
       loader: {
-        type: payload.loaderType || 'fabric',
-        version: payload.loaderVersion || '0.16.9'
+        type: loaderType,
+        version: loaderVersion
       },
       runtime: {
         java: payload.javaRuntime || 'auto',
@@ -44,7 +52,21 @@ export class InstanceMetadataStore {
     }
     try {
       const content = fs.readFileSync(metaFile, 'utf-8');
-      const parsed: InstanceMetadata = JSON.parse(content);
+      const parsed: InstanceMetadata & Record<string, any> = JSON.parse(content);
+      const loaderType = ['fabric', 'quilt', 'forge', 'neoforge'].includes(parsed.loader?.type)
+        ? parsed.loader.type as LoaderType
+        : (['fabric', 'quilt', 'forge', 'neoforge'].includes(parsed.loaderType)
+          ? parsed.loaderType as LoaderType
+          : 'fabric');
+      const loaderProvider = LoaderRegistry.getProvider(loaderType);
+      const requestedVersion = parsed.loader?.version || parsed.loaderVersion || parsed[`${loaderType}LoaderVersion`];
+      parsed.loader = {
+        type: loaderType,
+        version: requestedVersion && requestedVersion !== 'auto'
+          ? String(requestedVersion)
+          : loaderProvider.getDefaultLoaderVersion(parsed.minecraft?.version || '1.21.1')
+      };
+      parsed.minecraft = { version: parsed.minecraft?.version || '1.21.1' };
       parsed.instancePath = instanceDir;
 
       // Count mods, resourcepacks, shaders

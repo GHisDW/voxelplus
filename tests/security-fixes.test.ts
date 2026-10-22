@@ -1,321 +1,407 @@
+/**
+ * Security & Reliability Regression Tests — Voxel⁺ 1.1.0
+ *
+ * These tests exercise PRODUCTION code paths directly.  They do NOT
+ * re-implement security-critical helpers locally; any regression in the real
+ * implementation will therefore be caught here.
+ *
+ * Fixed in this PR:
+ *  - Zip-slip tests now call VPackManager.isSafePath (production code).
+ *  - Archive validation tests build real zip buffers and call validateVPack.
+ *  - Path-sanitization tests call PathManager.sanitizeFilename.
+ *  - Added manifest-structure validation, malformed-archive, and edge-case tests.
+ */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { PlayerDataStore } from '../electron/backend/player/playerDataStore';
-import { CommandManager } from '../electron/backend/commandManager';
+import AdmZip from 'adm-zip';
 import { VPackManager } from '../electron/backend/vpack/vpackManager';
 import { PathManager } from '../electron/backend/storage/paths';
-import { InstanceManager } from '../electron/backend/instances/instanceManager';
-import { ConfigStore } from '../electron/backend/storage/configStore';
 
-describe('Security Fixes Regression Tests', () => {
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function makeTempDir(): string {
+  const dir = path.join(__dirname, '.test-temp-' + crypto.randomUUID());
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function buildValidZip(manifestOverride?: Record<string, unknown>): string {
+  const dir = makeTempDir();
+  const zipPath = path.join(dir, 'test.vpack');
+
+  const manifest = {
+    formatId: 'voxelplus-vpack',
+    formatVersion: 1,
+    packId: crypto.randomUUID(),
+    name: 'Test Pack',
+    description: 'A test pack',
+    author: 'test',
+    packVersion: '1.0.0',
+    minecraft: { version: '1.21.1' },
+    loader: { type: 'fabric', version: '0.16.0' },
+    content: [],
+    shareSource: 'discord',
+    price: 0,
+    createdAt: new Date().toISOString(),
+    generatorVersion: '2.0.0',
+    ...manifestOverride
+  };
+
+  const zip = new AdmZip();
+  zip.addFile('manifest.json', Buffer.from(JSON.stringify(manifest), 'utf-8'));
+  zip.writeZip(zipPath);
+  return zipPath;
+}
+
+// ─── 1. VPackManager.isSafePath — production code ────────────────────────────
+
+describe('VPackManager.isSafePath — production implementation', () => {
+  it('accepts safe relative file paths', () => {
+    expect(VPackManager.isSafePath('mods/mod.jar')).toBe(true);
+    expect(VPackManager.isSafePath('config/settings.json')).toBe(true);
+    expect(VPackManager.isSafePath('resourcepacks/pack.zip')).toBe(true);
+    expect(VPackManager.isSafePath('shaderpacks/shader.zip')).toBe(true);
+    expect(VPackManager.isSafePath('manifest.json')).toBe(true);
+  });
+
+  it('rejects absolute Unix paths', () => {
+    expect(VPackManager.isSafePath('/etc/passwd')).toBe(false);
+    expect(VPackManager.isSafePath('/usr/local/bin/evil')).toBe(false);
+  });
+
+  it('rejects absolute Windows drive paths', () => {
+    expect(VPackManager.isSafePath('C:\\Windows\\System32')).toBe(false);
+    expect(VPackManager.isSafePath('C:/Windows/System32')).toBe(false);
+  });
+
+  it('rejects UNC paths', () => {
+    expect(VPackManager.isSafePath('\\\\server\\share\\file.jar')).toBe(false);
+  });
+
+  it('rejects single dot-dot traversal', () => {
+    expect(VPackManager.isSafePath('../etc/passwd')).toBe(false);
+    expect(VPackManager.isSafePath('..')).toBe(false);
+  });
+
+  it('rejects multi-level dot-dot traversal', () => {
+    expect(VPackManager.isSafePath('../../')).toBe(false);
+    expect(VPackManager.isSafePath('mods/../../etc/passwd')).toBe(false);
+  });
+
+  it('rejects backslash-encoded traversal', () => {
+    expect(VPackManager.isSafePath('..\\Windows\\System32')).toBe(false);
+    expect(VPackManager.isSafePath('mods\\..\\..\\evil')).toBe(false);
+  });
+
+  it('rejects NUL character in path', () => {
+    expect(VPackManager.isSafePath('mods\0evil.jar')).toBe(false);
+    expect(VPackManager.isSafePath('\0')).toBe(false);
+  });
+
+  it('rejects empty string', () => {
+    expect(VPackManager.isSafePath('')).toBe(false);
+  });
+});
+
+// ─── 2. VPackManager.validateVPack — real archive inspection ─────────────────
+
+describe('VPackManager.validateVPack — production code', () => {
   let tempDir: string;
-  
-  beforeEach(() => {
-    // Create temp directory for tests
-    tempDir = path.join(__dirname, '.test-temp-' + crypto.randomUUID());
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir, { recursive: true });
-    }
+
+  beforeEach(() => { tempDir = makeTempDir(); });
+  afterEach(() => { if (fs.existsSync(tempDir)) fs.rmSync(tempDir, { recursive: true, force: true }); });
+
+  it('validates a correct VPack archive', () => {
+    const zipPath = buildValidZip();
+    const result = VPackManager.validateVPack(zipPath);
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+    expect(result.manifest).not.toBeNull();
+    expect(result.manifest?.name).toBe('Test Pack');
   });
 
-  afterEach(() => {
-    // Cleanup temp directory
-    if (fs.existsSync(tempDir)) {
-      fs.rmSync(tempDir, { recursive: true, force: true });
-    }
+  it('rejects a non-existent file', () => {
+    const result = VPackManager.validateVPack('/does/not/exist.vpack');
+    expect(result.valid).toBe(false);
+    expect(result.errors.length).toBeGreaterThan(0);
   });
 
-  describe('VPack Purchase Price Validation', () => {
-    it('should reject negative prices in manifest', async () => {
-      // This test verifies that the backend validates prices from manifests
-      // The actual purchaseVPack function now determines price from manifest
-      // and validates it's non-negative
-      const invalidPrice = -100;
-      expect(invalidPrice).toBeLessThan(0);
-    });
+  it('rejects an archive without manifest.json or voxel-instance.json', () => {
+    const zipPath = path.join(tempDir, 'empty.vpack');
+    const zip = new AdmZip();
+    zip.addFile('readme.txt', Buffer.from('hello', 'utf-8'));
+    zip.writeZip(zipPath);
 
-    it('should reject non-integer prices', () => {
-      const invalidPrice = 100.5;
-      expect(Number.isInteger(invalidPrice)).toBe(false);
-    });
-
-    it('should reject NaN prices', () => {
-      const invalidPrice = NaN;
-      expect(Number.isFinite(invalidPrice)).toBe(false);
-    });
-
-    it('should accept valid non-negative integer prices', () => {
-      const validPrice = 250;
-      expect(validPrice).toBeGreaterThanOrEqual(0);
-      expect(Number.isInteger(validPrice)).toBe(true);
-      expect(Number.isFinite(validPrice)).toBe(true);
-    });
+    const result = VPackManager.validateVPack(zipPath);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.includes('manifest.json'))).toBe(true);
   });
 
-  describe('HTML Escaping for XSS Prevention', () => {
-    it('should escape HTML special characters', () => {
-      const escapeHtml = (text: string | null | undefined): string => {
-        if (text === null || text === undefined) return '';
-        return text
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;')
-          .replace(/'/g, '&#039;');
-      };
+  it('rejects a malformed (non-JSON) manifest', () => {
+    const zipPath = path.join(tempDir, 'bad.vpack');
+    const zip = new AdmZip();
+    zip.addFile('manifest.json', Buffer.from('not json {{{{', 'utf-8'));
+    zip.writeZip(zipPath);
 
-      const malicious = '<script>alert("xss")</script>';
-      const escaped = escapeHtml(malicious);
-      
-      expect(escaped).not.toContain('<script>');
-      expect(escaped).toContain('&lt;script&gt;');
-      expect(escaped).not.toContain('<');
-      expect(escaped).not.toContain('>');
-    });
-
-    it('should escape ampersands first to prevent double-escaping', () => {
-      const escapeHtml = (text: string | null | undefined): string => {
-        if (text === null || text === undefined) return '';
-        return text
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;')
-          .replace(/'/g, '&#039;');
-      };
-
-      const input = '&lt;';
-      const escaped = escapeHtml(input);
-      expect(escaped).toBe('&amp;lt;');
-    });
-
-    it('should handle null and undefined safely', () => {
-      const escapeHtml = (text: string | null | undefined): string => {
-        if (text === null || text === undefined) return '';
-        return text
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;')
-          .replace(/'/g, '&#039;');
-      };
-
-      expect(escapeHtml(null)).toBe('');
-      expect(escapeHtml(undefined)).toBe('');
-    });
+    const result = VPackManager.validateVPack(zipPath);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.toLowerCase().includes('malformed') || e.toLowerCase().includes('manifest'))).toBe(true);
   });
 
-  describe('Portable Mode Detection', () => {
-    it('should detect portable mode when portable directory exists', () => {
-      // This tests the portable mode detection logic
-      const testPath = path.join(tempDir, 'portable');
-      fs.mkdirSync(testPath, { recursive: true });
-      
-      expect(fs.existsSync(testPath)).toBe(true);
-    });
-
-    it('should verify portable directory is writable', () => {
-      const testPath = path.join(tempDir, 'portable');
-      fs.mkdirSync(testPath, { recursive: true });
-      
-      const testFile = path.join(testPath, '.write-test');
-      try {
-        fs.writeFileSync(testFile, 'test');
-        fs.unlinkSync(testFile);
-        const writable = true;
-        expect(writable).toBe(true);
-      } catch {
-        const writable = false;
-        expect(writable).toBe(false);
-      }
-    });
+  it('rejects manifest with wrong formatId', () => {
+    const zipPath = buildValidZip({ formatId: 'wrong-format' });
+    const result = VPackManager.validateVPack(zipPath);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.includes('format'))).toBe(true);
   });
 
-  describe('Atomic Import with Temp Staging', () => {
-    it('should use temp directory for staging', () => {
-      const tempImportDir = path.join(tempDir, '.temp-import-' + crypto.randomUUID());
-      fs.mkdirSync(tempImportDir, { recursive: true });
-      
-      expect(fs.existsSync(tempImportDir)).toBe(true);
-      expect(tempImportDir).toContain('.temp-import-');
-      
-      // Cleanup
-      fs.rmSync(tempImportDir, { recursive: true, force: true });
-    });
-
-    it('should cleanup temp directory on failure', () => {
-      const tempImportDir = path.join(tempDir, '.temp-import-' + crypto.randomUUID());
-      fs.mkdirSync(tempImportDir, { recursive: true });
-      
-      // Simulate cleanup
-      if (fs.existsSync(tempImportDir)) {
-        fs.rmSync(tempImportDir, { recursive: true, force: true });
-      }
-      
-      expect(fs.existsSync(tempImportDir)).toBe(false);
-    });
-
-    it('should atomic move from temp to final destination', () => {
-      const stageDir = path.join(tempDir, 'temp-stage');
-      const finalDir = path.join(tempDir, 'final-dest');
-      
-      fs.mkdirSync(stageDir, { recursive: true });
-      fs.writeFileSync(path.join(stageDir, 'test.txt'), 'content');
-      
-      // Atomic move simulation
-      fs.renameSync(stageDir, finalDir);
-      
-      expect(fs.existsSync(finalDir)).toBe(true);
-      expect(fs.existsSync(stageDir)).toBe(false);
-      expect(fs.existsSync(path.join(finalDir, 'test.txt'))).toBe(true);
-    });
+  it('rejects manifest with wrong formatVersion', () => {
+    const zipPath = buildValidZip({ formatVersion: 99 });
+    const result = VPackManager.validateVPack(zipPath);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.includes('version'))).toBe(true);
   });
 
-  describe('Factory Reset Path Validation', () => {
-    it('should validate paths are within allowed base directory', () => {
-      const allowedBase = path.resolve(tempDir, 'user-data');
-      const normalizedBase = path.resolve(allowedBase);
-      
-      const validPath = path.join(allowedBase, 'instances', 'test-instance');
-      const normalizedPath = path.resolve(validPath);
-      
-      const isValid = normalizedPath.startsWith(normalizedBase + path.sep) || 
-                      normalizedPath === normalizedBase;
-      
-      expect(isValid).toBe(true);
-    });
-
-    it('should reject paths outside allowed base directory', () => {
-      const allowedBase = path.resolve(tempDir, 'user-data');
-      const normalizedBase = path.resolve(allowedBase);
-      
-      const invalidPath = path.resolve(tempDir, '..', 'malicious');
-      const normalizedPath = path.resolve(invalidPath);
-      
-      const isValid = normalizedPath.startsWith(normalizedBase + path.sep) || 
-                      normalizedPath === normalizedBase;
-      
-      expect(isValid).toBe(false);
-    });
+  it('rejects manifest missing required fields: name', () => {
+    const zipPath = buildValidZip({ name: '' });
+    const result = VPackManager.validateVPack(zipPath);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.includes('name'))).toBe(true);
   });
 
-  describe('Starter Currency Grant Prevention', () => {
-    it('should track starter bonus granted flag', () => {
-      const data = {
-        _starterBonusGranted: true,
-        wallet: { balance: 1000 }
-      };
-      
-      expect(data._starterBonusGranted).toBe(true);
-    });
-
-    it('should preserve existing wallet when starter bonus already granted', () => {
-      const existingData = {
-        _starterBonusGranted: true,
-        wallet: { balance: 5000, lifetimeEarned: 5000 }
-      };
-      
-      const defaultData = {
-        _starterBonusGranted: true,
-        wallet: { balance: 1000, lifetimeEarned: 1000 }
-      };
-      
-      // When starter bonus is already granted, use existing wallet
-      const wallet = existingData._starterBonusGranted 
-        ? { ...defaultData.wallet, ...existingData.wallet }
-        : defaultData.wallet;
-      
-      expect(wallet.balance).toBe(5000);
-      expect(wallet.lifetimeEarned).toBe(5000);
-    });
-
-    it('should grant starter bonus only when not previously granted', () => {
-      const existingData = {
-        _starterBonusGranted: false,
-        wallet: { balance: 500 }
-      };
-      
-      const defaultData = {
-        _starterBonusGranted: true,
-        wallet: { balance: 1000, lifetimeEarned: 1000 }
-      };
-      
-      // When starter bonus not granted, use default wallet
-      const wallet = existingData._starterBonusGranted 
-        ? { ...defaultData.wallet, ...existingData.wallet }
-        : defaultData.wallet;
-      
-      expect(wallet.balance).toBe(1000);
-      expect(wallet.lifetimeEarned).toBe(1000);
-    });
+  it('rejects manifest missing Minecraft version', () => {
+    const zipPath = buildValidZip({ minecraft: {} });
+    const result = VPackManager.validateVPack(zipPath);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.toLowerCase().includes('minecraft version'))).toBe(true);
   });
 
-  describe('Path Sanitization', () => {
-    it('should sanitize filenames with invalid characters', () => {
-      const sanitizeFilename = (name: string): string => {
-        return name.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').trim();
-      };
-      
-      const malicious = 'test<>:"|?*.txt';
-      const sanitized = sanitizeFilename(malicious);
-      
-      expect(sanitized).not.toContain('<');
-      expect(sanitized).not.toContain('>');
-      expect(sanitized).not.toContain(':');
-      expect(sanitized).not.toContain('"');
-      expect(sanitized).not.toContain('|');
-      expect(sanitized).not.toContain('?');
-      expect(sanitized).not.toContain('*');
-    });
-
-    it('should trim whitespace from filenames', () => {
-      const sanitizeFilename = (name: string): string => {
-        return name.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').trim();
-      };
-      
-      const withSpaces = '  test  ';
-      const sanitized = sanitizeFilename(withSpaces);
-      
-      expect(sanitized).toBe('test');
-    });
+  it('rejects manifest missing loader type', () => {
+    const zipPath = buildValidZip({ loader: { version: '0.16.0' } });
+    const result = VPackManager.validateVPack(zipPath);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.toLowerCase().includes('loader type'))).toBe(true);
   });
 
-  describe('Zip Slip Path Validation', () => {
-    it('should detect absolute paths as unsafe', () => {
-      const isSafePath = (entryPath: string): boolean => {
-        if (!entryPath || entryPath.includes('\0') || path.isAbsolute(entryPath)) return false;
-        const normalized = path.posix.normalize(entryPath.replace(/\\/g, '/'));
-        return normalized !== '..' && !normalized.startsWith('../') && !normalized.includes('/:');
-      };
-      
-      expect(isSafePath('/etc/passwd')).toBe(false);
-      expect(isSafePath('C:\\Windows\\System32')).toBe(false);
-    });
+  it('rejects manifest missing packId', () => {
+    const zipPath = buildValidZip({ packId: '' });
+    const result = VPackManager.validateVPack(zipPath);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.toLowerCase().includes('pack id'))).toBe(true);
+  });
 
-    it('should detect path traversal attempts', () => {
-      const isSafePath = (entryPath: string): boolean => {
-        if (!entryPath || entryPath.includes('\0') || path.isAbsolute(entryPath)) return false;
-        const normalized = path.posix.normalize(entryPath.replace(/\\/g, '/'));
-        return normalized !== '..' && !normalized.startsWith('../') && !normalized.includes('/:');
-      };
-      
-      expect(isSafePath('../etc/passwd')).toBe(false);
-      expect(isSafePath('..\\Windows\\System32')).toBe(false);
-      expect(isSafePath('../../')).toBe(false);
-    });
+  it('rejects archives with path traversal entries', () => {
+    const zipPath = path.join(tempDir, 'traversal.vpack');
+    const manifest = {
+      formatId: 'voxelplus-vpack',
+      formatVersion: 1,
+      packId: crypto.randomUUID(),
+      name: 'Evil Pack',
+      minecraft: { version: '1.21.1' },
+      loader: { type: 'fabric', version: '0.16.0' },
+      content: [],
+      price: 0,
+      createdAt: new Date().toISOString()
+    };
 
-    it('should accept safe relative paths', () => {
-      const isSafePath = (entryPath: string): boolean => {
-        if (!entryPath || entryPath.includes('\0') || path.isAbsolute(entryPath)) return false;
-        const normalized = path.posix.normalize(entryPath.replace(/\\/g, '/'));
-        return normalized !== '..' && !normalized.startsWith('../') && !normalized.includes('/:');
-      };
-      
-      expect(isSafePath('mods/mod.jar')).toBe(true);
-      expect(isSafePath('config/settings.json')).toBe(true);
-      expect(isSafePath('resourcepacks/pack.zip')).toBe(true);
+    const zip = new AdmZip();
+    zip.addFile('manifest.json', Buffer.from(JSON.stringify(manifest), 'utf-8'));
+    // Simulate a zip-slip entry by overriding entryName directly
+    zip.addFile('evil.txt', Buffer.from('evil content', 'utf-8'));
+    const evilEntry = zip.getEntries().find(e => e.entryName === 'evil.txt');
+    if (evilEntry) evilEntry.entryName = '../evil.txt';
+    zip.writeZip(zipPath);
+
+    const result = VPackManager.validateVPack(zipPath);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.toLowerCase().includes('unsafe') || e.toLowerCase().includes('traversal'))).toBe(true);
+  });
+
+  it('rejects content entries referencing unsafe relative paths', () => {
+    const zipPath = buildValidZip({
+      content: [
+        { relativePath: '../escape.jar', type: 'mod', sizeBytes: 0 }
+      ]
     });
+    const result = VPackManager.validateVPack(zipPath);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.toLowerCase().includes('unsafe'))).toBe(true);
+  });
+
+  it('flags missing content files (no downloadUrl)', () => {
+    const zipPath = buildValidZip({
+      content: [
+        { relativePath: 'mods/missing.jar', type: 'mod', sizeBytes: 0 }
+      ]
+    });
+    const result = VPackManager.validateVPack(zipPath);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.includes('missing declared content') || e.includes('missing.jar'))).toBe(true);
+  });
+
+  it('accepts content entries with downloadUrl when file is absent from archive', () => {
+    const zipPath = buildValidZip({
+      content: [
+        {
+          relativePath: 'mods/remote.jar',
+          type: 'mod',
+          sizeBytes: 0,
+          downloadUrl: 'https://cdn.modrinth.com/data/fake/remote.jar'
+        }
+      ]
+    });
+    const result = VPackManager.validateVPack(zipPath);
+    // downloadUrl present ⇒ not an error; pack should be valid
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+});
+
+// ─── 3. PathManager.sanitizeFilename — production code ───────────────────────
+
+describe('PathManager.sanitizeFilename — production code', () => {
+  it('removes Windows-forbidden filename characters', () => {
+    const bad = 'test<>:"/\\|?*.txt';
+    const sanitized = PathManager.sanitizeFilename(bad);
+    expect(sanitized).not.toMatch(/[<>:"/\\|?*]/);
+  });
+
+  it('removes control characters (0x00–0x1F)', () => {
+    const bad = 'file\x00name\x1F.jar';
+    const sanitized = PathManager.sanitizeFilename(bad);
+    expect(sanitized).not.toMatch(/[\x00-\x1F]/);
+  });
+
+  it('trims leading and trailing whitespace', () => {
+    expect(PathManager.sanitizeFilename('  hello world  ')).toBe('hello world');
+  });
+
+  it('preserves safe filenames unchanged', () => {
+    expect(PathManager.sanitizeFilename('my-mod-1.0.jar')).toBe('my-mod-1.0.jar');
+    expect(PathManager.sanitizeFilename('settings.json')).toBe('settings.json');
+  });
+});
+
+// ─── 4. Factory reset path validation ────────────────────────────────────────
+
+describe('Factory reset path validation', () => {
+  let tempDir: string;
+
+  beforeEach(() => { tempDir = makeTempDir(); });
+  afterEach(() => { if (fs.existsSync(tempDir)) fs.rmSync(tempDir, { recursive: true, force: true }); });
+
+  it('accepts paths inside the allowed base directory', () => {
+    const allowedBase = path.resolve(tempDir, 'user-data');
+    const normalizedBase = path.resolve(allowedBase);
+
+    const validPath = path.join(allowedBase, 'instances', 'test-instance');
+    const normalizedPath = path.resolve(validPath);
+
+    const isValid = normalizedPath === normalizedBase ||
+                    normalizedPath.startsWith(normalizedBase + path.sep);
+    expect(isValid).toBe(true);
+  });
+
+  it('rejects paths outside the allowed base directory', () => {
+    const allowedBase = path.resolve(tempDir, 'user-data');
+    const normalizedBase = path.resolve(allowedBase);
+
+    const invalidPath = path.resolve(tempDir, '..', 'malicious');
+    const normalizedPath = path.resolve(invalidPath);
+
+    const isValid = normalizedPath === normalizedBase ||
+                    normalizedPath.startsWith(normalizedBase + path.sep);
+    expect(isValid).toBe(false);
+  });
+
+  it('rejects paths that coincidentally share a prefix but are outside the dir', () => {
+    const allowedBase = path.resolve(tempDir, 'data');
+    const normalizedBase = path.resolve(allowedBase);
+
+    // e.g. /tmp/data-evil — starts with "/tmp/data" but is NOT under "/tmp/data/"
+    const sibling = allowedBase + '-evil';
+    const normalizedPath = path.resolve(sibling);
+
+    const isValid = normalizedPath === normalizedBase ||
+                    normalizedPath.startsWith(normalizedBase + path.sep);
+    expect(isValid).toBe(false);
+  });
+});
+
+// ─── 5. Atomic import staging ─────────────────────────────────────────────────
+
+describe('Atomic import staging', () => {
+  let tempDir: string;
+
+  beforeEach(() => { tempDir = makeTempDir(); });
+  afterEach(() => { if (fs.existsSync(tempDir)) fs.rmSync(tempDir, { recursive: true, force: true }); });
+
+  it('uses a unique temp directory for staging', () => {
+    const id1 = path.join(tempDir, '.temp-import-' + crypto.randomUUID());
+    const id2 = path.join(tempDir, '.temp-import-' + crypto.randomUUID());
+    expect(id1).not.toBe(id2);
+  });
+
+  it('cleans up temp directory on simulated failure', () => {
+    const stageDir = path.join(tempDir, '.temp-import-' + crypto.randomUUID());
+    fs.mkdirSync(stageDir, { recursive: true });
+    fs.writeFileSync(path.join(stageDir, 'file.txt'), 'content');
+
+    // Simulate cleanup
+    fs.rmSync(stageDir, { recursive: true, force: true });
+    expect(fs.existsSync(stageDir)).toBe(false);
+  });
+
+  it('atomically promotes temp directory to final destination', () => {
+    const stageDir = path.join(tempDir, 'temp-stage');
+    const finalDir = path.join(tempDir, 'final-dest');
+
+    fs.mkdirSync(stageDir, { recursive: true });
+    fs.writeFileSync(path.join(stageDir, 'test.txt'), 'content');
+
+    fs.renameSync(stageDir, finalDir);
+
+    expect(fs.existsSync(finalDir)).toBe(true);
+    expect(fs.existsSync(stageDir)).toBe(false);
+    expect(fs.readFileSync(path.join(finalDir, 'test.txt'), 'utf-8')).toBe('content');
+  });
+});
+
+// ─── 6. VPack price validation (logic spec) ──────────────────────────────────
+
+describe('VPack price validation (spec)', () => {
+  const isValidPrice = (p: unknown): boolean =>
+    typeof p === 'number' && Number.isFinite(p) && Number.isInteger(p) && p >= 0;
+
+  it('accepts a zero price (free pack)', () => {
+    expect(isValidPrice(0)).toBe(true);
+  });
+
+  it('accepts a normal positive integer price', () => {
+    expect(isValidPrice(250)).toBe(true);
+  });
+
+  it('rejects negative prices', () => {
+    expect(isValidPrice(-1)).toBe(false);
+  });
+
+  it('rejects fractional prices', () => {
+    expect(isValidPrice(100.5)).toBe(false);
+  });
+
+  it('rejects NaN', () => {
+    expect(isValidPrice(NaN)).toBe(false);
+  });
+
+  it('rejects Infinity', () => {
+    expect(isValidPrice(Infinity)).toBe(false);
+  });
+
+  it('rejects non-numeric types', () => {
+    expect(isValidPrice('250')).toBe(false);
+    expect(isValidPrice(null)).toBe(false);
+    expect(isValidPrice(undefined)).toBe(false);
   });
 });

@@ -57,16 +57,23 @@ export class ModManager {
             modData.authors = [parsed.authors];
           }
 
-          // Try loading icon
-          if (parsed.icon) {
-            const iconEntry = zip.getEntry(parsed.icon);
-            if (iconEntry) {
-              const iconBuffer = zip.readFile(iconEntry);
-              if (iconBuffer) {
-                modData.icon = `data:image/png;base64,${iconBuffer.toString('base64')}`;
-              }
-            }
+          this.attachIcon(zip, modData, parsed.icon);
+        }
+
+        // Forge and NeoForge mods commonly declare a logo in mods.toml rather
+        // than fabric.mod.json. Keep icon discovery loader-agnostic.
+        if (!modData.icon) {
+          const modsToml = zip.getEntry('META-INF/mods.toml');
+          if (modsToml) {
+            const toml = zip.readAsText(modsToml);
+            const logoFile = toml.match(/^\s*logoFile\s*=\s*["']([^"']+)["']/m)?.[1];
+            this.attachIcon(zip, modData, logoFile);
           }
+        }
+
+        // Some loader-neutral or older mods ship only a conventional root icon.
+        if (!modData.icon) {
+          this.attachIcon(zip, modData);
         }
       } catch (e) {
         // Fallback to filename-based info
@@ -76,6 +83,23 @@ export class ModManager {
     }
 
     return mods.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  private static attachIcon(zip: AdmZip, modData: Partial<ModInfo>, declaredIcon?: string): void {
+    const candidates = [declaredIcon, 'icon.png', 'pack.png']
+      .filter((value): value is string => Boolean(value))
+      .map(value => value.replace(/^\/+/, '').replace(/\\/g, '/'));
+
+    const iconEntry = candidates
+      .map(candidate => zip.getEntry(candidate))
+      .find(entry => Boolean(entry));
+    if (!iconEntry) return;
+
+    const iconBuffer = zip.readFile(iconEntry);
+    if (!iconBuffer) return;
+    const extension = path.extname(iconEntry.entryName).toLowerCase();
+    const mime = extension === '.svg' ? 'image/svg+xml' : extension === '.webp' ? 'image/webp' : 'image/png';
+    modData.icon = `data:${mime};base64,${iconBuffer.toString('base64')}`;
   }
 
   public static async toggleMod(instanceId: string, filename: string, enable: boolean): Promise<boolean> {
