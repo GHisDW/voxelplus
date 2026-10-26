@@ -123,38 +123,12 @@ export class InstancesPage {
     headerActions.style.cssText = 'display: flex; justify-content: flex-end; margin-bottom: 16px;';
     headerActions.innerHTML = `
       <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end;">
-        <button class="btn btn-secondary" id="btn-convert-modpack" style="padding: 10px 20px;">
-          🔄 Convert Modpack to VPack
-        </button>
         <button class="btn btn-primary" id="btn-import-vpack" style="padding: 10px 20px;">
           📦 Import VPack / Modpack
         </button>
       </div>
     `;
     this.container.appendChild(headerActions);
-
-    (this.container.querySelector('#btn-convert-modpack') as HTMLElement).onclick = async () => {
-      const inputPath = await api.selectFileDialog([
-        { name: 'Modpack', extensions: ['mrpack', 'zip'] }
-      ]);
-      if (!inputPath) return;
-      const defaultName = inputPath.split(/[\\/]/).pop()?.replace(/\.(mrpack|zip)$/i, '') || 'converted-pack';
-      const outputPath = await api.selectSaveFileDialog(`${defaultName}.vpack`, [
-        { name: 'Voxel+ VPack', extensions: ['vpack'] }
-      ]);
-      if (!outputPath) return;
-      NotificationToast.show('Converting modpack to VPack...', 'info');
-      try {
-        const result = await api.convertModpack(inputPath, outputPath);
-        if (!result.success) {
-          NotificationToast.show(result.error || 'The modpack could not be converted.', 'error');
-          return;
-        }
-        NotificationToast.show(`VPack created: ${result.remoteFilesCount} downloadable file(s), ${result.physicalFilesCount} bundled file(s).`, 'success');
-      } catch (error: any) {
-        NotificationToast.show(`Conversion failed: ${error?.message || error}`, 'error');
-      }
-    };
 
     (this.container.querySelector('#btn-import-vpack') as HTMLElement).onclick = async () => {
       const filePath = await api.selectFileDialog([{ name: 'Voxel+ or Modrinth Pack', extensions: ['voxelplus', 'vpack', 'mrpack', 'zip'] }]);

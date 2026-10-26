@@ -47,8 +47,13 @@ export class VPackConverter {
       let remoteFilesCount = 0;
       let unresolvedCount = 0;
 
-      // 1. Copy overrides directly into outZip
+      // 1. Copy ONLY essential config files from overrides (not mods or large assets)
+      // Essential files: options.txt, server.properties, configs (small)
+      // EXCLUDED: mods/, resourcepacks/, shaderpacks/, large binary files
       const overridePrefixes = ['overrides/', 'client-overrides/'];
+      const essentialFiles = ['options.txt', 'server.properties', 'eula.txt'];
+      const maxConfigFileSize = 1024 * 1024; // 1MB max for config files
+
       for (const entry of srcZip.getEntries()) {
         if (entry.isDirectory) continue;
         for (const prefix of overridePrefixes) {
@@ -56,13 +61,30 @@ export class VPackConverter {
             const relPath = entry.entryName.slice(prefix.length);
             if (!VPackManager.isSafePath(relPath)) continue;
 
-            outZip.addFile(relPath, entry.getData());
-            physicalFilesCount++;
-            contentList.push({
-              relativePath: relPath,
-              type: relPath.startsWith('mods/') ? 'mod' : (relPath.startsWith('resourcepacks/') ? 'resourcepack' : 'config'),
-              sizeBytes: entry.header.size
-            });
+            // Skip large files (binary assets, etc.)
+            if (entry.header.size > maxConfigFileSize) continue;
+
+            // Skip mods, resourcepacks, shaderpacks - these should be download links only
+            if (relPath.startsWith('mods/') || relPath.startsWith('resourcepacks/') || relPath.startsWith('shaderpacks/')) {
+              continue;
+            }
+
+            // Skip common non-essential directories
+            if (relPath.startsWith('screenshots/') || relPath.startsWith('crash-reports/') || relPath.startsWith('logs/')) {
+              continue;
+            }
+
+            // Only include essential files or small config files
+            const fileName = path.basename(relPath);
+            if (essentialFiles.includes(fileName) || relPath.startsWith('config/')) {
+              outZip.addFile(relPath, entry.getData());
+              physicalFilesCount++;
+              contentList.push({
+                relativePath: relPath,
+                type: 'config',
+                sizeBytes: entry.header.size
+              });
+            }
           }
         }
       }
@@ -171,21 +193,41 @@ export class VPackConverter {
       let remoteFilesCount = 0;
       let unresolvedCount = 0;
 
-      // 1. Copy overrides into outZip
+      // 1. Copy ONLY essential config files from overrides (not mods or large assets)
       const overridesPrefix = (manifest.overrides || 'overrides').replace(/\/+$/, '') + '/';
+      const essentialFiles = ['options.txt', 'server.properties', 'eula.txt'];
+      const maxConfigFileSize = 1024 * 1024; // 1MB max for config files
+
       for (const entry of srcZip.getEntries()) {
         if (entry.isDirectory) continue;
         if (entry.entryName.startsWith(overridesPrefix)) {
           const relPath = entry.entryName.slice(overridesPrefix.length);
           if (!VPackManager.isSafePath(relPath)) continue;
 
-          outZip.addFile(relPath, entry.getData());
-          physicalFilesCount++;
-          contentList.push({
-            relativePath: relPath,
-            type: relPath.startsWith('mods/') ? 'mod' : (relPath.startsWith('resourcepacks/') ? 'resourcepack' : 'config'),
-            sizeBytes: entry.header.size
-          });
+          // Skip large files (binary assets, etc.)
+          if (entry.header.size > maxConfigFileSize) continue;
+
+          // Skip mods, resourcepacks, shaderpacks - these should be download links only
+          if (relPath.startsWith('mods/') || relPath.startsWith('resourcepacks/') || relPath.startsWith('shaderpacks/')) {
+            continue;
+          }
+
+          // Skip common non-essential directories
+          if (relPath.startsWith('screenshots/') || relPath.startsWith('crash-reports/') || relPath.startsWith('logs/')) {
+            continue;
+          }
+
+          // Only include essential files or small config files
+          const fileName = path.basename(relPath);
+          if (essentialFiles.includes(fileName) || relPath.startsWith('config/')) {
+            outZip.addFile(relPath, entry.getData());
+            physicalFilesCount++;
+            contentList.push({
+              relativePath: relPath,
+              type: 'config',
+              sizeBytes: entry.header.size
+            });
+          }
         }
       }
 
