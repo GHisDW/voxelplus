@@ -18,7 +18,11 @@ export class ModrinthBrowser {
   }
 
   public async render(): Promise<HTMLElement> {
-    this.instances = await api.listInstances();
+    try {
+      this.instances = await api.listInstances();
+    } catch {
+      this.instances = [];
+    }
     if (!this.selectedInstance && this.instances.length > 0) {
       this.selectedInstance = this.instances[0];
     }
@@ -82,7 +86,20 @@ export class ModrinthBrowser {
       this.debounceTimer = setTimeout(() => this.performSearch(), 300);
     };
 
-    await this.performSearch();
+    try {
+      await this.performSearch();
+    } catch (error) {
+      const resultsContainer = this.container.querySelector('#modrinth-results') as HTMLElement;
+      if (resultsContainer) {
+        resultsContainer.innerHTML = `
+          <div style="padding: 48px; text-align: center; background: var(--bg-card); border-radius: var(--radius-lg); border: 1px dashed var(--border-subtle);">
+            <h4 style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin-bottom: 6px;">Content search is unavailable</h4>
+            <p style="color: var(--text-muted); font-size: 0.9rem;">Modrinth could not be reached. Check your connection and try again.</p>
+          </div>
+        `;
+      }
+      console.error('[ModrinthBrowser] Search failed:', error);
+    }
     return this.container;
   }
 
@@ -97,7 +114,7 @@ export class ModrinthBrowser {
     `;
 
     const mcVer = this.selectedInstance ? this.selectedInstance.minecraft.version : undefined;
-    const loader = this.selectedInstance ? this.selectedInstance.loader.type : 'fabric';
+    const loader = this.selectedInstance ? (this.selectedInstance.loader?.type || 'fabric') : 'fabric';
 
     const searchRes = await api.searchModrinth({
       query: this.searchQuery || undefined,
@@ -147,7 +164,7 @@ export class ModrinthBrowser {
           overflow: hidden;
         ">
           ${project.icon_url
-            ? `<img src="${project.icon_url}" width="48" height="48" style="border-radius: 8px; object-fit: cover;" />`
+            ? `<img src="${this.escapeHtml(project.icon_url)}" alt="${this.escapeHtml(project.title)} icon" width="48" height="48" style="border-radius: 8px; object-fit: cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';" /><span style="display:none; font-size:1.5rem;" aria-hidden="true">📦</span>`
             : `<span style="font-size: 1.5rem;">📦</span>`
           }
         </div>
@@ -186,7 +203,7 @@ export class ModrinthBrowser {
           // Fetch compatible versions
           const versions = await api.getModrinthVersions(
             project.id,
-            this.activeType === 'mod' ? [this.selectedInstance.loader.type] : undefined,
+            this.activeType === 'mod' ? [this.selectedInstance.loader?.type || 'fabric'] : undefined,
             [this.selectedInstance.minecraft.version]
           );
 

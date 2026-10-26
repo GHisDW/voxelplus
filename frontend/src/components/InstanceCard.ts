@@ -55,7 +55,7 @@ export class InstanceCard {
           ${isRunning ? `<div class="card-running-ring"></div>` : ''}
 
           <!-- Loader Chip -->
-          <div class="card-loader-chip">${instance.loader.type.toUpperCase()}</div>
+          <div class="card-loader-chip">${(instance.loader?.type || 'fabric').toUpperCase()}</div>
         </div>
       </div>
 

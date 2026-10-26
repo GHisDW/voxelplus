@@ -13,15 +13,24 @@ export class PathManager {
    */
   public static detectPortableMode(): boolean {
     try {
-      // Check if we're running from a packaged executable
-      const appPath = process.env.PORTABLE_EXECUTABLE_DIR || 
-                      process.resourcesPath || 
-                      process.cwd();
+      // electron-builder sets PORTABLE_EXECUTABLE_DIR for its portable target.
+      // On first launch the data directory does not exist yet, so detecting only
+      // an existing `portable` folder made portable builds fall back to APPDATA.
+      const executableDir = process.env.PORTABLE_EXECUTABLE_DIR;
+      const appPath = executableDir || process.resourcesPath || process.cwd();
       
       const portableDir = path.join(appPath, 'portable');
       
+      if (executableDir && !fs.existsSync(portableDir)) {
+        try {
+          fs.mkdirSync(portableDir, { recursive: true });
+        } catch {
+          return false;
+        }
+      }
+
       if (fs.existsSync(portableDir)) {
-        // Verify it's a directory we can write to
+        // Verify it's a directory we can write to without leaving a probe file.
         const testFile = path.join(portableDir, '.write-test');
         try {
           fs.writeFileSync(testFile, 'test');

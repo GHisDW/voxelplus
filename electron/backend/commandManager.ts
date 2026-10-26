@@ -48,6 +48,10 @@ import { PlayerDataStore } from './player/playerDataStore';
 import { AchievementEngine } from './player/achievementEngine';
 import { CosmeticCatalogue } from './player/cosmeticCatalogue';
 import { VPackManager } from './vpack/vpackManager';
+import { VPackConverter } from './vpack/vpackConverter';
+import { ModrinthPackImporter } from './vpack/modrinthPackImporter';
+import { CurseForgePackImporter } from './vpack/curseForgePackImporter';
+import { PreflightChecker } from './instances/preflightChecker';
 import { ArcadeStore } from './arcade/arcadeStore';
 
 
@@ -264,6 +268,36 @@ export class CommandManager {
 
   public static async validateVPack(zipPath: string): Promise<VPackValidationResult> {
     return VPackManager.validateVPack(zipPath);
+  }
+
+  public static async convertModpackToVPack(inputPath: string, outputPath: string): Promise<any> {
+    try {
+      // First check if it's a Modrinth pack
+      const mrpackVal = ModrinthPackImporter.validateMrpack(inputPath);
+      if (mrpackVal.valid) {
+        return VPackConverter.convertMrpackToVPack(inputPath, outputPath);
+      }
+      // Otherwise try CurseForge
+      return VPackConverter.convertCurseForgeToVPack(inputPath, outputPath);
+    } catch (error: any) {
+      return {
+        success: false,
+        physicalFilesCount: 0,
+        remoteFilesCount: 0,
+        unresolvedCount: 0,
+        error: error?.message || 'Unknown conversion error'
+      };
+    }
+  }
+
+  public static async runPreflight(
+    minecraftVersion: string,
+    loaderType: any,
+    allocatedMemoryMb: number = 4096,
+    instanceDir?: string,
+    preferredJavaId?: string
+  ): Promise<any> {
+    return PreflightChecker.runPreflight(minecraftVersion, loaderType, allocatedMemoryMb, instanceDir, preferredJavaId);
   }
 
   public static async listRepositoryVPacks(): Promise<any[]> {

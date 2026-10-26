@@ -28,6 +28,10 @@ export class InstanceDetails {
 
   public async render(): Promise<HTMLElement> {
     const isRunning = ['PREPARING', 'STARTING', 'LAUNCHING', 'RUNNING'].includes(this.instance.status);
+    const loaderType = this.instance.loader?.type || 'fabric';
+    const loaderName = loaderType === 'neoforge'
+      ? 'NeoForge'
+      : loaderType.charAt(0).toUpperCase() + loaderType.slice(1);
 
     this.container.innerHTML = `
       <!-- Top Navigation & Actions -->
@@ -41,7 +45,7 @@ export class InstanceDetails {
               ${this.escapeHtml(this.instance.name)}
             </h2>
             <div style="font-size: 0.86rem; color: var(--text-secondary);">
-              Minecraft ${this.instance.minecraft.version} · Fabric Loader ·
+              Minecraft ${this.instance.minecraft.version} · ${loaderName} ${this.instance.loader?.version || ''} ·
               <span class="status-pill ${this.instance.status.toLowerCase()}" style="font-size: 0.72rem; padding: 2px 8px;">
                 ${this.instance.status}
               </span>
@@ -115,9 +119,14 @@ export class InstanceDetails {
 
     // Tab buttons
     this.container.querySelectorAll('[data-tab]').forEach(tabBtn => {
-      (tabBtn as HTMLElement).onclick = () => {
-        this.activeTab = tabBtn.getAttribute('data-tab') as any;
-        this.render();
+      (tabBtn as HTMLElement).onclick = async () => {
+        try {
+          this.activeTab = tabBtn.getAttribute('data-tab') as any;
+          await this.render();
+        } catch (error: any) {
+          console.error('Error switching tab:', error);
+          NotificationToast.show(`Failed to load tab: ${error?.message || 'Unknown error'}`, 'error');
+        }
       };
     });
 
@@ -130,16 +139,28 @@ export class InstanceDetails {
     if (!target) return;
     target.innerHTML = '';
 
-    if (this.activeTab === 'overview') {
-      target.appendChild(this.renderOverview());
-    } else if (this.activeTab === 'mods') {
-      target.appendChild(await this.renderMods());
-    } else if (this.activeTab === 'packs') {
-      target.appendChild(await this.renderResourcePacks());
-    } else if (this.activeTab === 'shaders') {
-      target.appendChild(await this.renderShaders());
-    } else if (this.activeTab === 'extras') {
-      target.appendChild(this.renderExtras());
+    try {
+      if (this.activeTab === 'overview') {
+        target.appendChild(this.renderOverview());
+      } else if (this.activeTab === 'mods') {
+        target.appendChild(await this.renderMods());
+      } else if (this.activeTab === 'packs') {
+        target.appendChild(await this.renderResourcePacks());
+      } else if (this.activeTab === 'shaders') {
+        target.appendChild(await this.renderShaders());
+      } else if (this.activeTab === 'extras') {
+        target.appendChild(this.renderExtras());
+      }
+    } catch (error: any) {
+      console.error('Error rendering tab content:', error);
+      target.innerHTML = `
+        <div style="padding: 48px; text-align: center; background: var(--bg-card); border: 1px dashed var(--border-subtle); border-radius: var(--radius-lg);">
+          <h4 style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin-bottom: 6px;">Error Loading Content</h4>
+          <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 16px;">${error?.message || 'An unexpected error occurred'}</p>
+          <button class="btn btn-secondary" id="btn-retry">Retry</button>
+        </div>
+      `;
+      (target.querySelector('#btn-retry') as HTMLElement).onclick = () => this.renderTabContent();
     }
   }
 
@@ -217,7 +238,7 @@ export class InstanceDetails {
           <div class="horizontal-card" style="padding: 16px; background: var(--bg-card); border-radius: var(--radius-md);">
             <div style="font-size: 0.78rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Minecraft Version</div>
             <div style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin-top: 4px;">${this.instance.minecraft.version}</div>
-            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">Fabric Loader ${this.instance.loader.version}</div>
+            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">${loaderName} ${this.instance.loader.version}</div>
           </div>
 
           <div class="horizontal-card" style="padding: 16px; background: var(--bg-card); border-radius: var(--radius-md);">
@@ -236,7 +257,7 @@ export class InstanceDetails {
 
           <div class="horizontal-card" style="padding: 16px; background: var(--bg-card); border-radius: var(--radius-md);">
             <div style="font-size: 0.78rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Development Engine</div>
-            <div style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin-top: 4px;">Gradle & Fabric Loom</div>
+            <div style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin-top: 4px;">Gradle & ${loaderName}</div>
             <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">Target: <code>gradlew.bat runClient</code></div>
           </div>
         </div>
@@ -288,7 +309,13 @@ export class InstanceDetails {
     const div = document.createElement('div');
     div.className = 'animate-fade-in';
 
-    const mods = await api.scanMods(this.instance.id);
+    let mods: any[] = [];
+    try {
+      mods = await api.scanMods(this.instance.id);
+    } catch (error: any) {
+      console.error('Failed to scan mods:', error);
+      mods = [];
+    }
 
     div.innerHTML = `
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
@@ -323,7 +350,7 @@ export class InstanceDetails {
           border-radius: var(--radius-lg);
         ">
           <h4 style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin-bottom: 6px;">No Mods Installed</h4>
-          <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 16px;">Add a local Fabric .jar mod or discover one on Modrinth.</p>
+          <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 16px;">Add a compatible .jar mod or discover one on Modrinth.</p>
           <button class="btn btn-primary" id="btn-empty-add-mod">+ ADD CONTENT</button>
         </div>
       `;
@@ -425,7 +452,13 @@ export class InstanceDetails {
     const div = document.createElement('div');
     div.className = 'animate-fade-in';
 
-    const packs = await api.scanResourcePacks(this.instance.id);
+    let packs: any[] = [];
+    try {
+      packs = await api.scanResourcePacks(this.instance.id);
+    } catch (error: any) {
+      console.error('Failed to scan resource packs:', error);
+      packs = [];
+    }
 
     div.innerHTML = `
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
@@ -453,8 +486,16 @@ export class InstanceDetails {
         <div style="padding: 48px; text-align: center; background: var(--bg-card); border: 1px dashed var(--border-subtle); border-radius: var(--radius-lg);">
           <h4 style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin-bottom: 6px;">No Resource Packs Installed</h4>
           <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 16px;">Import a custom resource pack or search Modrinth.</p>
+          <button class="btn btn-primary" id="btn-empty-add-pack">+ ADD PACK</button>
         </div>
       `;
+      (list.querySelector('#btn-empty-add-pack') as HTMLElement).onclick = () => {
+        AddContentModal.show(
+          this.instance.id,
+          () => this.events.onOpenModrinthForInstance(this.instance),
+          async () => await this.renderTabContent()
+        );
+      };
       return div;
     }
 
@@ -506,7 +547,13 @@ export class InstanceDetails {
     const div = document.createElement('div');
     div.className = 'animate-fade-in';
 
-    const shaders = await api.scanShaders(this.instance.id);
+    let shaders: any[] = [];
+    try {
+      shaders = await api.scanShaders(this.instance.id);
+    } catch (error: any) {
+      console.error('Failed to scan shaders:', error);
+      shaders = [];
+    }
 
     div.innerHTML = `
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
@@ -534,8 +581,16 @@ export class InstanceDetails {
         <div style="padding: 48px; text-align: center; background: var(--bg-card); border: 1px dashed var(--border-subtle); border-radius: var(--radius-lg);">
           <h4 style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin-bottom: 6px;">No Shaderpacks Installed</h4>
           <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 16px;">Import shaderpacks (e.g. Complementary, Iris-compatible shaders).</p>
+          <button class="btn btn-primary" id="btn-empty-add-shader">+ ADD SHADER</button>
         </div>
       `;
+      (list.querySelector('#btn-empty-add-shader') as HTMLElement).onclick = () => {
+        AddContentModal.show(
+          this.instance.id,
+          () => this.events.onOpenModrinthForInstance(this.instance),
+          async () => await this.renderTabContent()
+        );
+      };
       return div;
     }
 

@@ -1,4 +1,4 @@
-import { spawn, ChildProcess, exec } from 'node:child_process';
+import { spawn, ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import { ProcessStatus, LaunchResult, ProcessStatusEvent, JavaRuntime } from '../../types';
@@ -66,7 +66,8 @@ export class ProcessManager {
     const resolvedEnv = MinecraftCompatibilityResolver.resolveEnvironment(
       metadata.minecraft.version,
       javaList,
-      metadata.runtime.java !== 'auto' ? metadata.runtime.java : undefined
+      metadata.runtime.java !== 'auto' ? metadata.runtime.java : undefined,
+      metadata.loader?.type || 'fabric'
     );
 
     if (!resolvedEnv.isCompatible || !resolvedEnv.javaRuntime) {
@@ -167,7 +168,7 @@ export class ProcessManager {
     }
 
     this.updateStatus(instanceId, 'STARTING');
-    LogStreamer.addLog(`[Voxel+] Spawning Gradle Loom development client: gradlew.bat runClient...`, 'INFO', instanceId, metadata.name);
+    LogStreamer.addLog(`[Voxel+] Starting the ${metadata.loader?.type || 'Fabric'} Minecraft client through Gradle...`, 'INFO', instanceId, metadata.name);
 
     try {
       const comspec = process.env.ComSpec || 'cmd.exe';
@@ -295,9 +296,9 @@ export class ProcessManager {
     LogStreamer.addLog(`[Voxel+] Stopping instance "${active.instanceName}" (PID ${active.pid})...`, 'INFO', instanceId, active.instanceName);
 
     return new Promise((resolve) => {
-      const killCmd = `taskkill /pid ${active.pid} /T /F`;
-      exec(killCmd, (err) => {
-        if (err) {
+      const taskkill = spawn('taskkill', ['/pid', String(active.pid), '/T', '/F'], { windowsHide: true });
+      taskkill.once('close', (code) => {
+        if (code !== 0) {
           try {
             active.childProcess.kill('SIGTERM');
           } catch {

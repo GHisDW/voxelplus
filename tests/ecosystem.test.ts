@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -8,6 +8,8 @@ import { CosmeticCatalogue } from '../electron/backend/player/cosmeticCatalogue'
 import { VPackManager } from '../electron/backend/vpack/vpackManager';
 import { ArcadeStore } from '../electron/backend/arcade/arcadeStore';
 import { InstanceMetadata } from '../electron/types';
+import { ModManager } from '../electron/backend/content/modManager';
+import { InstanceManager } from '../electron/backend/instances/instanceManager';
 
 describe('Voxel+ Core Integration: Player, Economy, VPack & Arcade', () => {
   let tmpDir: string;
@@ -126,6 +128,35 @@ describe('Voxel+ Core Integration: Player, Economy, VPack & Arcade', () => {
     const extracted = await VPackManager.extractVPack(archive, path.join(tmpDir, 'artwork-extracted'));
     expect(extracted.success).toBe(true);
     expect(extracted.manifest?.artwork).toBe('data:image/png;base64,iVBORw==');
+  });
+
+  it('discovers common loader mod icons from Fabric JSON, Forge TOML, and fallback filenames', async () => {
+    const instanceDir = path.join(tmpDir, 'icon-instance');
+    const modsDir = path.join(instanceDir, 'mods');
+    fs.mkdirSync(modsDir, { recursive: true });
+
+    const fabricJar = new (require('adm-zip'))();
+    fabricJar.addFile('fabric.mod.json', Buffer.from(JSON.stringify({ id: 'fabric-test', name: 'Fabric Test', version: '1.0.0', icon: 'assets/fabric-test/icon.png' })));
+    fabricJar.addFile('assets/fabric-test/icon.png', Buffer.from([1, 2, 3]));
+    fabricJar.writeZip(path.join(modsDir, 'fabric-test.jar'));
+
+    const forgeJar = new (require('adm-zip'))();
+    forgeJar.addFile('META-INF/mods.toml', Buffer.from('modId="forge-test"\nlogoFile="logo.webp"\n'));
+    forgeJar.addFile('logo.webp', Buffer.from([4, 5, 6]));
+    forgeJar.writeZip(path.join(modsDir, 'forge-test.jar'));
+
+    const fallbackJar = new (require('adm-zip'))();
+    fallbackJar.addFile('icon.png', Buffer.from([7, 8, 9]));
+    fallbackJar.writeZip(path.join(modsDir, 'fallback-test.jar'));
+
+    const getDir = vi.spyOn(InstanceManager, 'getInstanceDir').mockResolvedValue(instanceDir);
+    const mods = await ModManager.listMods('icon-instance');
+    getDir.mockRestore();
+
+    expect(mods).toHaveLength(3);
+    expect(mods.find(mod => mod.id === 'fabric-test')?.icon).toBe('data:image/png;base64,AQID');
+    expect(mods.find(mod => mod.id === 'forge-test')?.icon).toBe('data:image/webp;base64,BAUG');
+    expect(mods.find(mod => mod.id === 'fallback-test')?.icon).toBe('data:image/png;base64,BwgJ');
   });
 
   it('ships three real catalog recipes with verified Modrinth sources', () => {

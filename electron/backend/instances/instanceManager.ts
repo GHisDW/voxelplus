@@ -11,6 +11,9 @@ import { PathManager } from '../storage/paths';
 import { ProcessManager } from '../processes/processManager';
 import { VoxelError } from '../diagnostics';
 import { VPackManager } from '../vpack/vpackManager';
+import { ModrinthPackImporter } from '../vpack/modrinthPackImporter';
+import { CurseForgePackImporter } from '../vpack/curseForgePackImporter';
+import { LoaderRegistry } from './loaderProvider';
 
 export class InstanceManager {
   public static async listInstances(): Promise<InstanceMetadata[]> {
@@ -58,6 +61,35 @@ export class InstanceManager {
   }
 
   public static async createInstance(payload: CreateInstancePayload): Promise<InstanceMetadata> {
+    const loaderType = payload.loaderType || 'fabric';
+    const minecraftVersion = payload.minecraftVersion || '1.21.1';
+
+    try {
+      const provider = LoaderRegistry.getProvider(loaderType);
+    } catch (err: any) {
+      throw new VoxelError({
+        title: 'Invalid Loader Type',
+        message: `The loader type "${loaderType}" is not recognized.`,
+        cause: err.message,
+        suggestedAction: 'Please select a valid loader: fabric, quilt, forge, or neoforge.',
+        code: 'INVALID_LOADER_TYPE',
+        category: 'INSTANCE',
+        severity: 'ERROR'
+      });
+    }
+
+    if (!LoaderRegistry.isCombinationSupported(loaderType, minecraftVersion)) {
+      const provider = LoaderRegistry.getProvider(loaderType);
+      throw new VoxelError({
+        title: 'Unsupported loader combination',
+        message: `${provider.displayName} does not support Minecraft ${minecraftVersion} in this release.`,
+        cause: 'The selected loader and Minecraft version do not have a verified Voxel+ setup profile.',
+        suggestedAction: `Choose one of the supported ${provider.displayName} versions: ${provider.supportedMinecraftVersions.join(', ')}.`,
+        code: 'LOADER_VERSION_UNSUPPORTED',
+        category: 'INSTANCE',
+        severity: 'ERROR'
+      });
+    }
     const baseDir = ConfigStore.getInstanceDirectory();
     PathManager.ensureDirectory(baseDir);
 
@@ -210,13 +242,50 @@ export class InstanceManager {
     let finalTargetDir: string | null = null;
 
     try {
-      // First validate the VPack to give better error messages
+      const suggestedName = customName || path.basename(importZipPath, path.extname(importZipPath));
+      const folderName = PathManager.sanitizeFilename(suggestedName);
+
+      finalTargetDir = path.join(baseDir, folderName);
+      let counter = 1;
+      while (fs.existsSync(finalTargetDir)) {
+        finalTargetDir = path.join(baseDir, `${folderName} (${counter++})`);
+      }
+
+      PathManager.ensureDirectory(tempDir);
+
+      // 1. Check if the file is a Modrinth .mrpack
+      const mrpackVal = ModrinthPackImporter.validateMrpack(importZipPath);
+      if (mrpackVal.valid) {
+        const mrpackRes = await ModrinthPackImporter.importMrpack(importZipPath, tempDir, suggestedName);
+        if (!mrpackRes.success || !mrpackRes.metadata) {
+          throw new Error(mrpackRes.errors.join(', ') || 'Failed to import Modrinth pack.');
+        }
+        fs.renameSync(tempDir, finalTargetDir);
+        mrpackRes.metadata.instancePath = finalTargetDir;
+        InstanceMetadataStore.writeMetadata(finalTargetDir, mrpackRes.metadata);
+        return mrpackRes.metadata;
+      }
+
+      // 2. Check if the file is a CurseForge modpack zip
+      const cfVal = CurseForgePackImporter.validateCurseForgePack(importZipPath);
+      if (cfVal.valid) {
+        const cfRes = await CurseForgePackImporter.importCurseForgePack(importZipPath, tempDir, suggestedName);
+        if (!cfRes.success || !cfRes.metadata) {
+          throw new Error(cfRes.errors.join(', ') || 'Failed to import CurseForge pack.');
+        }
+        fs.renameSync(tempDir, finalTargetDir);
+        cfRes.metadata.instancePath = finalTargetDir;
+        InstanceMetadataStore.writeMetadata(finalTargetDir, cfRes.metadata);
+        return cfRes.metadata;
+      }
+
+      // 3. Fallback to standard Voxel⁺ VPack validation
       const validation = VPackManager.validateVPack(importZipPath);
       if (!validation.valid) {
         new VoxelError({
-          title: 'Invalid VPack File',
-          message: 'The selected file is not a valid Voxel⁺ VPack.',
-          cause: 'The file may be corrupt, missing required metadata, or not a VPack format.',
+          title: 'Invalid Modpack or VPack File',
+          message: 'The selected file is not a valid Voxel⁺ VPack, Modrinth .mrpack, or CurseForge package.',
+          cause: 'The file may be corrupt, missing required metadata, or an unsupported format.',
           suggestedAction: `Validation errors: ${validation.errors.join(', ')}`,
           code: 'INVALID_VPACK',
           category: 'INSTANCE',
@@ -226,18 +295,7 @@ export class InstanceManager {
         return null;
       }
 
-      const suggestedName = customName || path.basename(importZipPath, path.extname(importZipPath));
-      const folderName = PathManager.sanitizeFilename(suggestedName);
-      
-      // Determine final target directory
-      finalTargetDir = path.join(baseDir, folderName);
-      let counter = 1;
-      while (fs.existsSync(finalTargetDir)) {
-        finalTargetDir = path.join(baseDir, `${folderName} (${counter++})`);
-      }
-
-      // Extract to temp directory first
-      PathManager.ensureDirectory(tempDir);
+      // Extract VPack to temp directory
       const extractResult = await VPackManager.extractVPack(importZipPath, tempDir);
       if (!extractResult.success) {
         throw new Error(extractResult.error || 'Failed to extract package.');
@@ -246,10 +304,12 @@ export class InstanceManager {
       // A Modrinth .mrpack may contain only its content and index metadata.
       // Imported VPacks still need the launcher's Loom project scaffold so the
       // instance can be started through the normal ProcessManager path.
+      let meta = InstanceMetadataStore.readMetadata(tempDir);
+
       if (!fs.existsSync(path.join(tempDir, 'build.gradle')) || !fs.existsSync(path.join(tempDir, 'gradlew.bat'))) {
         const packManifest = extractResult.manifest;
         if (packManifest) {
-          await LoomProjectGenerator.generateProject(tempDir, {
+          const scaffolded = await LoomProjectGenerator.generateProject(tempDir, {
             name: customName || packManifest.name || suggestedName,
             description: packManifest.description,
             minecraftVersion: packManifest.minecraft?.version || '1.21.1',
@@ -261,11 +321,12 @@ export class InstanceManager {
             item: packManifest.item,
             shareSource: packManifest.shareSource
           });
+          // Re-read metadata after scaffolding to get the instancePath
+          meta = InstanceMetadataStore.readMetadata(tempDir);
         }
       }
 
       // Re-read or synthesize metadata from extracted manifest
-      let meta = InstanceMetadataStore.readMetadata(tempDir);
       if (!meta) {
         // Use manifest if available, otherwise create default
         if (extractResult.manifest) {
@@ -281,6 +342,9 @@ export class InstanceManager {
           if (extractResult.manifest.artwork) {
             meta.appearance.artwork = extractResult.manifest.artwork;
           }
+          // Set instancePath
+          meta.instancePath = tempDir;
+          InstanceMetadataStore.writeMetadata(tempDir, meta);
         } else {
           // No manifest - create default instance
           meta = InstanceMetadataStore.createDefaultMetadata({
@@ -288,7 +352,13 @@ export class InstanceManager {
             minecraftVersion: '1.21.1',
             loaderType: 'fabric'
           });
+          meta.instancePath = tempDir;
+          InstanceMetadataStore.writeMetadata(tempDir, meta);
         }
+      } else {
+        // Ensure instancePath is set
+        meta.instancePath = tempDir;
+        InstanceMetadataStore.writeMetadata(tempDir, meta);
       }
 
       // The manifest is authoritative for pack identity and appearance. Legacy
@@ -321,7 +391,11 @@ export class InstanceManager {
 
       // Atomic move: rename temp directory to final target
       fs.renameSync(tempDir, finalTargetDir);
-      
+
+      // Update instancePath to final location
+      meta.instancePath = finalTargetDir;
+      InstanceMetadataStore.writeMetadata(finalTargetDir, meta);
+
       return meta;
     } catch (e) {
       // Cleanup temp directory on failure

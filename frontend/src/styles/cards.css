@@ -23,10 +23,10 @@
 
 .instance-card:hover {
   transform: translateY(-3px) scale(1.005);
-  box-shadow: 0 20px 48px rgba(0,0,0,0.45),
-              0 0 0 1px rgba(255,255,255,0.1),
+  box-shadow: var(--shadow-md),
+              0 0 0 1px var(--border-hover),
               0 0 32px var(--glow-color, rgba(99, 102, 241, 0.2));
-  border-color: rgba(255,255,255,0.15);
+  border-color: var(--border-hover);
   background: var(--bg-card-hover);
 }
 
@@ -189,7 +189,7 @@
 }
 
 .instance-card:hover .card-instance-name {
-  color: #ffffff;
+  color: var(--text-accent);
 }
 
 .btn-fav {
@@ -222,8 +222,8 @@
   align-items: center;
   gap: 5px;
   padding: 4px 10px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--bg-glass);
+  border: 1px solid var(--border-subtle);
   border-radius: 8px;
   font-size: 0.78rem;
   font-weight: 600;
@@ -233,8 +233,8 @@
 }
 
 .instance-card:hover .card-meta-chip {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.13);
+  background: var(--bg-glass-hover);
+  border-color: var(--border-hover);
   color: var(--text-primary);
 }
 
@@ -396,7 +396,7 @@
 
 .btn-menu-item:hover {
   background: var(--bg-glass-hover);
-  color: white;
+  color: var(--text-primary);
 }
 
 .btn-menu-item.danger {

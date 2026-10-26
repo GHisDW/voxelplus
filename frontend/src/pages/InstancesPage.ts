@@ -48,7 +48,13 @@ export class InstancesPage {
 
     // If looking at details for a specific instance
     if (this.activeDetailsId) {
-      const target = await api.getInstance(this.activeDetailsId);
+      let target: InstanceMetadata | null = null;
+      try {
+        target = await api.getInstance(this.activeDetailsId);
+      } catch (error: any) {
+        console.error('Failed to get instance:', error);
+        NotificationToast.show(`Failed to load instance: ${error?.message || 'Unknown error'}`, 'error');
+      }
       if (renderId !== this.currentRenderId) return this.container;
 
       if (target) {
@@ -68,10 +74,19 @@ export class InstancesPage {
         return this.container;
       } else {
         this.activeDetailsId = null;
+        // Re-render to show the list view
+        return this.render();
       }
     }
 
-    const fetchedInstances = await api.listInstances();
+    let fetchedInstances: InstanceMetadata[] = [];
+    try {
+      fetchedInstances = await api.listInstances();
+    } catch (error: any) {
+      console.error('Failed to list instances:', error);
+      NotificationToast.show(`Failed to load instances: ${error?.message || 'Unknown error'}`, 'error');
+      fetchedInstances = [];
+    }
     if (renderId !== this.currentRenderId) return this.container;
 
     this.instances = fetchedInstances;
@@ -89,7 +104,7 @@ export class InstancesPage {
     } else if (this.filters.filter === 'running') {
       displayed = displayed.filter(i => ['PREPARING', 'STARTING', 'LAUNCHING', 'RUNNING'].includes(i.status));
     } else if (this.filters.filter === 'fabric') {
-      displayed = displayed.filter(i => i.loader.type === 'fabric');
+      displayed = displayed.filter(i => i.loader?.type === 'fabric');
     }
 
     // Apply sorting
@@ -107,14 +122,16 @@ export class InstancesPage {
     const headerActions = document.createElement('div');
     headerActions.style.cssText = 'display: flex; justify-content: flex-end; margin-bottom: 16px;';
     headerActions.innerHTML = `
-      <button class="btn btn-primary" id="btn-import-vpack" style="padding: 10px 20px;">
-        📦 Import VPack
-      </button>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end;">
+        <button class="btn btn-primary" id="btn-import-vpack" style="padding: 10px 20px;">
+          📦 Import VPack / Modpack
+        </button>
+      </div>
     `;
     this.container.appendChild(headerActions);
 
     (this.container.querySelector('#btn-import-vpack') as HTMLElement).onclick = async () => {
-      const filePath = await api.selectFileDialog([{ name: 'VPack', extensions: ['voxelplus', 'zip', 'jar'] }]);
+      const filePath = await api.selectFileDialog([{ name: 'Voxel+ or Modrinth Pack', extensions: ['voxelplus', 'vpack', 'mrpack', 'zip'] }]);
       if (filePath) {
         console.log('Importing VPack from:', filePath);
         NotificationToast.show('Importing VPack...', 'info');
@@ -125,7 +142,7 @@ export class InstancesPage {
             NotificationToast.show(`Successfully imported "${instance.name}"!`, 'success');
             this.render();
           } else {
-            NotificationToast.show('Failed to import VPack - file may not be a valid VPack format', 'error');
+            NotificationToast.show('Failed to import package - check that it is a valid VPack, Modrinth, or CurseForge pack.', 'error');
           }
         } catch (error: any) {
           console.error('Import error:', error);
@@ -159,7 +176,7 @@ export class InstancesPage {
         </h3>
         <p style="color: var(--text-secondary); font-size: 0.95rem; max-width: 440px; margin-bottom: 24px;">
           ${this.instances.length === 0
-            ? 'Create your first Minecraft development instance powered by Fabric Loom and Gradle, or import a VPack.'
+            ? 'Create your first Minecraft development instance with a supported loader and Gradle, or import a VPack.'
             : 'No instances matched your active search or filters.'
           }
         </p>

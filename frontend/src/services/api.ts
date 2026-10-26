@@ -87,6 +87,7 @@ export const api = {
   exportInstance: (instanceId: string, targetZipPath: string): Promise<boolean> => electronApi.exportInstance(instanceId, targetZipPath),
   importInstance: (zipPath: string, customName?: string): Promise<InstanceMetadata | null> => electronApi.importInstance(zipPath, customName),
   validateVPack: (zipPath: string): Promise<VPackValidationResult> => electronApi.validateVPack(zipPath),
+  convertModpack: (inputPath: string, outputPath: string): Promise<{ success: boolean; outputPath?: string; physicalFilesCount: number; remoteFilesCount: number; unresolvedCount: number; error?: string }> => electronApi.convertModpack(inputPath, outputPath),
   listRepositoryVPacks: (): Promise<any[]> => electronApi.listRepositoryVPacks(),
   purchaseVPack: (zipPath: string): Promise<{ success: boolean; instance?: InstanceMetadata; error?: string }> => electronApi.purchaseVPack(zipPath),
 

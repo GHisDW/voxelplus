@@ -18,6 +18,12 @@ const DEFAULT_SETTINGS: AppSettings = {
 
 export class ConfigStore {
   private static cachedSettings: AppSettings | null = null;
+  private static overrideInstanceDir: string | null = null;
+
+  // Allow tests to override the instance directory
+  public static setOverrideInstanceDir(dir: string | null): void {
+    this.overrideInstanceDir = dir;
+  }
 
   public static getSettings(): AppSettings {
     if (this.cachedSettings) {
@@ -89,6 +95,9 @@ export class ConfigStore {
   }
 
   public static getInstanceDirectory(): string {
+    if (this.overrideInstanceDir) {
+      return this.overrideInstanceDir;
+    }
     const settings = this.getSettings();
     return settings.instanceDirectory || PathManager.getDefaultInstancesDir();
   }
