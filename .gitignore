@@ -51,6 +51,9 @@ tests/.test-temp-*/
 .test-mods/
 .test-mods-real/
 
+# Shop VPacks (large binary files, should be downloaded separately)
+vpacks/*.vpack
+
 # Temporary files
 *.tmp
 *.temp
