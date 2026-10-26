@@ -114,7 +114,7 @@ export class ModrinthBrowser {
     `;
 
     const mcVer = this.selectedInstance ? this.selectedInstance.minecraft.version : undefined;
-    const loader = this.selectedInstance ? this.selectedInstance.loader.type : 'fabric';
+    const loader = this.selectedInstance ? (this.selectedInstance.loader?.type || 'fabric') : 'fabric';
 
     const searchRes = await api.searchModrinth({
       query: this.searchQuery || undefined,
@@ -203,7 +203,7 @@ export class ModrinthBrowser {
           // Fetch compatible versions
           const versions = await api.getModrinthVersions(
             project.id,
-            this.activeType === 'mod' ? [this.selectedInstance.loader.type] : undefined,
+            this.activeType === 'mod' ? [this.selectedInstance.loader?.type || 'fabric'] : undefined,
             [this.selectedInstance.minecraft.version]
           );
 

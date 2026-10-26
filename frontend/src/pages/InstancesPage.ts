@@ -104,7 +104,7 @@ export class InstancesPage {
     } else if (this.filters.filter === 'running') {
       displayed = displayed.filter(i => ['PREPARING', 'STARTING', 'LAUNCHING', 'RUNNING'].includes(i.status));
     } else if (this.filters.filter === 'fabric') {
-      displayed = displayed.filter(i => i.loader.type === 'fabric');
+      displayed = displayed.filter(i => i.loader?.type === 'fabric');
     }
 
     // Apply sorting

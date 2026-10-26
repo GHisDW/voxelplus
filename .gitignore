@@ -45,6 +45,11 @@ test-gradle-env/
 test-runclient-env/
 test-e2e-data/
 tests/.test-temp-*/
+.test-instances/
+.test-conversion/
+.test-modpacks/
+.test-mods/
+.test-mods-real/
 
 # Temporary files
 *.tmp

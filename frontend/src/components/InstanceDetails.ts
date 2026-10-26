@@ -28,9 +28,10 @@ export class InstanceDetails {
 
   public async render(): Promise<HTMLElement> {
     const isRunning = ['PREPARING', 'STARTING', 'LAUNCHING', 'RUNNING'].includes(this.instance.status);
-    const loaderName = this.instance.loader.type === 'neoforge'
+    const loaderType = this.instance.loader?.type || 'fabric';
+    const loaderName = loaderType === 'neoforge'
       ? 'NeoForge'
-      : this.instance.loader.type.charAt(0).toUpperCase() + this.instance.loader.type.slice(1);
+      : loaderType.charAt(0).toUpperCase() + loaderType.slice(1);
 
     this.container.innerHTML = `
       <!-- Top Navigation & Actions -->
@@ -44,7 +45,7 @@ export class InstanceDetails {
               ${this.escapeHtml(this.instance.name)}
             </h2>
             <div style="font-size: 0.86rem; color: var(--text-secondary);">
-              Minecraft ${this.instance.minecraft.version} · ${loaderName} ${this.instance.loader.version} ·
+              Minecraft ${this.instance.minecraft.version} · ${loaderName} ${this.instance.loader?.version || ''} ·
               <span class="status-pill ${this.instance.status.toLowerCase()}" style="font-size: 0.72rem; padding: 2px 8px;">
                 ${this.instance.status}
               </span>
