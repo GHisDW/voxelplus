@@ -5,6 +5,7 @@ import { getItemDataUrl } from '../assets/items';
 import { ConfirmDialog } from './ConfirmDialog';
 import { NotificationToast } from './NotificationToast';
 import { describeIpcError } from '../services/errors';
+import { escapeHtml } from '../utils/html';
 
 export interface InstanceCardEvents {
   onOpenDetails: (instanceId: string) => void;
@@ -62,7 +63,7 @@ export class InstanceCard {
       <!-- Center: Main Information -->
       <div class="card-info-col">
         <div class="card-title-row">
-          <h3 class="card-instance-name">${this.escapeHtml(instance.name)}</h3>
+          <h3 class="card-instance-name">${escapeHtml(instance.name)}</h3>
           ${instance.isVPack ? `
             <span style="font-size: 0.72rem; padding: 2px 8px; border-radius: 999px; background: rgba(245, 158, 11, 0.18); color: #f59e0b; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;">
               📦 VPACK
@@ -70,7 +71,7 @@ export class InstanceCard {
           ` : ''}
           ${instance.shareSource ? `
             <span style="font-size: 0.72rem; padding: 2px 8px; border-radius: 999px; background: rgba(88, 101, 242, 0.18); color: #818cf8; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;">
-              <span style="opacity: 0.7;">VIA</span> ${this.escapeHtml(instance.shareSource)}
+              <span style="opacity: 0.7;">VIA</span> ${escapeHtml(instance.shareSource)}
             </span>
           ` : ''}
           <button class="btn-fav" title="${instance.isFavorite ? 'Unfavorite' : 'Favorite'}">
@@ -79,7 +80,7 @@ export class InstanceCard {
         </div>
         ${instance.description ? `
           <div style="font-size: 0.78rem; color: var(--text-secondary); margin: 2px 0 6px 0; line-height: 1.3;">
-            ${this.escapeHtml(instance.description)}
+            ${escapeHtml(instance.description)}
           </div>
         ` : ''}
 
@@ -336,9 +337,4 @@ export class InstanceCard {
     return `${days}d ago`;
   }
 
-  private static escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
 }

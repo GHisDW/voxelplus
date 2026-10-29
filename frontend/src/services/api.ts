@@ -82,6 +82,7 @@ export const api = {
   getLogs: (instanceId?: string, levelFilter?: string, query?: string): Promise<LogEntry[]> => electronApi.getLogs(instanceId, levelFilter, query),
   clearLogs: (instanceId?: string): Promise<void> => electronApi.clearLogs(instanceId),
   exportLogs: (instanceId?: string): Promise<string> => electronApi.exportLogs(instanceId),
+  writeLogsToFile: (instanceId: string | undefined, targetPath: string): Promise<boolean> => electronApi.writeLogsToFile(instanceId, targetPath),
 
   // Import / Export & VPack
   exportInstance: (instanceId: string, targetZipPath: string): Promise<boolean> => electronApi.exportInstance(instanceId, targetZipPath),

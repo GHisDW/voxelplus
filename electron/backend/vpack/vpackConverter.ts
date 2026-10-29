@@ -231,18 +231,23 @@ export class VPackConverter {
         }
       }
 
-      // 2. Add declared file references as external downloads
+      // 2. Declared file references cannot be converted without the CurseForge
+      // API: project/file IDs do not contain a downloadable URL or hash, so a
+      // "converted" pack would silently install with every mod missing. Refuse
+      // the conversion instead of writing a broken archive.
       for (const f of manifest.files || []) {
-        // For CurseForge, we can't resolve actual download URLs without API
-        // So we mark them as unresolved but still include them in the manifest
-        // Users will need to manually add these mods
+        if (f.required === false) continue;
         unresolvedCount++;
-        contentList.push({
-          relativePath: `mods/cf-${f.projectID}-${f.fileID}.jar`,
-          type: 'mod',
-          sizeBytes: 0,
-          downloadUrl: undefined // CurseForge URLs require API authentication
-        });
+      }
+
+      if (unresolvedCount > 0) {
+        return {
+          success: false,
+          physicalFilesCount: 0,
+          remoteFilesCount: 0,
+          unresolvedCount,
+          error: `Cannot convert this CurseForge pack: ${unresolvedCount} CurseForge file reference(s) require the authenticated CurseForge API to resolve a download URL. Import the pack directly instead so the launcher can resolve each file.`
+        };
       }
 
       // 3. Assemble VPack Manifest

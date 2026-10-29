@@ -6,6 +6,7 @@ import { ItemPickerModal } from './ItemPickerModal';
 import { AddContentModal } from './AddContentModal';
 import { ConfirmDialog } from './ConfirmDialog';
 import { NotificationToast } from './NotificationToast';
+import { escapeHtml } from '../utils/html';
 
 export interface InstanceDetailsEvents {
   onBack: () => void;
@@ -28,10 +29,7 @@ export class InstanceDetails {
 
   public async render(): Promise<HTMLElement> {
     const isRunning = ['PREPARING', 'STARTING', 'LAUNCHING', 'RUNNING'].includes(this.instance.status);
-    const loaderType = this.instance.loader?.type || 'fabric';
-    const loaderName = loaderType === 'neoforge'
-      ? 'NeoForge'
-      : loaderType.charAt(0).toUpperCase() + loaderType.slice(1);
+    const loaderName = this.loaderLabel();
 
     this.container.innerHTML = `
       <!-- Top Navigation & Actions -->
@@ -42,7 +40,7 @@ export class InstanceDetails {
           </button>
           <div>
             <h2 style="font-size: 1.4rem; font-weight: 800; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
-              ${this.escapeHtml(this.instance.name)}
+              ${escapeHtml(this.instance.name)}
             </h2>
             <div style="font-size: 0.86rem; color: var(--text-secondary);">
               Minecraft ${this.instance.minecraft.version} · ${loaderName} ${this.instance.loader?.version || ''} ·
@@ -238,7 +236,7 @@ export class InstanceDetails {
           <div class="horizontal-card" style="padding: 16px; background: var(--bg-card); border-radius: var(--radius-md);">
             <div style="font-size: 0.78rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Minecraft Version</div>
             <div style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin-top: 4px;">${this.instance.minecraft.version}</div>
-            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">${loaderName} ${this.instance.loader.version}</div>
+            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">${this.loaderLabel()} ${this.instance.loader?.version || ''}</div>
           </div>
 
           <div class="horizontal-card" style="padding: 16px; background: var(--bg-card); border-radius: var(--radius-md);">
@@ -257,7 +255,7 @@ export class InstanceDetails {
 
           <div class="horizontal-card" style="padding: 16px; background: var(--bg-card); border-radius: var(--radius-md);">
             <div style="font-size: 0.78rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Development Engine</div>
-            <div style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin-top: 4px;">Gradle & ${loaderName}</div>
+            <div style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin-top: 4px;">Gradle & ${this.loaderLabel()}</div>
             <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px;">Target: <code>gradlew.bat runClient</code></div>
           </div>
         </div>
@@ -399,12 +397,12 @@ export class InstanceDetails {
 
         <div style="flex: 1; min-width: 0;">
           <div style="display: flex; align-items: center; gap: 8px;">
-            <h4 style="font-size: 1rem; font-weight: 700; color: var(--text-primary);">${this.escapeHtml(mod.name)}</h4>
+            <h4 style="font-size: 1rem; font-weight: 700; color: var(--text-primary);">${escapeHtml(mod.name)}</h4>
             <span class="badge" style="font-size: 0.72rem;">v${mod.version}</span>
             <span class="badge" style="font-size: 0.72rem;">${(mod.sizeBytes / 1024 / 1024).toFixed(2)} MB</span>
           </div>
           <p style="font-size: 0.82rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px;">
-            ${this.escapeHtml(mod.description)}
+            ${escapeHtml(mod.description)}
           </p>
         </div>
 
@@ -517,8 +515,8 @@ export class InstanceDetails {
           ${pack.icon ? `<img src="${pack.icon}" width="40" height="40" />` : `🎨`}
         </div>
         <div style="flex: 1; min-width: 0;">
-          <h4 style="font-size: 1rem; font-weight: 700; color: var(--text-primary);">${this.escapeHtml(pack.name)}</h4>
-          <p style="font-size: 0.82rem; color: var(--text-muted);">${this.escapeHtml(pack.description)}</p>
+          <h4 style="font-size: 1rem; font-weight: 700; color: var(--text-primary);">${escapeHtml(pack.name)}</h4>
+          <p style="font-size: 0.82rem; color: var(--text-muted);">${escapeHtml(pack.description)}</p>
         </div>
         <button class="btn btn-icon btn-del-pack" style="color: #ef4444;">🗑</button>
       `;
@@ -610,7 +608,7 @@ export class InstanceDetails {
       card.innerHTML = `
         <div style="font-size: 1.4rem;">✨</div>
         <div style="flex: 1;">
-          <h4 style="font-size: 1rem; font-weight: 700; color: var(--text-primary);">${this.escapeHtml(shader.name)}</h4>
+          <h4 style="font-size: 1rem; font-weight: 700; color: var(--text-primary);">${escapeHtml(shader.name)}</h4>
           <p style="font-size: 0.82rem; color: var(--text-muted);">${(shader.sizeBytes / 1024 / 1024).toFixed(2)} MB</p>
         </div>
         <button class="btn btn-icon btn-del-shader" style="color: #ef4444;">🗑</button>
@@ -662,8 +660,8 @@ export class InstanceDetails {
                 align-items: center;
                 gap: 6px;
               ">
-                ${this.escapeHtml(tag)}
-                <button class="btn-icon remove-tag" data-tag="${this.escapeHtml(tag)}" style="color: #ef4444; font-size: 14px;">×</button>
+                ${escapeHtml(tag)}
+                <button class="btn-icon remove-tag" data-tag="${escapeHtml(tag)}" style="color: #ef4444; font-size: 14px;">×</button>
               </span>
             `).join('')}
           </div>
@@ -697,7 +695,7 @@ export class InstanceDetails {
             font-size: 0.88rem;
             font-family: var(--font-mono);
             resize: vertical;
-          ">${this.escapeHtml(extras.notes || '')}</textarea>
+          ">${escapeHtml(extras.notes || '')}</textarea>
           <button class="btn btn-sm btn-primary" id="btn-save-notes" style="margin-top: 12px;">Save Notes</button>
         </div>
 
@@ -784,10 +782,17 @@ export class InstanceDetails {
     return div;
   }
 
-  private escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+  /**
+   * Human-readable loader name. Shared by the header and the overview cards —
+   * previously the overview templates referenced a `loaderName` variable that
+   * only existed in `render()`, which threw a ReferenceError at runtime.
+   */
+  private loaderLabel(): string {
+    const loaderType: string = this.instance.loader?.type || 'fabric';
+    if (loaderType === 'neoforge') return 'NeoForge';
+    if (loaderType === 'forge') return 'Forge';
+    if (loaderType === 'quilt') return 'Quilt';
+    if (loaderType === 'fabric') return 'Fabric';
+    return loaderType.charAt(0).toUpperCase() + loaderType.slice(1);
   }
 }
-

@@ -1,6 +1,8 @@
 import { InstanceMetadata, LogEntry } from '../../../electron/types';
 import { api } from '../services/api';
 import { NotificationToast } from './NotificationToast';
+import { escapeHtml } from '../utils/html';
+import { describeIpcError } from '../services/errors';
 
 export class LogViewer {
   private container: HTMLElement;
@@ -27,7 +29,7 @@ export class LogViewer {
           <!-- Instance Filter -->
           <select class="select-field" id="log-inst-select" style="width: 200px;">
             <option value="all" ${this.selectedInstanceId === 'all' ? 'selected' : ''}>All Instances</option>
-            ${this.instances.map(i => `<option value="${i.id}" ${this.selectedInstanceId === i.id ? 'selected' : ''}>${i.name}</option>`).join('')}
+            ${this.instances.map(i => `<option value="${escapeHtml(i.id)}" ${this.selectedInstanceId === i.id ? 'selected' : ''}>${escapeHtml(i.name)}</option>`).join('')}
           </select>
 
           <!-- Level Filter -->
@@ -96,13 +98,17 @@ export class LogViewer {
     const copyBtn = this.container.querySelector('#btn-copy-logs') as HTMLButtonElement;
     copyBtn.onclick = async () => {
       const selection = window.getSelection()?.toString();
-      if (selection && selection.trim().length > 0) {
-        await navigator.clipboard.writeText(selection);
-        NotificationToast.show('Selected log lines copied to clipboard!', 'success');
-      } else {
-        const text = await api.exportLogs(this.selectedInstanceId);
-        await navigator.clipboard.writeText(text);
-        NotificationToast.show('All console logs copied to clipboard!', 'success');
+      try {
+        if (selection && selection.trim().length > 0) {
+          await navigator.clipboard.writeText(selection);
+          NotificationToast.show('Selected log lines copied to clipboard!', 'success');
+        } else {
+          const text = await api.exportLogs(this.selectedInstanceId);
+          await navigator.clipboard.writeText(text);
+          NotificationToast.show('All console logs copied to clipboard!', 'success');
+        }
+      } catch (error) {
+        NotificationToast.show(describeIpcError(error), 'error');
       }
     };
 
@@ -114,12 +120,15 @@ export class LogViewer {
 
     const exportBtn = this.container.querySelector('#btn-export-logs') as HTMLButtonElement;
     exportBtn.onclick = async () => {
-      const savePath = await api.selectSaveFileDialog('voxelplus-console.log');
-      if (savePath) {
-        const text = await api.exportLogs(this.selectedInstanceId);
-        // Copy text to file via electron API or save dialog
-        await navigator.clipboard.writeText(text);
-        NotificationToast.show('Logs exported & copied!', 'success');
+      const savePath = await api.selectSaveFileDialog('voxelplus-console.log', [
+        { name: 'Log File', extensions: ['log', 'txt'] }
+      ]);
+      if (!savePath) return;
+      try {
+        await api.writeLogsToFile(this.selectedInstanceId, savePath);
+        NotificationToast.show('Console log exported to disk.', 'success');
+      } catch (error) {
+        NotificationToast.show(`Could not export logs: ${describeIpcError(error)}`, 'error');
       }
     };
 
@@ -140,6 +149,14 @@ export class LogViewer {
     });
 
     return this.container;
+  }
+
+  /** Detaches the live log subscription when the user navigates away. */
+  public destroy(): void {
+    if (this.unsubscribeLog) {
+      this.unsubscribeLog();
+      this.unsubscribeLog = null;
+    }
   }
 
   private async refreshLogs(): Promise<void> {
@@ -225,15 +242,9 @@ export class LogViewer {
         flex-shrink: 0;
         user-select: none;
       ">${entry.level}</span>
-      <span style="flex: 1; color: ${color}; word-break: break-all; user-select: text; -webkit-user-select: text;">${this.escapeHtml(entry.message)}</span>
+      <span style="flex: 1; color: ${color}; word-break: break-all; user-select: text; -webkit-user-select: text;">${escapeHtml(entry.message)}</span>
     `;
 
     return row;
-  }
-
-  private escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
   }
 }

@@ -82,3 +82,6 @@ gradle-user-home/
 # VPack download cache (runtime data, not source)
 vpacks/cache/
 vpacks/downloads/
+
+# Local runtime data created when the app runs outside Electron (tests/dev)
+.voxelplus/

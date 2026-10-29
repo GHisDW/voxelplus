@@ -2,6 +2,7 @@ import { InstanceMetadata, ModrinthProject } from '../../../electron/types';
 import { api } from '../services/api';
 import { NotificationToast } from './NotificationToast';
 import { describeIpcError } from '../services/errors';
+import { escapeHtml } from '../utils/html';
 
 export class ModrinthBrowser {
   private container: HTMLElement;
@@ -10,6 +11,7 @@ export class ModrinthBrowser {
   private searchQuery: string = '';
   private activeType: 'mod' | 'resourcepack' | 'shader' = 'mod';
   private debounceTimer: any = null;
+  private destroyed = false;
 
   constructor(initialInstance?: InstanceMetadata) {
     this.selectedInstance = initialInstance || null;
@@ -42,7 +44,7 @@ export class ModrinthBrowser {
           <div style="display: flex; align-items: center; gap: 10px; background: var(--bg-surface); padding: 6px 14px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
             <span style="font-size: 0.84rem; font-weight: 600; color: var(--text-muted);">Target:</span>
             <select class="select-field" id="modrinth-inst-select" style="padding: 4px 10px; border: none; background: transparent; font-weight: 700; width: 180px;">
-              ${this.instances.map(i => `<option value="${i.id}" ${this.selectedInstance?.id === i.id ? 'selected' : ''}>${i.name} (${i.minecraft.version})</option>`).join('')}
+              ${this.instances.map(i => `<option value="${escapeHtml(i.id)}" ${this.selectedInstance?.id === i.id ? 'selected' : ''}>${escapeHtml(i.name)} (${escapeHtml(i.minecraft.version)})</option>`).join('')}
             </select>
           </div>
         </div>
@@ -103,9 +105,18 @@ export class ModrinthBrowser {
     return this.container;
   }
 
+  /** Stops the debounce timer and ignores in-flight results after teardown. */
+  public destroy(): void {
+    this.destroyed = true;
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+    }
+  }
+
   private async performSearch(): Promise<void> {
     const resultsContainer = this.container.querySelector('#modrinth-results') as HTMLElement;
-    if (!resultsContainer) return;
+    if (!resultsContainer || this.destroyed) return;
 
     resultsContainer.innerHTML = `
       <div style="padding: 40px; text-align: center; color: var(--text-muted);">
@@ -124,6 +135,7 @@ export class ModrinthBrowser {
       limit: 25
     });
 
+    if (this.destroyed) return;
     resultsContainer.innerHTML = '';
 
     if (searchRes.hits.length === 0) {
@@ -164,7 +176,7 @@ export class ModrinthBrowser {
           overflow: hidden;
         ">
           ${project.icon_url
-            ? `<img src="${this.escapeHtml(project.icon_url)}" alt="${this.escapeHtml(project.title)} icon" width="48" height="48" style="border-radius: 8px; object-fit: cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline';" /><span style="display:none; font-size:1.5rem;" aria-hidden="true">📦</span>`
+            ? `<img class="modrinth-project-icon" src="${escapeHtml(project.icon_url)}" alt="${escapeHtml(project.title)} icon" width="48" height="48" style="border-radius: 8px; object-fit: cover;" /><span class="modrinth-project-fallback" style="display:none; font-size:1.5rem;" aria-hidden="true">📦</span>`
             : `<span style="font-size: 1.5rem;">📦</span>`
           }
         </div>
@@ -172,12 +184,12 @@ export class ModrinthBrowser {
         <!-- Info -->
         <div style="flex: 1; min-width: 0;">
           <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-            <h4 style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary);">${this.escapeHtml(project.title)}</h4>
-            <span style="font-size: 0.8rem; color: var(--text-muted);">by ${this.escapeHtml(project.author)}</span>
+            <h4 style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary);">${escapeHtml(project.title)}</h4>
+            <span style="font-size: 0.8rem; color: var(--text-muted);">by ${escapeHtml(project.author)}</span>
             <span class="badge" style="font-size: 0.72rem;">⬇ ${this.formatDownloads(project.downloads)}</span>
           </div>
           <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
-            ${this.escapeHtml(project.description)}
+            ${escapeHtml(project.description)}
           </p>
         </div>
 
@@ -188,6 +200,17 @@ export class ModrinthBrowser {
           </button>
         </div>
       `;
+
+      // CSP-safe icon fallback: a broken CDN icon hides itself and reveals the
+      // package glyph instead of relying on an inline onerror attribute.
+      const icon = card.querySelector('.modrinth-project-icon') as HTMLImageElement | null;
+      if (icon) {
+        icon.onerror = () => {
+          icon.style.display = 'none';
+          const fallback = card.querySelector('.modrinth-project-fallback') as HTMLElement | null;
+          if (fallback) fallback.style.display = 'inline';
+        };
+      }
 
       const installBtn = card.querySelector('.btn-install') as HTMLButtonElement;
       installBtn.onclick = async () => {
@@ -276,11 +299,5 @@ export class ModrinthBrowser {
     if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
     if (count >= 1_000) return `${(count / 1_000).toFixed(1)}k`;
     return String(count);
-  }
-
-  private escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
   }
 }

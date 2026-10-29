@@ -15,6 +15,12 @@ import { InstanceMetadata } from '../../electron/types';
 import { NotificationToast } from './components/NotificationToast';
 import { SplashScreen } from './components/SplashScreen';
 
+/** Minimal contract every routable page implements. */
+interface RenderablePage {
+  render(): Promise<HTMLElement>;
+  destroy?: () => void;
+}
+
 class VPlusApp {
   private activePage: PageId = 'instances';
   private sidebar!: Sidebar;
@@ -26,6 +32,11 @@ class VPlusApp {
   private arcadePage!: ArcadePage;
   private logsPage!: LogsPage;
   private settingsPage!: SettingsPage;
+
+  /** The page currently mounted in #page-container, so it can be torn down. */
+  private activePageHandle: RenderablePage | null = null;
+  /** Guards against a slow render landing after the user already navigated. */
+  private renderToken = 0;
 
   public async init(): Promise<void> {
     await ThemeService.initialize();
@@ -64,6 +75,7 @@ class VPlusApp {
 
   private showOnboarding(): void {
     const appEl = document.getElementById('app')!;
+    this.destroyActivePage();
     appEl.innerHTML = '';
     const onboarding = new OnboardingPage({
       onComplete: () => {
@@ -75,6 +87,7 @@ class VPlusApp {
 
   private showMainApp(): void {
     const appEl = document.getElementById('app')!;
+    this.destroyActivePage();
     appEl.innerHTML = '';
 
     // Initialize pages
@@ -159,26 +172,100 @@ class VPlusApp {
   private async renderCurrentPage(): Promise<void> {
     const pageContainer = document.getElementById('page-container');
     if (!pageContainer) return;
+
+    const token = ++this.renderToken;
+    // Tear the previous page down first: ArcadePage owns a save interval and
+    // LogsPage owns a live log subscription, so leaving them mounted kept both
+    // running in the background after navigation.
+    this.destroyActivePage();
     pageContainer.innerHTML = '';
 
-    if (this.activePage === 'instances') {
-      pageContainer.appendChild(await this.instancesPage.render());
-    } else if (this.activePage === 'content') {
-      pageContainer.appendChild(await this.contentPage.render());
-    } else if (this.activePage === 'player') {
-      pageContainer.appendChild(await this.playerPage.render());
-    } else if (this.activePage === 'shop') {
-      pageContainer.appendChild(await this.shopPage.render());
-    } else if (this.activePage === 'arcade') {
-      pageContainer.appendChild(await this.arcadePage.render());
-    } else if (this.activePage === 'logs') {
-      pageContainer.appendChild(await this.logsPage.render());
-    } else if (this.activePage === 'settings') {
-      pageContainer.appendChild(await this.settingsPage.render());
+    const page = this.resolvePage();
+    if (!page) return;
+
+    const element = await page.render();
+    if (token !== this.renderToken) {
+      // The user navigated while this page was still loading; dispose it instead
+      // of attaching stale markup over the page they actually asked for.
+      page.destroy?.();
+      return;
     }
+
+    this.activePageHandle = page;
+    pageContainer.appendChild(element);
+  }
+
+  private resolvePage(): RenderablePage | null {
+    switch (this.activePage) {
+      case 'instances': return this.instancesPage;
+      case 'content': return this.contentPage;
+      case 'player': return this.playerPage;
+      case 'shop': return this.shopPage;
+      case 'arcade': return this.arcadePage;
+      case 'logs': return this.logsPage;
+      case 'settings': return this.settingsPage;
+      default: return null;
+    }
+  }
+
+  private destroyActivePage(): void {
+    if (!this.activePageHandle) return;
+    const handle = this.activePageHandle;
+    this.activePageHandle = null;
+    handle.destroy?.();
   }
 }
 
-// Start application
+// Start application. A rejected init used to leave a blank window (and a stuck
+// splash overlay), so failures now surface a recoverable error screen.
 const app = new VPlusApp();
-app.init();
+app.init().catch((error) => {
+  console.error('[Voxel+] Startup failed:', error);
+  showStartupFailure(error);
+});
+
+function showStartupFailure(error: unknown): void {
+  document.querySelector('.splash-screen')?.remove();
+
+  const appEl = document.getElementById('app');
+  if (!appEl) return;
+  appEl.innerHTML = '';
+
+  const panel = document.createElement('div');
+  panel.style.cssText = `
+    margin: auto;
+    max-width: 560px;
+    padding: 40px 36px;
+    text-align: center;
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg);
+  `;
+
+  const logo = document.createElement('img');
+  logo.src = 'logo.png';
+  logo.alt = 'Voxel+';
+  logo.style.cssText = 'width: 72px; height: 72px; border-radius: 18px; margin-bottom: 18px;';
+
+  const title = document.createElement('h2');
+  title.textContent = 'Voxel+ could not start';
+  title.style.cssText = 'font-size: 1.35rem; font-weight: 800; color: var(--text-primary); margin-bottom: 10px;';
+
+  const detail = document.createElement('p');
+  detail.textContent = error instanceof Error ? error.message : String(error);
+  detail.style.cssText = 'font-size: 0.9rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 22px; word-break: break-word;';
+
+  const hint = document.createElement('p');
+  hint.textContent = 'The launcher settings or data folder may be unavailable. Retry, or restart the app.';
+  hint.style.cssText = 'font-size: 0.8rem; color: var(--text-muted); margin-bottom: 22px;';
+
+  const retry = document.createElement('button');
+  retry.className = 'btn btn-primary';
+  retry.textContent = 'Retry';
+  retry.style.cssText = 'padding: 10px 26px;';
+  retry.onclick = () => window.location.reload();
+
+  panel.append(logo, title, detail, hint, retry);
+  appEl.appendChild(panel);
+}

@@ -49,6 +49,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 * Heuristic target folder override in `ContentImporter` when explicit resourcepack/shader targets were provided
 * Target instance path verification in `InstanceManager.getInstanceDir` preventing phantom paths from being returned
 
+### Fixed — Deep Audit Pass
+
+* `InstanceDetails` overview/mods tabs threw `ReferenceError: loaderName is not defined` (the loader label lived only in `render()`), crashing the instance details view
+* `VPackManager.validateVPack` treated a wrong `formatId`, wrong `formatVersion`, missing `packId`, unsafe content paths and missing declared content as warnings, so malformed/spoofed packs validated as importable (5 regression tests were failing)
+* `VPackConverter.convertCurseForgeToVPack` reported success and wrote an archive whose every mod was a non-downloadable placeholder; it now refuses the conversion with an actionable `CurseForge file reference` error
+* Pages were never disposed on navigation: the arcade save interval, the log-viewer IPC subscription and the Modrinth search debounce kept running against detached DOM, causing background saves and leaked listeners
+* "Export File" in the log viewer ignored the chosen path and only copied text to the clipboard; a new `logs:writeToFile` IPC now writes the log to disk
+* `ProcessManager.stopInstance` could hang forever or throw an unhandled `spawn` error when `taskkill` was unavailable/blocked; it now resolves on process exit, falls back to `SIGTERM`/`SIGKILL`, and never leaves the UI on `STOPPING`
+* Instance launch hard-coded `gradlew.bat`, `cmd.exe`, `java.exe` and the `;` PATH separator; it is now platform-aware (POSIX `gradlew` + `path.delimiter`)
+* Startup failures left a blank window with a stuck splash overlay; `init()` now renders a recoverable error screen
+* Production CSP no longer allows inline scripts (`'unsafe-inline'`), adds `object-src 'none'`, `base-uri 'self'`, `form-action 'none'` and `frame-ancestors 'none'`; the one inline `onerror` handler was replaced with a CSP-safe listener
+* Unescaped instance names in the log-viewer and Modrinth target selectors could inject markup; all views now share `utils/html.ts#escapeHtml`
+* Arcade payloads from the renderer were trusted verbatim; `NaN`/`Infinity`/negative scores and cookie counters could permanently corrupt saves and the VP ledger. Inputs are now clamped, cookie lifetimes are monotonic, and unknown upgrade keys are dropped
+* `duplicateInstance` returned metadata pointing at the source folder and could produce an empty folder name; `importInstance` could resolve its target to the instances root for names that sanitize to nothing
+* `tests/real-mods.test.ts` failed in a clean checkout because `.test-mods-real/` is gitignored fixture data; it now skips those cases explicitly (and its broken `ConfigStore` cleanup call was fixed)
+* Google Fonts were loaded over the network, which the production CSP blocked and offline installs could not reach, so the UI never used Outfit/JetBrains Mono; both variable fonts are now bundled (SIL OFL 1.1, licences included) and served from the app
+
 ### Verified Runtime Testing (1.18.2, 1.21.1, 26.1.2)
 
 * **Minecraft 1.18.2 (Historical LTS Generation)**:

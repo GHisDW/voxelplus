@@ -2,16 +2,7 @@ import { api } from '../services/api';
 import { CosmeticDefinition, CosmeticEffect, WalletState } from '../../../electron/types';
 import { NotificationToast } from '../components/NotificationToast';
 import { getItemDataUrl } from '../assets/items';
-
-function escapeHtml(text: string | null | undefined): string {
-  if (text === null || text === undefined) return '';
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
+import { escapeHtml } from '../utils/html';
 
 export class ShopPage {
   private container: HTMLElement;

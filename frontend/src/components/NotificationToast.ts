@@ -1,3 +1,5 @@
+import { escapeHtml } from '../utils/html';
+
 export type ToastType = 'info' | 'success' | 'warning' | 'error';
 
 export class NotificationToast {
@@ -34,7 +36,7 @@ export class NotificationToast {
     toast.style.borderColor = borderColor;
     toast.innerHTML = `
       <span style="font-size: 1.1rem; font-weight: 700;">${icon}</span>
-      <div style="flex: 1; font-weight: 500;">${this.escapeHtml(message)}</div>
+      <div style="flex: 1; font-weight: 500;">${escapeHtml(message)}</div>
     `;
 
     container.appendChild(toast);
@@ -45,11 +47,5 @@ export class NotificationToast {
       toast.style.transition = 'all 0.3s ease';
       setTimeout(() => toast.remove(), 300);
     }, durationMs);
-  }
-
-  private static escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
   }
 }

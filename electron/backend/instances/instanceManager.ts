@@ -143,7 +143,7 @@ export class InstanceManager {
 
     const baseDir = ConfigStore.getInstanceDirectory();
     const newName = `${sourceMeta.name} (Copy)`;
-    const newFolderName = PathManager.sanitizeFilename(newName);
+    const newFolderName = PathManager.sanitizeFilename(newName).trim() || `instance-copy-${Date.now()}`;
     let targetDir = path.join(baseDir, newFolderName);
 
     let counter = 1;
@@ -160,6 +160,7 @@ export class InstanceManager {
       ...sourceMeta,
       id: newId,
       name: newName,
+      instancePath: targetDir,
       createdAt: new Date().toISOString(),
       lastPlayedAt: null,
       status: 'READY'
@@ -253,7 +254,7 @@ export class InstanceManager {
 
     try {
       const suggestedName = customName || path.basename(importZipPath, path.extname(importZipPath));
-      const folderName = PathManager.sanitizeFilename(suggestedName);
+      const folderName = PathManager.sanitizeFilename(suggestedName).trim() || `imported-${Date.now()}`;
 
       finalTargetDir = path.join(baseDir, folderName);
       let counter = 1;

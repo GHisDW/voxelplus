@@ -1,5 +1,6 @@
 import { dialog, BrowserWindow } from 'electron';
 import path from 'node:path';
+import fs from 'node:fs';
 import {
   AppSettings,
   CreateInstancePayload,
@@ -294,6 +295,26 @@ export class CommandManager {
 
   public static async exportLogs(instanceId?: string): Promise<string> {
     return LogStreamer.exportLogs(instanceId);
+  }
+
+  /**
+   * Writes the current console log to a user-selected file. The previous UI
+   * pretended to export by copying to the clipboard, which silently ignored the
+   * path the user picked in the save dialog.
+   */
+  public static async writeLogsToFile(instanceId: string | undefined, targetPath: string): Promise<boolean> {
+    if (!targetPath || typeof targetPath !== 'string' || !path.isAbsolute(targetPath)) {
+      throw new Error('A valid absolute export path is required.');
+    }
+
+    const targetDir = path.dirname(targetPath);
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+
+    const contents = LogStreamer.exportLogs(instanceId);
+    fs.writeFileSync(targetPath, contents, 'utf-8');
+    return true;
   }
 
   // Import / Export & VPack

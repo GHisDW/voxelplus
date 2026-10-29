@@ -106,35 +106,46 @@ export class ArcadeStore {
   }
 
   public recordStockerRun(run: StockerRunResult): ArcadeRewardResult {
-    this.stockerData.totalRuns += 1;
-    this.stockerData.totalDistance += run.distance;
-    this.stockerData.totalObstaclesCleared += run.obstaclesCleared;
-    this.stockerData.lastRunTimestamp = run.timestamp;
+    // The renderer supplies this payload, so never trust its numbers: a NaN,
+    // Infinity or negative score used to poison the saved totals and the VP
+    // ledger permanently. Clamp to sane, non-negative integers instead.
+    const score = sanitizeCount(run?.score, 10_000_000);
+    const distance = sanitizeCount(run?.distance, 100_000_000);
+    const obstaclesCleared = sanitizeCount(run?.obstaclesCleared, 10_000_000);
+    const mode: 'classic' | 'wave' | 'ship' = run?.mode === 'wave' || run?.mode === 'ship' ? run.mode : 'classic';
+    const timestamp = typeof run?.timestamp === 'string' && !Number.isNaN(Date.parse(run.timestamp))
+      ? run.timestamp
+      : new Date().toISOString();
 
-    if (run.score > this.stockerData.bestScore) {
-      this.stockerData.bestScore = run.score;
+    this.stockerData.totalRuns = sanitizeCount(this.stockerData.totalRuns + 1, 1_000_000_000);
+    this.stockerData.totalDistance = sanitizeCount(this.stockerData.totalDistance + distance, 1_000_000_000);
+    this.stockerData.totalObstaclesCleared = sanitizeCount(this.stockerData.totalObstaclesCleared + obstaclesCleared, 1_000_000_000);
+    this.stockerData.lastRunTimestamp = timestamp;
+
+    if (score > this.stockerData.bestScore) {
+      this.stockerData.bestScore = score;
     }
-    if (run.mode === 'wave' && run.score > this.stockerData.bestScoreWave) {
-      this.stockerData.bestScoreWave = run.score;
+    if (mode === 'wave' && score > this.stockerData.bestScoreWave) {
+      this.stockerData.bestScoreWave = score;
     }
-    if (run.mode === 'ship' && run.score > this.stockerData.bestScoreShip) {
-      this.stockerData.bestScoreShip = run.score;
+    if (mode === 'ship' && score > this.stockerData.bestScoreShip) {
+      this.stockerData.bestScoreShip = score;
     }
     this.save();
 
     // Calculate reward VP (1 VP per 25 points, minimum 5 on finish)
-    const vpEarned = Math.max(5, Math.floor(run.score / 25));
-    const tx = this.playerStore.addTransaction('earn', vpEarned, `Stocker Run (${run.mode}) - Score ${run.score}`);
+    const vpEarned = Math.max(5, Math.floor(score / 25));
+    const tx = this.playerStore.addTransaction('earn', vpEarned, `Stocker Run (${mode}) - Score ${score}`);
 
     // Trigger achievements
     const newAchievements: string[] = [];
     const r1 = this.achievementEngine.trackProgress('stocker_first_run', 1);
     if (r1.unlockedNow) newAchievements.push('stocker_first_run');
 
-    const r2 = this.achievementEngine.trackProgress('stocker_1000', run.score, true);
+    const r2 = this.achievementEngine.trackProgress('stocker_1000', score, true);
     if (r2.unlockedNow) newAchievements.push('stocker_1000');
 
-    const r3 = this.achievementEngine.trackProgress('stocker_5000', run.score, true);
+    const r3 = this.achievementEngine.trackProgress('stocker_5000', score, true);
     if (r3.unlockedNow) newAchievements.push('stocker_5000');
 
     const r4 = this.achievementEngine.trackProgress('stocker_marathon', this.stockerData.totalRuns, true);
@@ -156,35 +167,37 @@ export class ArcadeStore {
 
   public saveCookieData(data: CookieClickerSaveData): ArcadeRewardResult {
     const prevLifetime = this.cookieData.lifetimeCookies;
-    this.cookieData = { ...data };
+    this.cookieData = sanitizeCookieSave(data, this.cookieData);
     this.save();
 
     const newAchievements: string[] = [];
     let vpEarned = 0;
 
-    if (data.lifetimeCookies >= 1) {
+    const sanitized = this.cookieData;
+
+    if (sanitized.lifetimeCookies >= 1) {
       const a = this.achievementEngine.trackProgress('cookie_first', 1);
       if (a.unlockedNow) newAchievements.push('cookie_first');
     }
-    if (data.lifetimeCookies >= 1000) {
-      const b = this.achievementEngine.trackProgress('cookie_1000', data.lifetimeCookies, true);
+    if (sanitized.lifetimeCookies >= 1000) {
+      const b = this.achievementEngine.trackProgress('cookie_1000', sanitized.lifetimeCookies, true);
       if (b.unlockedNow) newAchievements.push('cookie_1000');
     }
-    if (data.lifetimeCookies >= 100000) {
-      const c = this.achievementEngine.trackProgress('cookie_100000', data.lifetimeCookies, true);
+    if (sanitized.lifetimeCookies >= 100000) {
+      const c = this.achievementEngine.trackProgress('cookie_100000', sanitized.lifetimeCookies, true);
       if (c.unlockedNow) newAchievements.push('cookie_100000');
     }
-    if (data.lifetimeCookies >= 1000000) {
-      const d = this.achievementEngine.trackProgress('cookie_million', data.lifetimeCookies, true);
+    if (sanitized.lifetimeCookies >= 1000000) {
+      const d = this.achievementEngine.trackProgress('cookie_million', sanitized.lifetimeCookies, true);
       if (d.unlockedNow) newAchievements.push('cookie_million');
     }
-    if (data.totalClicks >= 1000) {
-      const e = this.achievementEngine.trackProgress('cookie_clicker', data.totalClicks, true);
+    if (sanitized.totalClicks >= 1000) {
+      const e = this.achievementEngine.trackProgress('cookie_clicker', sanitized.totalClicks, true);
       if (e.unlockedNow) newAchievements.push('cookie_clicker');
     }
 
     // Count total upgrades purchased
-    const totalUpgrades = Object.values(data.upgrades).reduce((sum, count) => sum + count, 0);
+    const totalUpgrades = Object.values(sanitized.upgrades).reduce((sum, count) => sum + count, 0);
     if (totalUpgrades >= 5) {
       const f = this.achievementEngine.trackProgress('cookie_upgrader', totalUpgrades, true);
       if (f.unlockedNow) newAchievements.push('cookie_upgrader');
@@ -192,7 +205,7 @@ export class ArcadeStore {
 
     // Award VP for every 5,000 lifetime cookies milestone
     const prevMilestone = Math.floor(prevLifetime / 5000);
-    const currMilestone = Math.floor(data.lifetimeCookies / 5000);
+    const currMilestone = Math.floor(sanitized.lifetimeCookies / 5000);
     if (currMilestone > prevMilestone) {
       vpEarned = (currMilestone - prevMilestone) * 50;
       this.playerStore.addTransaction('earn', vpEarned, `Cookie Milestone (${currMilestone * 5000} cookies)`);
@@ -210,4 +223,54 @@ export class ArcadeStore {
     this.cookieData = this.getDefaultCookie();
     this.save();
   }
+}
+
+/** Clamps an untrusted numeric input to a non-negative integer. */
+function sanitizeCount(value: unknown, max: number): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return 0;
+  return Math.min(Math.floor(numeric), max);
+}
+
+/**
+ * Normalises a CookieClicker save coming from the renderer. Keeps the lifetime
+ * counter monotonic so a corrupt/forged payload can neither rewind progress nor
+ * inject NaN into the VP ledger, and drops unknown upgrade/producer keys.
+ */
+function sanitizeCookieSave(data: CookieClickerSaveData, previous: CookieClickerSaveData): CookieClickerSaveData {
+  const counterMap = (source: unknown): Record<string, number> => {
+    if (!source || typeof source !== 'object') return {};
+    const result: Record<string, number> = {};
+    for (const [key, raw] of Object.entries(source as Record<string, unknown>)) {
+      if (typeof key !== 'string' || key.length === 0 || key.length > 64) continue;
+      result[key] = sanitizeCount(raw, 1_000_000_000);
+    }
+    return result;
+  };
+
+  const lifetimeCookies = Math.max(
+    sanitizeCount(data?.lifetimeCookies, Number.MAX_SAFE_INTEGER),
+    sanitizeCount(previous.lifetimeCookies, Number.MAX_SAFE_INTEGER)
+  );
+  const cookies = sanitizeCount(data?.cookies, Number.MAX_SAFE_INTEGER);
+  const milestones = Array.isArray(data?.milestonesClaimed)
+    ? data.milestonesClaimed
+        .filter((m): m is number => typeof m === 'number' && Number.isFinite(m) && m >= 0)
+        .slice(0, 200)
+    : [];
+
+  return {
+    cookies,
+    lifetimeCookies,
+    cookiesPerClick: Math.max(1, sanitizeCount(data?.cookiesPerClick, 1_000_000)),
+    cookiesPerSecond: sanitizeCount(data?.cookiesPerSecond, 1_000_000_000),
+    upgrades: counterMap(data?.upgrades),
+    producers: counterMap(data?.producers),
+    milestonesClaimed: milestones,
+    lastTickTimestamp: typeof data?.lastTickTimestamp === 'string' && !Number.isNaN(Date.parse(data.lastTickTimestamp))
+      ? data.lastTickTimestamp
+      : new Date().toISOString(),
+    totalClicks: sanitizeCount(data?.totalClicks, 1_000_000_000),
+    totalTimePlayedMs: sanitizeCount(data?.totalTimePlayedMs, 1_000_000_000_000)
+  };
 }

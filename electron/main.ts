@@ -96,6 +96,7 @@ function registerIpcHandlers() {
   handle('logs:get', 'IPC', async (_, id, level, q) => CommandManager.getLogs(id, level, q));
   handle('logs:clear', 'IPC', async (_, id) => CommandManager.clearLogs(id));
   handle('logs:export', 'IPC', async (_, id) => CommandManager.exportLogs(id));
+  handle('logs:writeToFile', 'IPC', async (_, id, targetPath) => CommandManager.writeLogsToFile(id, targetPath));
 
   // Import / Export & VPack
   handle('instance:export', 'INSTANCE', async (_, id, targetPath) => CommandManager.exportInstance(id, targetPath));
@@ -171,12 +172,31 @@ function createWindow() {
     return { action: 'deny' };
   });
 
-  // Security: Set restrictive CSP
+  // Security: Set restrictive CSP. Inline scripts are only allowed for the Vite
+  // dev server (HMR bootstrap); production builds load a bundled file script.
+  const isDevServer = Boolean(process.env.VITE_DEV_SERVER_URL);
+  const scriptSrc = isDevServer ? "'self' 'unsafe-inline'" : "'self'";
+  const connectSrc = isDevServer
+    ? "'self' ws: http://localhost:5173"
+    : "'self' https://api.modrinth.com";
+  const csp = [
+    "default-src 'self'",
+    `script-src ${scriptSrc}`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https://cdn.modrinth.com",
+    "font-src 'self' data:",
+    `connect-src ${connectSrc}`,
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'none'",
+    "frame-ancestors 'none'"
+  ].join('; ') + ';';
+
   mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
     callback({
       responseHeaders: {
         ...details.responseHeaders,
-        'Content-Security-Policy': ["default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://cdn.modrinth.com; font-src 'self' data:; connect-src 'self';"]
+        'Content-Security-Policy': [csp]
       }
     });
   });

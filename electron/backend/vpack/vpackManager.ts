@@ -101,21 +101,31 @@ export class VPackManager {
         try {
           const raw = manifestEntry.getData().toString('utf-8');
           const parsed = JSON.parse(raw) as VPackManifest;
-          // Be more lenient - only warn if formatId is wrong
-          if (parsed.formatId !== 'voxelplus-vpack') warnings.push('Unsupported VPack format.');
-          if (parsed.formatVersion !== 1) warnings.push(`Unsupported VPack version: ${parsed.formatVersion ?? 'missing'}.`);
-          if (!parsed.name) errors.push('Pack manifest is missing a name.');
+          // The manifest is the contract that gates extraction and downloads, so
+          // an unrecognised format/version or a missing identity is fatal rather
+          // than a warning: a spoofed manifest must never be treated as valid.
+          if (parsed.formatId !== 'voxelplus-vpack') {
+            errors.push(`Unsupported VPack format: expected "voxelplus-vpack".`);
+          }
+          if (parsed.formatVersion !== 1) {
+            errors.push(`Unsupported VPack format version: ${parsed.formatVersion ?? 'missing'}. Only version 1 is supported.`);
+          }
+          if (!parsed.packId || typeof parsed.packId !== 'string') {
+            errors.push('Pack manifest is missing a pack id.');
+          }
+          if (!parsed.name || typeof parsed.name !== 'string') {
+            errors.push('Pack manifest is missing a name.');
+          }
           if (!parsed.minecraft?.version) errors.push('Pack manifest missing Minecraft version.');
           if (!parsed.loader?.type) errors.push('Pack manifest missing loader type.');
-          // Don't require packId for synthetic test manifests
 
           for (const content of parsed.content || []) {
             if (!content.relativePath || !this.isSafePath(content.relativePath)) {
-              warnings.push(`Pack contains an unsafe content path: ${content.relativePath || '(empty)'}.`);
+              errors.push(`Pack contains an unsafe content path: ${content.relativePath || '(empty)'}.`);
               continue;
             }
             if (!zip.getEntry(content.relativePath) && !content.downloadUrl) {
-              warnings.push(`Pack is missing declared content: ${content.relativePath}.`);
+              errors.push(`Pack is missing declared content: ${content.relativePath}.`);
             }
           }
 

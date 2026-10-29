@@ -13,6 +13,17 @@ import { ConfigStore } from '../electron/backend/storage/configStore';
 
 const REAL_MODS_DIR = path.join(process.cwd(), '.test-mods-real');
 
+// `.test-mods-real/` is gitignored fixture data. In a clean checkout the jars
+// are absent, so the mod-dependent cases skip explicitly instead of failing on
+// an empty mods/ folder. Run `npx tsx scripts/update-comprehensive-test.ts` (or
+// drop real jars into the folder) to enable them.
+const hasRealModFixtures = fs.existsSync(REAL_MODS_DIR) &&
+  REAL_MODS.some(file => fs.existsSync(path.join(REAL_MODS_DIR, file)));
+
+if (!hasRealModFixtures) {
+  console.warn('[real-mods] Skipping fixture-dependent cases: no real .jar files in .test-mods-real/.');
+}
+
 // Real mods copied from Cobblemon instance (all for 1.19.2)
 const REAL_MODS = [
   'advancedtooltips-1.6.0+1.19.jar',
@@ -36,7 +47,7 @@ describe('Real Mods Integration Test', () => {
       if (fs.existsSync(tempBaseDir)) {
         fs.rmSync(tempBaseDir, { recursive: true, force: true });
       }
-      ConfigStore.restoreOriginalInstanceDir();
+      ConfigStore.setOverrideInstanceDir(null);
     } catch (_) {}
   });
 
@@ -67,7 +78,7 @@ describe('Real Mods Integration Test', () => {
     expect(fs.existsSync(path.join(instance.instancePath, 'mods'))).toBe(true);
   });
 
-  it('copies real mods to instance and scans them', async () => {
+  it.skipIf(!hasRealModFixtures)('copies real mods to instance and scans them', async () => {
     // Create instance
     const payload = {
       name: 'real-mods-scan-test',
@@ -109,7 +120,7 @@ describe('Real Mods Integration Test', () => {
     expect(modNames.length).toBeGreaterThan(0);
   });
 
-  it('verifies real mods have valid file sizes', async () => {
+  it.skipIf(!hasRealModFixtures)('verifies real mods have valid file sizes', async () => {
     const payload = {
       name: 'real-mods-size-test',
       description: 'Test real mod file sizes',
@@ -145,7 +156,7 @@ describe('Real Mods Integration Test', () => {
     }
   });
 
-  it('verifies build.gradle is valid with real mods present', async () => {
+  it.skipIf(!hasRealModFixtures)('verifies build.gradle is valid with real mods present', async () => {
     const payload = {
       name: 'real-mods-gradle-test',
       description: 'Test Gradle with real mods',

@@ -96,13 +96,14 @@ export class ProcessManager {
 
     LogStreamer.addLog(`[Voxel+] Selected Java runtime: ${selectedJava.name} (${selectedJava.vendor} ${selectedJava.fullVersion})`, 'INFO', instanceId, metadata.name);
 
-    const gradlewBat = path.join(instanceDir, 'gradlew.bat');
+    const wrapperName = process.platform === 'win32' ? 'gradlew.bat' : 'gradlew';
+    const gradlewBat = path.join(instanceDir, wrapperName);
     if (!fs.existsSync(gradlewBat)) {
       const error = new VoxelError({
         title: 'Instance Files Incomplete',
-        message: `The Gradle wrapper (gradlew.bat) is missing from the instance folder.`,
+        message: `The Gradle wrapper (${wrapperName}) is missing from the instance folder.`,
         cause: 'The instance directory is incomplete or files were removed manually.',
-        suggestedAction: 'Re-create the instance, or restore gradlew.bat, then launch again.',
+        suggestedAction: `Re-create the instance, or restore ${wrapperName}, then launch again.`,
         code: 'GRADLE_WRAPPER_MISSING',
         category: 'GRADLE',
         severity: 'ERROR',
@@ -131,11 +132,16 @@ export class ProcessManager {
       return { success: false, instanceId, message: `${error.message} ${error.suggestedAction ?? ''}`.trim() };
     }
 
+    const expectedJavaHome = path.normalize(verifiedJavaHome);
+    const actualJavaHome = path.normalize(path.dirname(path.dirname(verifiedJavaExecutable)));
+    const sameJavaHome = process.platform === 'win32'
+      ? actualJavaHome.toLowerCase() === expectedJavaHome.toLowerCase()
+      : actualJavaHome === expectedJavaHome;
+
     if (
       !fs.existsSync(verifiedJavaHome) ||
       !fs.existsSync(verifiedJavaExecutable) ||
-      path.normalize(path.join(verifiedJavaHome, 'bin', 'java.exe')).toLowerCase() !==
-        verifiedJavaExecutable.toLowerCase()
+      !sameJavaHome
     ) {
       const error = new VoxelError({
         title: 'Java Runtime Unavailable',
@@ -155,7 +161,7 @@ export class ProcessManager {
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       JAVA_HOME: verifiedJavaHome,
-      PATH: `${path.join(verifiedJavaHome, 'bin')};${process.env.PATH || ''}`
+      PATH: `${path.join(verifiedJavaHome, 'bin')}${path.delimiter}${process.env.PATH || ''}`
     };
 
     LogStreamer.addLog(`[Voxel+] Verified Java executable: ${verifiedJavaExecutable}`, 'INFO', instanceId, metadata.name);
@@ -171,10 +177,15 @@ export class ProcessManager {
     LogStreamer.addLog(`[Voxel+] Starting the ${metadata.loader?.type || 'Fabric'} Minecraft client through Gradle...`, 'INFO', instanceId, metadata.name);
 
     try {
-      const comspec = process.env.ComSpec || 'cmd.exe';
+      // Windows goes through cmd.exe so `gradlew.bat` resolves; other platforms
+      // spawn the POSIX wrapper directly so the launcher also works in
+      // development environments outside Windows.
+      const isWindows = process.platform === 'win32';
+      const command = isWindows ? (process.env.ComSpec || 'cmd.exe') : gradlewBat;
+      const args = isWindows ? ['/d', '/c', `${wrapperName} runClient`] : ['runClient'];
       const child = spawn(
-        comspec,
-        ['/d', '/c', 'gradlew.bat runClient'],
+        command,
+        args,
         {
           cwd: instanceDir,
           env,
@@ -287,28 +298,70 @@ export class ProcessManager {
 
   public static async stopInstance(instanceId: string): Promise<boolean> {
     const active = this.activeProcesses.get(instanceId);
-    if (!active || !active.pid) {
+    if (!active) {
       this.updateStatus(instanceId, 'STOPPED');
       return true;
     }
 
     this.updateStatus(instanceId, 'STOPPING', active.pid);
-    LogStreamer.addLog(`[Voxel+] Stopping instance "${active.instanceName}" (PID ${active.pid})...`, 'INFO', instanceId, active.instanceName);
+    LogStreamer.addLog(`[Voxel+] Stopping instance "${active.instanceName}" (PID ${active.pid ?? 'unknown'})...`, 'INFO', instanceId, active.instanceName);
 
-    return new Promise((resolve) => {
-      const taskkill = spawn('taskkill', ['/pid', String(active.pid), '/T', '/F'], { windowsHide: true });
-      taskkill.once('close', (code) => {
-        if (code !== 0) {
-          try {
-            active.childProcess.kill('SIGTERM');
-          } catch {
-          }
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
+      let escalation: NodeJS.Timeout | null = null;
+
+      const settle = (): void => {
+        if (settled) return;
+        settled = true;
+        if (escalation) {
+          clearTimeout(escalation);
+          escalation = null;
         }
         this.activeProcesses.delete(instanceId);
         this.updateStatus(instanceId, 'STOPPED');
         LogStreamer.addLog(`[Voxel+] Instance "${active.instanceName}" stopped.`, 'INFO', instanceId, active.instanceName);
         resolve(true);
-      });
+      };
+
+      const killChild = (signal: NodeJS.Signals = 'SIGTERM'): void => {
+        try {
+          active.childProcess.kill(signal);
+        } catch {
+          // Process already exited – nothing left to kill.
+        }
+      };
+
+      // The process lifecycle owns the cleanup; if it exits on its own while we
+      // are stopping, resolve immediately instead of waiting for taskkill.
+      active.childProcess.once('close', settle);
+
+      if (process.platform === 'win32' && active.pid) {
+        // Argument-based invocation (no shell interpolation) for the Windows
+        // process tree. `taskkill` may be missing/policy-blocked, so every
+        // failure path falls back to a direct SIGTERM on the child.
+        let taskkill: ReturnType<typeof spawn>;
+        try {
+          taskkill = spawn('taskkill', ['/pid', String(active.pid), '/T', '/F'], { windowsHide: true });
+        } catch {
+          killChild();
+          return;
+        }
+        taskkill.once('error', () => killChild());
+        taskkill.once('close', (code) => {
+          if (code !== 0) killChild();
+        });
+      } else {
+        killChild();
+      }
+
+      // Safety net: a wedged Gradle/Minecraft process must never leave the UI
+      // stuck on "STOPPING" forever.
+      escalation = setTimeout(() => {
+        if (settled) return;
+        killChild('SIGKILL');
+        settle();
+      }, 15000);
+      escalation.unref?.();
     });
   }
 

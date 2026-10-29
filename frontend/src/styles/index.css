@@ -1,3 +1,22 @@
+/* Self-hosted variable fonts (SIL OFL 1.1 — see src/assets/fonts/). Loading them
+   from the bundle keeps the launcher offline-capable and compatible with the
+   production Content-Security-Policy, which blocks third-party font hosts. */
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 300 800;
+  font-display: swap;
+  src: url('../assets/fonts/outfit-latin.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url('../assets/fonts/jetbrains-mono-latin.woff2') format('woff2');
+}
+
 :root {
   /* Color Palette - Dark Mode Defaults */
   --bg-app: #090c13;

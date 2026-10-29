@@ -1,3 +1,5 @@
+import { escapeHtml } from '../utils/html';
+
 export class ConfirmDialog {
   public static async show(options: {
     title: string;
@@ -17,14 +19,14 @@ export class ConfirmDialog {
       overlay.innerHTML = `
         <div class="modal-content animate-scale-in" style="max-width: 440px;">
           <div class="modal-header">
-            <h3 class="modal-title">${this.escapeHtml(options.title)}</h3>
+            <h3 class="modal-title">${escapeHtml(options.title)}</h3>
           </div>
           <div style="color: var(--text-secondary); line-height: 1.6; margin-bottom: 24px;">
-            ${this.escapeHtml(options.message)}
+            ${escapeHtml(options.message)}
           </div>
           <div class="modal-footer">
-            <button class="btn btn-secondary" id="confirm-cancel">${this.escapeHtml(cancelText)}</button>
-            <button class="btn ${confirmBtnClass}" id="confirm-ok">${this.escapeHtml(confirmText)}</button>
+            <button class="btn btn-secondary" id="confirm-cancel">${escapeHtml(cancelText)}</button>
+            <button class="btn ${confirmBtnClass}" id="confirm-ok">${escapeHtml(confirmText)}</button>
           </div>
         </div>
       `;
@@ -46,11 +48,5 @@ export class ConfirmDialog {
         if (e.target === overlay) cleanup(false);
       };
     });
-  }
-
-  private static escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
   }
 }

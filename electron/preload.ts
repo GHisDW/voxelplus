@@ -81,6 +81,7 @@ const api = {
   getLogs: (instanceId?: string, levelFilter?: string, query?: string): Promise<LogEntry[]> => ipcRenderer.invoke('logs:get', instanceId, levelFilter, query),
   clearLogs: (instanceId?: string): Promise<void> => ipcRenderer.invoke('logs:clear', instanceId),
   exportLogs: (instanceId?: string): Promise<string> => ipcRenderer.invoke('logs:export', instanceId),
+  writeLogsToFile: (instanceId: string | undefined, targetPath: string): Promise<boolean> => ipcRenderer.invoke('logs:writeToFile', instanceId, targetPath),
 
   // Import / Export & VPack
   exportInstance: (instanceId: string, targetZipPath: string): Promise<boolean> => ipcRenderer.invoke('instance:export', instanceId, targetZipPath),

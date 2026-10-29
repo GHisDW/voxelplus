@@ -11,6 +11,11 @@ export class ContentPage {
     this.browser = new ModrinthBrowser(initialInstance);
   }
 
+  /** Releases the browser's debounce timer when the page is navigated away. */
+  public destroy(): void {
+    this.browser.destroy();
+  }
+
   public async render(): Promise<HTMLElement> {
     this.container.innerHTML = '';
     try {
