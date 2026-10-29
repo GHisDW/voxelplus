@@ -98,3 +98,14 @@ For security-related questions:
 ---
 
 Thank you for helping keep Voxel⁺ secure! 🔒
+
+## Launcher Updates
+
+Voxel⁺ checks GitHub Releases at startup and can download a replacement
+`VoxelPlus.exe`.
+
+- Update metadata comes only from `https://api.github.com/repos/GHisDW/voxelplus/releases/latest`; the renderer cannot supply a download URL.
+- Downloads are limited to HTTPS hosts `github.com`, `api.github.com`, `objects.githubusercontent.com`, `github-releases.githubusercontent.com` and `release-assets.githubusercontent.com`.
+- Each download is verified against the release asset size and GitHub's published `sha256:` digest before it is used. Mismatches are deleted, not executed.
+- Installing replaces **only** the launcher executable (with a `.old` backup during the swap). User data — `portable/`, `instances/`, worlds, `config/`, `vpacks/`, logs and the player profile — is never read, moved or deleted by the update path.
+- Release notes are rendered as plain text, never as HTML.

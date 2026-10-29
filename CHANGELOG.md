@@ -4,7 +4,7 @@ All notable changes to Voxel⁺ will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.2.0] - 2026-10-29
 
 ### Added
 
@@ -25,6 +25,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 * Improved error messages with specific Java version requirements
 * Consistent `JAVA_HOME` propagation across all processes
 * Discord-style startup splash with a blurred-grayscale to full-colour logo reveal and rotating funny splash texts (skipped on first-time setup)
+
+### Added — Updates & Performance
+
+* Automatic update check against the latest GitHub Release on every start (deferred until after the first paint), plus a manual **Settings → About → Check for updates** action
+* In-app update prompt with release notes, download progress, `Later` for optional releases and a non-dismissible flow for mandatory releases
+* Forced-update policy: `[mandatory]` / `[FORCE UPDATE]` / `<!-- voxelplus:mandatory -->` markers, an explicit `[min:x.y.z]` minimum version, or a major version bump
+* SHA-256 (plus size) verification of downloaded release assets, restricted to HTTPS GitHub hosts
+* Portable staged install: a detached helper waits for the launcher to exit, backs up the old `VoxelPlus.exe`, swaps in the new one and relaunches — user data is never touched
+* Shared `escapeHtml` utility and self-hosted Outfit/JetBrains Mono fonts
+
+### Performance
+
+* Splash screen is mounted before the first IPC round-trip, and the boot flag lets warm launches skip straight to it
+* Single settings read at startup (`ThemeService` no longer issues a second IPC call)
+* Process-status listener and update check moved off the critical path (`requestIdleCallback`)
+* Instance list status updates are coalesced (200 ms) instead of re-listing/re-rendering on every Gradle/JVM event
+* Window is created hidden and shown on `ready-to-show` to eliminate the blank-frame flash
+* Vite targets Chromium 130 with esbuild minification, no module-preload polyfill and no source maps
+* Portable builds package only runtime assets (`dist`, `dist-electron`, `vpacks`, `templates`, `logo.png`), dropping TypeScript sources, tests and unused Electron locales (smaller, faster to unpack)
+* `npm run dist` now emits both the single-file portable `.exe` and a pre-extracted `VoxelPlus-<version>-x64.zip`; the zip launches instantly because it is not re-unpacked on every start. Portable is the default target; the NSIS installer is opt-in via `npm run dist:nsis`
 
 ### Changed
 

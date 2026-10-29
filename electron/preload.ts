@@ -28,7 +28,12 @@ import {
   StockerRunResult,
   StockerSaveData,
   CookieClickerSaveData,
-  ArcadeRewardResult
+  ArcadeRewardResult,
+  UpdateAssetInfo,
+  UpdateInfo,
+  UpdateInstallResult,
+  UpdateProgressEvent,
+  UpdateRuntimeInfo
 } from './types';
 
 const api = {
@@ -86,6 +91,14 @@ const api = {
   // Import / Export & VPack
   exportInstance: (instanceId: string, targetZipPath: string): Promise<boolean> => ipcRenderer.invoke('instance:export', instanceId, targetZipPath),
   importInstance: (zipPath: string, customName?: string): Promise<InstanceMetadata | null> => ipcRenderer.invoke('instance:import', zipPath, customName),
+  // Launcher updates (GitHub Releases)
+  getUpdateStatus: (): Promise<UpdateRuntimeInfo> => ipcRenderer.invoke('updates:status'),
+  checkForUpdates: (force?: boolean): Promise<UpdateInfo> => ipcRenderer.invoke('updates:check', Boolean(force)),
+  downloadUpdate: (asset: UpdateAssetInfo): Promise<string> => ipcRenderer.invoke('updates:download', asset),
+  installUpdate: (): Promise<UpdateInstallResult> => ipcRenderer.invoke('updates:install'),
+  openReleasePage: (url?: string): Promise<boolean> => ipcRenderer.invoke('updates:openRelease', url),
+  quitApp: (): Promise<boolean> => ipcRenderer.invoke('app:quit'),
+
   validateVPack: (zipPath: string): Promise<VPackValidationResult> => ipcRenderer.invoke('vpack:validate', zipPath),
   convertModpack: (inPath: string, outPath: string): Promise<any> => ipcRenderer.invoke('vpack:convert', inPath, outPath),
   runPreflight: (mcVer: string, loader: string, mem?: number, dir?: string, javaId?: string): Promise<any> => ipcRenderer.invoke('system:preflight', mcVer, loader, mem, dir, javaId),
@@ -129,6 +142,11 @@ const api = {
     const handler = (_: any, event: DownloadProgressEvent) => callback(event);
     ipcRenderer.on('event:downloadProgress', handler);
     return () => ipcRenderer.removeListener('event:downloadProgress', handler);
+  },
+  onUpdateProgress: (callback: (event: UpdateProgressEvent) => void) => {
+    const handler = (_: any, event: UpdateProgressEvent) => callback(event);
+    ipcRenderer.on('event:updateProgress', handler);
+    return () => ipcRenderer.removeListener('event:updateProgress', handler);
   },
   onAchievementUnlocked: (callback: (data: { achievementName: string; rewardVP: number; isWinCondition: boolean }) => void) => {
     const handler = (_: any, data: { achievementName: string; rewardVP: number; isWinCondition: boolean }) => callback(data);

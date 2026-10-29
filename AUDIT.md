@@ -121,3 +121,30 @@ confirmed from the source before being changed; the test suite is the evidence.
   functional impact).
 * Packaged installer execution and a real Minecraft client launch remain
   environment-dependent (see `IMPLEMENTATION_LOG.md`).
+
+## 7. Updates, Startup & Packaging Pass (1.2.0)
+
+### 7.1 In-app updater
+
+| Area | Implementation |
+|---|---|
+| Release lookup | `UpdateService.checkForUpdates` calls `GET /repos/GHisDW/voxelplus/releases/latest` from the main process (10 s timeout, 5-minute cache, 2 MB response cap). Offline/rate-limited launches return `status: 'error'` and never block. |
+| Version policy | `updatePolicy.ts` implements semver parsing/ordering (incl. prereleases), asset selection (prefers `VoxelPlus-Portable-*.exe`) and the mandatory policy: explicit `[mandatory]` / `[FORCE UPDATE]` / `<!-- voxelplus:mandatory -->`, a `[min:x.y.z]` minimum version above the running build, or a major bump. |
+| Integrity | Downloads are restricted to HTTPS hosts `github.com`, `api.github.com`, `objects.githubusercontent.com`, `github-releases.githubusercontent.com`, `release-assets.githubusercontent.com`; the streamed file is checked against the asset size and GitHub's `sha256:` digest before it is renamed into place. |
+| Install | `applyScript.ts` generates a detached `.cmd` that waits for the launcher PID, backs up the current exe, swaps in the new build, relaunches it and restores the backup if the swap fails. |
+| Data safety | The updater only writes to `<userData>/downloads/updates/` and to the executable itself. It never reads, moves or deletes `portable/`, `instances/`, `config/`, `vpacks/`, saves, logs or the player profile; regression tests assert the helper script contains no data-folder references. |
+| UI | `UpdatePrompt` shows release notes + progress, with `Later` for optional releases and a non-dismissible prompt (still with Release page / Quit escape hatches) for mandatory ones. Manual check lives in Settings → About, which also shows the real version and portable/installed mode instead of the previous hard-coded `1.0.0`. |
+
+### 7.2 Startup and packaging performance
+
+- Splash mounts before the first IPC round-trip (with a `localStorage` boot flag so first-run users still skip it); settings are fetched once and the theme is applied from that result.
+- Listener registration and the automatic update check run in `requestIdleCallback`; the window is created hidden and shown on `ready-to-show`.
+- Instance status events are coalesced over 200 ms instead of re-listing every instance per event.
+- Vite targets `chrome130` (Electron 33), minifies with esbuild, disables the module-preload polyfill and source maps.
+- Packaging defaults to portable with `npmRebuild: false`, `en-US` locale filtering and a runtime-only `files` list. The resulting `app.asar` is 7.0 MB / 149 entries with no TypeScript sources or tests.
+- `portable.unpackDirName` was evaluated and removed: electron-builder's portable template runs `RMDir /r` + re-extract on every launch, so a fixed folder only leaves a stale ~220 MB copy in `%TEMP%` without speeding anything up. Instead `npm run dist` also emits a pre-extracted `VoxelPlus-<version>-x64.zip` for instant launches (the single-file `.exe` remains available for convenience).
+
+### 7.3 Still environment-dependent
+
+- The updater's Windows swap path and the packaged portable executable cannot be executed in this Linux CI environment; they are covered by unit tests of the policy/script and by a live GitHub API smoke check, not by a full install-and-relaunch cycle.
+- The preflight engine remains unreachable from the renderer (see 6.3).

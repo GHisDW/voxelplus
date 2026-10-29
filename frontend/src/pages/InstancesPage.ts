@@ -20,6 +20,8 @@ export class InstancesPage {
   private events: InstancesPageEvents;
   private unsubscribeStatus: (() => void) | null = null;
   private currentRenderId: number = 0;
+  /** Coalesces bursts of process-status events into one re-render. */
+  private statusRefreshTimer: number | null = null;
 
   constructor(events: InstancesPageEvents) {
     this.events = events;
@@ -39,10 +41,9 @@ export class InstancesPage {
     if (!this.unsubscribeStatus) {
       this.unsubscribeStatus = api.onProcessStatus((e) => {
         const target = this.instances.find(i => i.id === e.instanceId);
-        if (target) {
-          target.status = e.status;
-          this.render();
-        }
+        if (!target || target.status === e.status) return;
+        target.status = e.status;
+        this.scheduleStatusRefresh();
       });
     }
 
@@ -216,7 +217,24 @@ export class InstancesPage {
     return this.container;
   }
 
+  /**
+   * Status events can arrive in bursts (Gradle, JVM, downloads). Coalescing them
+   * avoids re-listing every instance and rebuilding the whole page for each one.
+   */
+  private scheduleStatusRefresh(): void {
+    if (this.statusRefreshTimer !== null) return;
+    this.statusRefreshTimer = window.setTimeout(() => {
+      this.statusRefreshTimer = null;
+      if (document.hidden) return;
+      void this.render();
+    }, 200);
+  }
+
   public destroy(): void {
+    if (this.statusRefreshTimer !== null) {
+      window.clearTimeout(this.statusRefreshTimer);
+      this.statusRefreshTimer = null;
+    }
     if (this.unsubscribeStatus) {
       this.unsubscribeStatus();
       this.unsubscribeStatus = null;

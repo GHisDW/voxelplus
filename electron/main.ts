@@ -7,6 +7,7 @@ import { ProcessManager } from './backend/processes/processManager';
 import { DownloadManager } from './backend/modrinth/downloader';
 import { setAchievementUnlockCallback } from './backend/player/achievementEngine';
 import { encodeVoxelIpcError } from './backend/diagnostics';
+import { UpdateService } from './backend/updates/updateService';
 import { VoxelErrorCategory } from './types';
 
 let mainWindow: BrowserWindow | null = null;
@@ -105,6 +106,17 @@ function registerIpcHandlers() {
   handle('vpack:convert', 'INSTANCE', async (_, inPath, outPath) => CommandManager.convertModpackToVPack(inPath, outPath));
   handle('system:preflight', 'INSTANCE', async (_, mcVer, loader, mem, dir, javaId) => CommandManager.runPreflight(mcVer, loader, mem, dir, javaId));
   handle('vpack:listRepository', 'INSTANCE', async () => CommandManager.listRepositoryVPacks());
+
+  // Launcher updates (GitHub Releases)
+  handle('updates:status', 'IPC', async () => UpdateService.getStatus());
+  handle('updates:check', 'IPC', async (_, force) => UpdateService.checkForUpdates(Boolean(force)));
+  handle('updates:download', 'IPC', async (_, asset) => {
+    const trusted = await UpdateService.resolveAssetForDownload(asset?.name);
+    return UpdateService.downloadUpdate(trusted);
+  });
+  handle('updates:install', 'IPC', async () => UpdateService.installUpdate());
+  handle('updates:openRelease', 'IPC', async (_, url) => UpdateService.openReleasePage(url));
+  handle('app:quit', 'IPC', async () => { app.quit(); return true; });
   handle('vpack:purchase', 'INSTANCE', async (_, zipPath) => CommandManager.purchaseVPack(zipPath));
 
   // Player & Economy
@@ -138,7 +150,10 @@ function createWindow() {
     frame: true,
     titleBarStyle: 'default',
     title: 'Voxel+ Launcher',
-    backgroundColor: '#0a0d14',
+    backgroundColor: '#090c13',
+    // Painting is delayed until ready-to-show so the window never flashes a
+    // blank white frame before the splash renders (faster perceived startup).
+    show: false,
     // dist-electron is next to logo.png in development and inside the packaged app.
     // The previous ../../ path escaped the application directory and silently
     // produced a window without the Voxel+ icon.
@@ -154,6 +169,10 @@ function createWindow() {
 
   // Remove default menu for clean launcher look
   mainWindow.setMenuBarVisibility(false);
+
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.show();
+  });
 
   // Security: Restrict navigation to prevent loading external content
   mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
@@ -217,6 +236,12 @@ function createWindow() {
   DownloadManager.onProgress((event) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('event:downloadProgress', event);
+    }
+  });
+
+  UpdateService.onProgress((event) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('event:updateProgress', event);
     }
   });
 

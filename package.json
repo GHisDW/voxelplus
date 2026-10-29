@@ -1,6 +1,6 @@
 {
   "name": "voxelplus-launcher",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Voxel+ — a Windows Minecraft instance launcher for Fabric, Quilt, Forge, and NeoForge",
   "main": "dist-electron/main.js",
   "repository": {
@@ -26,12 +26,13 @@
     "dev": "vite",
     "electron:compile": "tsc -p electron/tsconfig.json",
     "build": "tsc -p electron/tsconfig.json && vite build",
-    "app:dev": "npm.cmd run electron:compile && concurrently -k -n VITE,ELECTRON -c cyan,magenta \"vite\" \"cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron . --enable-logging\"",
+    "app:dev": "npm run electron:compile && concurrently -k -n VITE,ELECTRON -c cyan,magenta \"vite\" \"cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron . --enable-logging\"",
     "start": "electron .",
     "test": "vitest run",
     "catalog:build": "node tools/generate-catalog-vpacks.mjs",
-    "dist": "npm.cmd run build && electron-builder --win --x64 --config.win.target=nsis --config.directories.output=dist-installer",
-    "dist:portable": "npm.cmd run build && electron-builder --win --x64 --config.win.target=portable --config.directories.output=dist-portable"
+    "dist": "npm run build && electron-builder --win --x64 --config.directories.output=dist-portable",
+    "dist:portable": "npm run dist",
+    "dist:nsis": "npm run build && electron-builder --win --x64 --config.win.target=nsis --config.directories.output=dist-installer"
   },
   "dependencies": {
     "adm-zip": "^0.5.16"
@@ -55,20 +56,32 @@
     "appId": "com.voxelplus.launcher",
     "productName": "Voxel+ Launcher",
     "executableName": "VoxelPlus",
+    "asar": true,
+    "npmRebuild": false,
+    "compression": "normal",
+    "electronLanguages": [
+      "en-US"
+    ],
     "directories": {
-      "output": "dist-installer"
+      "output": "dist-portable"
     },
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
-      "electron/**/*",
       "vpacks/**/*",
+      "templates/**/*",
       "logo.png"
     ],
     "win": {
       "target": [
         {
-          "target": "nsis",
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
           "arch": [
             "x64"
           ]
@@ -76,6 +89,9 @@
       ],
       "icon": "logo.png",
       "signAndEditExecutable": false
+    },
+    "portable": {
+      "artifactName": "VoxelPlus-Portable-${version}.${ext}"
     },
     "nsis": {
       "artifactName": "VoxelPlus-Setup-${version}.${ext}",
@@ -85,8 +101,6 @@
       "createStartMenuShortcut": true,
       "shortcutName": "Voxel+ Launcher"
     },
-    "portable": {
-      "artifactName": "VoxelPlus-Portable-${version}.${ext}"
-    }
+    "artifactName": "VoxelPlus-${version}-${arch}.${ext}"
   }
 }

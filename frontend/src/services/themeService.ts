@@ -4,15 +4,13 @@ import { api } from './api';
 export class ThemeService {
   private static currentTheme: ThemeMode = 'dark';
 
-  public static async initialize(): Promise<void> {
-    try {
-      const settings = await api.getAppSettings();
-      this.applyTheme(settings.theme || 'dark');
-    } catch {
-      this.applyTheme('dark');
-    }
+  /**
+   * Applies the theme synchronously (the boot path already fetched settings) and
+   * subscribes to OS theme changes.
+   */
+  public static initialize(theme: ThemeMode = 'dark'): void {
+    this.applyTheme(theme || 'dark');
 
-    // Watch for OS theme changes
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
       if (this.currentTheme === 'system') {
         this.applyTheme('system');

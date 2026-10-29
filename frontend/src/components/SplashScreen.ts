@@ -94,6 +94,8 @@ const PHASE_TIMINGS = {
  */
 export class SplashScreen {
   private static hasPlayed = false;
+  private static activeOverlay: HTMLElement | null = null;
+  private static cancelPlayback: (() => void) | null = null;
 
   public static show(): Promise<void> {
     // Never replay during the same session (hot reloads, re-inits, etc).
@@ -131,6 +133,7 @@ export class SplashScreen {
     `;
 
     document.body.appendChild(overlay);
+    this.activeOverlay = overlay;
     this.rollText(overlay);
 
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
@@ -138,6 +141,22 @@ export class SplashScreen {
     }
 
     return this.play(overlay);
+  }
+
+  /**
+   * Removes the splash immediately (used when the first-run wizard should open
+   * without a boot animation). Safe to call when no splash is mounted.
+   */
+  public static isVisible(): boolean {
+    return this.activeOverlay !== null;
+  }
+
+  public static abort(): void {
+    const overlay = this.activeOverlay;
+    this.activeOverlay = null;
+    this.cancelPlayback?.();
+    this.cancelPlayback = null;
+    overlay?.remove();
   }
 
   private static play(overlay: HTMLElement): Promise<void> {
@@ -151,8 +170,19 @@ export class SplashScreen {
         overlay.classList.add('splash-exit');
         window.setTimeout(() => {
           overlay.remove();
+          if (this.activeOverlay === overlay) {
+            this.activeOverlay = null;
+            this.cancelPlayback = null;
+          }
           resolve();
         }, PHASE_TIMINGS.exit);
+      };
+
+      // Lets abort() stop the timeline without waiting for the exit animation.
+      this.cancelPlayback = () => {
+        finished = true;
+        skipped = true;
+        resolve();
       };
 
       const advance = async (delay: number, phase: number, status: string): Promise<boolean> => {
@@ -187,6 +217,10 @@ export class SplashScreen {
     overlay.classList.add('splash-exit');
     await wait(250);
     overlay.remove();
+    if (this.activeOverlay === overlay) {
+      this.activeOverlay = null;
+      this.cancelPlayback = null;
+    }
   }
 
   private static setPhase(overlay: HTMLElement, phase: number): void {

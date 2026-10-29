@@ -46,31 +46,65 @@ npm run app:dev
 
 ## 3) Building a packaged copy locally (Windows-first)
 
-The repository uses **electron-builder** to produce a Windows installer and a Windows portable executable.
+Voxel⁺ ships as a **portable Windows x64 executable** only. The NSIS installer is kept as an optional legacy target.
 
-### Portable `.exe` (no installer)
-
-```bash
-npm install
-npm run dist:portable
-```
-
-The packaged `.exe` will be placed in `dist-portable/`. This produces an unsigned, portable Windows x64 executable — no installer, no setup wizard. Portable user data is stored in a `portable/` folder next to the executable when the portable runtime exposes its executable directory.
-
-### NSIS installer (Windows)
+### Portable `.exe` (default, the only shipped target)
 
 ```bash
 npm install
 npm run dist
 ```
 
-This produces `dist-installer/VoxelPlus-Setup-1.1.1.exe`, a standard Windows NSIS installer.
+This produces two unsigned, portable artifacts in `dist-portable/`:
+
+| Artifact | Startup | Use it when |
+|---|---|---|
+| `VoxelPlus-Portable-<version>.exe` | Unpacks the bundled app to `%TEMP%` on every launch (single-file convenience) | You want one file to move around |
+| `VoxelPlus-<version>-x64.zip` | **Instant** — extract once, then double-click `VoxelPlus.exe` | You want the fastest possible startup |
+
+The single-file portable is an NSIS wrapper: it has to decompress the Electron runtime each time it is launched, which is inherent to the format. The zip contains the already-extracted portable folder, so subsequent launches only pay a normal Electron start. There is no installer and no setup wizard either way.
+
+- User data (instances, worlds, settings, VPacks, player profile) lives in a `portable/` folder next to `VoxelPlus.exe`, so moving or updating the app never moves the data.
+- Both artifacts are produced by the same `npm run dist` run.
+
+### Optional: NSIS installer (Windows)
+
+```bash
+npm install
+npm run dist:nsis
+```
+
+This produces `dist-installer/VoxelPlus-Setup-<version>.exe` for anyone who explicitly wants an installer.
 
 **Important notes**
 - Both commands compile TypeScript and build the Vite frontend before packaging.
 - Builds are unsigned. Windows Defender or SmartScreen may warn on first launch of unsigned executables.
+- The packaged app contains only `dist/`, `dist-electron/`, `vpacks/`, `templates/` and `logo.png` (no TypeScript sources or tests), which keeps the portable bundle smaller and faster to unpack.
 - The project is Windows-first. Linux/macOS builds are not officially supported unless you add platform-specific CI and packaging configuration.
 - Do not use `electron-packager` — the repository uses `electron-builder` for all packaging.
+
+---
+
+## Automatic updates
+
+On every start (about 1.5 seconds after the UI is ready) the launcher asks the
+GitHub Releases API for the latest published release and compares it with the
+running version.
+
+- **Optional updates** show a dismissible prompt with release notes, a download
+  progress bar and a *Later* button.
+- **Mandatory (forced) updates** are used only when a release is marked
+  `[mandatory]` / `[FORCE UPDATE]` / `<!-- voxelplus:mandatory -->`, when its
+  notes declare a `[min:1.2.0]` minimum version above the running build, or when
+  the release bumps the major version. The prompt cannot be dismissed, but you
+  can still quit or open the release page if a download fails.
+- Downloads come only from `github.com` / GitHub's release CDN over HTTPS and
+  are verified against the release asset's size and SHA-256 digest.
+- Installing replaces **only** `VoxelPlus.exe` (a `.old` backup is kept during
+  the swap). The `portable/` data folder, `instances/`, saved worlds, settings,
+  VPacks and the player profile are never read, moved or deleted by an update.
+
+You can also trigger a check manually from **Settings → About → Check for updates**.
 
 ---
 

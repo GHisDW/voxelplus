@@ -561,3 +561,52 @@ export interface ArcadeRewardResult {
   newAchievements: string[];
   transactionId: string | null;
 }
+
+// ─── Launcher updates ────────────────────────────────────────────────────────
+
+export interface UpdateAssetInfo {
+  name: string;
+  url: string;
+  /** Expected size in bytes (0 when the API does not report one). */
+  size: number;
+  /** Expected SHA-256 hex digest from the release asset metadata, if any. */
+  sha256: string | null;
+}
+
+export type UpdateCheckStatus = 'up-to-date' | 'available' | 'error';
+
+export interface UpdateInfo {
+  status: UpdateCheckStatus;
+  currentVersion: string;
+  latestVersion: string | null;
+  /** Forced update: the launcher must be updated before it can be used. */
+  mandatory: boolean;
+  releaseName: string | null;
+  releaseNotes: string | null;
+  releaseUrl: string | null;
+  asset: UpdateAssetInfo | null;
+  /** True when this build can download and swap its own executable. */
+  canAutoInstall: boolean;
+  portable: boolean;
+  checkedAt: string;
+  error?: string;
+}
+
+export interface UpdateProgressEvent {
+  received: number;
+  total: number;
+  percent: number;
+  fileName: string;
+}
+
+export interface UpdateInstallResult {
+  started: boolean;
+  reason?: string;
+}
+
+export interface UpdateRuntimeInfo {
+  version: string;
+  portable: boolean;
+  canAutoInstall: boolean;
+  platform: string;
+}

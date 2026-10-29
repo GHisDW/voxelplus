@@ -14,6 +14,8 @@ import { api } from './services/api';
 import { InstanceMetadata } from '../../electron/types';
 import { NotificationToast } from './components/NotificationToast';
 import { SplashScreen } from './components/SplashScreen';
+import { UpdatePrompt } from './components/UpdatePrompt';
+import { describeIpcError } from './services/errors';
 
 /** Minimal contract every routable page implements. */
 interface RenderablePage {
@@ -39,21 +41,36 @@ class VPlusApp {
   private renderToken = 0;
 
   public async init(): Promise<void> {
-    await ThemeService.initialize();
+    // Paint the splash before the first IPC round-trip: a warm launch shows the
+    // branding on frame one instead of an empty window.
+    const returningUser = readBootFlag();
+    if (returningUser) SplashScreen.show();
+
     const settings = await api.getAppSettings();
+
+    // Reuse the settings we just fetched instead of issuing a second IPC call.
+    ThemeService.initialize(settings.theme || 'dark');
 
     if (!settings.firstRunCompleted) {
       // First setup skips the boot animation and opens the wizard right away.
+      SplashScreen.abort();
       this.showOnboarding();
     } else {
-      // Play the startup splash while the launcher builds itself behind it, so
-      // the app is already there the moment the overlay fades out.
-      const splash = SplashScreen.show();
+      // The app builds itself behind the splash, so the fade reveals a ready UI.
+      if (!returningUser) SplashScreen.show();
       this.showMainApp();
-      await splash;
     }
+    writeBootFlag();
 
-    // Global listener for process notifications
+    // Listeners and the update check are not needed for the first frame; defer
+    // them so they cannot delay the splash or the initial page render.
+    runWhenIdle(() => {
+      this.attachGlobalListeners();
+      this.scheduleUpdateCheck();
+    });
+  }
+
+  private attachGlobalListeners(): void {
     api.onProcessStatus((e) => {
       if (e.status === 'RUNNING') {
         NotificationToast.show(`Minecraft development client is running.`, 'success');
@@ -62,7 +79,6 @@ class VPlusApp {
       }
     });
 
-    // Global listener for achievement unlocks
     api.onAchievementUnlocked((data) => {
       const { achievementName, rewardVP, isWinCondition } = data;
       if (isWinCondition) {
@@ -71,6 +87,34 @@ class VPlusApp {
         NotificationToast.show(`🎉 Achievement Unlocked: ${achievementName} (+${rewardVP} VP)`, 'success', 5000);
       }
     });
+  }
+
+  /** Delayed GitHub release check; failures stay silent on automatic checks. */
+  private scheduleUpdateCheck(attempt = 0): void {
+    window.setTimeout(() => {
+      // Never cover the boot splash with the update dialog.
+      if (SplashScreen.isVisible() && attempt < 12) {
+        this.scheduleUpdateCheck(attempt + 1);
+        return;
+      }
+      void this.checkForUpdates(false);
+    }, attempt === 0 ? 1500 : 800);
+  }
+
+  /** Manual or automatic update check. `force` reports "up to date"/errors. */
+  public async checkForUpdates(force: boolean): Promise<void> {
+    try {
+      const info = await api.checkForUpdates(force);
+      if (info.status === 'available') {
+        UpdatePrompt.show(info);
+      } else if (force && info.status === 'up-to-date') {
+        NotificationToast.show(`You are running the latest version (v${info.currentVersion}).`, 'success');
+      } else if (force && info.status === 'error') {
+        NotificationToast.show(info.error || 'Update check failed.', 'error');
+      }
+    } catch (error) {
+      if (force) NotificationToast.show(describeIpcError(error), 'error');
+    }
   }
 
   private showOnboarding(): void {
@@ -213,6 +257,38 @@ class VPlusApp {
     const handle = this.activePageHandle;
     this.activePageHandle = null;
     handle.destroy?.();
+  }
+}
+
+const BOOT_FLAG = 'voxelplus:booted';
+
+/** Remembers that the launcher has completed at least one boot on this machine. */
+function readBootFlag(): boolean {
+  try {
+    return window.localStorage.getItem(BOOT_FLAG) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeBootFlag(): void {
+  try {
+    window.localStorage.setItem(BOOT_FLAG, '1');
+  } catch {
+    // Storage can be unavailable in locked-down profiles; the splash simply
+    // renders one frame later in that case.
+  }
+}
+
+/** Runs non-visual startup work after the first paint. */
+function runWhenIdle(task: () => void): void {
+  const idle = (window as any).requestIdleCallback as
+    | ((cb: () => void, options?: { timeout: number }) => number)
+    | undefined;
+  if (typeof idle === 'function') {
+    idle(task, { timeout: 1200 });
+  } else {
+    window.setTimeout(task, 60);
   }
 }
 

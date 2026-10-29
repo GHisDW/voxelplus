@@ -3,6 +3,8 @@ import { api } from '../services/api';
 import { ThemeService } from '../services/themeService';
 import { JavaManagerModal } from '../components/JavaManagerModal';
 import { NotificationToast } from '../components/NotificationToast';
+import { UpdatePrompt } from '../components/UpdatePrompt';
+import { describeIpcError } from '../services/errors';
 import { getItemDataUrl } from '../assets/items';
 
 export interface SettingsPageEvents {
@@ -266,7 +268,10 @@ export class SettingsPage {
         <div style="text-align: center; padding: 20px 0;">
           <img src="logo.png" alt="Voxel+" style="width: 112px; height: 112px; border-radius: var(--radius-lg); margin-bottom: 12px; object-fit: cover; box-shadow: 0 4px 18px var(--accent-glow);" />
           <div style="font-size: 1.8rem; font-weight: 800; letter-spacing: -0.03em; color: var(--text-primary); margin-bottom: 4px;">Voxel+</div>
-          <div style="font-size: 0.88rem; font-weight: 700; color: var(--text-accent);">Version 1.0.0 (Windows x64)</div>
+          <div id="about-version" style="font-size: 0.88rem; font-weight: 700; color: var(--text-accent);">Version …</div>
+          <div style="margin-top: 14px;">
+            <button class="btn btn-secondary" id="btn-check-updates">Check for updates</button>
+          </div>
 
           <p style="color: var(--text-secondary); font-size: 0.9rem; margin: 16px auto; max-width: 440px; line-height: 1.6;">
             A modern, elegant Minecraft development launcher designed to make Fabric Loom and Gradle feel like a premium launcher.
@@ -293,6 +298,38 @@ export class SettingsPage {
           </div>
         </div>
       `;
+
+      const versionEl = div.querySelector('#about-version') as HTMLElement | null;
+      void api.getUpdateStatus().then((status) => {
+        if (versionEl) {
+          versionEl.textContent = `Version ${status.version} · ${status.portable ? 'Portable' : 'Installed'}`;
+        }
+      }).catch(() => {
+        if (versionEl) versionEl.textContent = 'Version unavailable';
+      });
+
+      const checkBtn = div.querySelector('#btn-check-updates') as HTMLButtonElement | null;
+      if (checkBtn) {
+        checkBtn.onclick = async () => {
+          checkBtn.disabled = true;
+          checkBtn.textContent = 'Checking…';
+          try {
+            const info = await api.checkForUpdates(true);
+            if (info.status === 'available') {
+              UpdatePrompt.show(info);
+            } else if (info.status === 'up-to-date') {
+              NotificationToast.show(`You are running the latest version (v${info.currentVersion}).`, 'success');
+            } else {
+              NotificationToast.show(info.error || 'Update check failed.', 'error');
+            }
+          } catch (error) {
+            NotificationToast.show(describeIpcError(error), 'error');
+          } finally {
+            checkBtn.disabled = false;
+            checkBtn.textContent = 'Check for updates';
+          }
+        };
+      }
     }
 
     return div;

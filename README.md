@@ -72,6 +72,9 @@ We'll continue monitoring Fabric and Loom development as Voxel⁺ grows, but use
 * 👤 Built-in Skin Manager
 * 💾 Persistent per-instance configuration
 * ⚙️ Automatic Minecraft development environment setup
+* 🔄 Automatic update checks against GitHub Releases (optional prompts, plus forced updates for releases marked `[mandatory]`, a raised `[min:...]` version, or a major bump)
+* 🛡️ Updates only ever replace `VoxelPlus.exe` — instances, worlds, settings and VPacks are never touched
+* 🚀 Portable-first packaging: `npm run dist` emits a single-file portable `.exe` **and** a pre-extracted zip that launches instantly; the boot animation is painted before any IPC round-trip
 
 > **Minecraft is better with mods. We don't make the rules. 😎**
 

@@ -27,7 +27,12 @@ import {
   StockerRunResult,
   StockerSaveData,
   CookieClickerSaveData,
-  ArcadeRewardResult
+  ArcadeRewardResult,
+  UpdateAssetInfo,
+  UpdateInfo,
+  UpdateInstallResult,
+  UpdateProgressEvent,
+  UpdateRuntimeInfo
 } from '../../../electron/types';
 
 // Access the contextBridge exposed API
@@ -87,6 +92,14 @@ export const api = {
   // Import / Export & VPack
   exportInstance: (instanceId: string, targetZipPath: string): Promise<boolean> => electronApi.exportInstance(instanceId, targetZipPath),
   importInstance: (zipPath: string, customName?: string): Promise<InstanceMetadata | null> => electronApi.importInstance(zipPath, customName),
+  // Launcher updates
+  getUpdateStatus: (): Promise<UpdateRuntimeInfo> => electronApi.getUpdateStatus(),
+  checkForUpdates: (force?: boolean): Promise<UpdateInfo> => electronApi.checkForUpdates(force),
+  downloadUpdate: (asset: UpdateAssetInfo): Promise<string> => electronApi.downloadUpdate(asset),
+  installUpdate: (): Promise<UpdateInstallResult> => electronApi.installUpdate(),
+  openReleasePage: (url?: string): Promise<boolean> => electronApi.openReleasePage(url),
+  quitApp: (): Promise<boolean> => electronApi.quitApp(),
+
   validateVPack: (zipPath: string): Promise<VPackValidationResult> => electronApi.validateVPack(zipPath),
   convertModpack: (inputPath: string, outputPath: string): Promise<{ success: boolean; outputPath?: string; physicalFilesCount: number; remoteFilesCount: number; unresolvedCount: number; error?: string }> => electronApi.convertModpack(inputPath, outputPath),
   listRepositoryVPacks: (): Promise<any[]> => electronApi.listRepositoryVPacks(),
@@ -117,6 +130,7 @@ export const api = {
   onLog: (callback: (entry: LogEntry) => void) => electronApi.onLog(callback),
   onProcessStatus: (callback: (event: ProcessStatusEvent) => void) => electronApi.onProcessStatus(callback),
   onDownloadProgress: (callback: (event: DownloadProgressEvent) => void) => electronApi.onDownloadProgress(callback),
-  onAchievementUnlocked: (callback: (data: { achievementName: string; rewardVP: number; isWinCondition: boolean }) => void) => electronApi.onAchievementUnlocked(callback)
+  onAchievementUnlocked: (callback: (data: { achievementName: string; rewardVP: number; isWinCondition: boolean }) => void) => electronApi.onAchievementUnlocked(callback),
+  onUpdateProgress: (callback: (event: UpdateProgressEvent) => void) => electronApi.onUpdateProgress(callback)
 };
 
