@@ -14,6 +14,7 @@ import { VPackManager } from '../vpack/vpackManager';
 import { ModrinthPackImporter } from '../vpack/modrinthPackImporter';
 import { CurseForgePackImporter } from '../vpack/curseForgePackImporter';
 import { LoaderRegistry } from './loaderProvider';
+import { AchievementEngine } from '../player/achievementEngine';
 
 export class InstanceManager {
   public static async listInstances(): Promise<InstanceMetadata[]> {
@@ -103,6 +104,15 @@ export class InstanceManager {
     }
 
     const metadata = await LoomProjectGenerator.generateProject(targetDir, payload);
+
+    // Track achievements
+    const engine = new AchievementEngine();
+    const allInstances = await InstanceManager.listInstances();
+    engine.trackProgress('first_instance', 1);
+    engine.trackProgress('instance_collector', allInstances.length, true);
+    engine.trackProgress('instance_master', allInstances.length, true);
+    engine.checkWinCondition();
+
     return metadata;
   }
 

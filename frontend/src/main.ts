@@ -44,6 +44,16 @@ class VPlusApp {
         NotificationToast.show(`Process exited with an error. Check logs for details.`, 'error');
       }
     });
+
+    // Global listener for achievement unlocks
+    api.onAchievementUnlocked((data) => {
+      const { achievementName, rewardVP, isWinCondition } = data;
+      if (isWinCondition) {
+        NotificationToast.show(`🏆 LEGENDARY: ${achievementName} - YOU HAVE COMPLETED ALL ACHIEVEMENTS!`, 'success', 8000);
+      } else {
+        NotificationToast.show(`🎉 Achievement Unlocked: ${achievementName} (+${rewardVP} VP)`, 'success', 5000);
+      }
+    });
   }
 
   private showOnboarding(): void {

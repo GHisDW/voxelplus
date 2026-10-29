@@ -115,6 +115,7 @@ export const api = {
   // Real-time Event Subscriptions
   onLog: (callback: (entry: LogEntry) => void) => electronApi.onLog(callback),
   onProcessStatus: (callback: (event: ProcessStatusEvent) => void) => electronApi.onProcessStatus(callback),
-  onDownloadProgress: (callback: (event: DownloadProgressEvent) => void) => electronApi.onDownloadProgress(callback)
+  onDownloadProgress: (callback: (event: DownloadProgressEvent) => void) => electronApi.onDownloadProgress(callback),
+  onAchievementUnlocked: (callback: (data: { achievementName: string; rewardVP: number; isWinCondition: boolean }) => void) => electronApi.onAchievementUnlocked(callback)
 };
 

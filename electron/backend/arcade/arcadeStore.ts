@@ -137,6 +137,12 @@ export class ArcadeStore {
     const r3 = this.achievementEngine.trackProgress('stocker_5000', run.score, true);
     if (r3.unlockedNow) newAchievements.push('stocker_5000');
 
+    const r4 = this.achievementEngine.trackProgress('stocker_marathon', this.stockerData.totalRuns, true);
+    if (r4.unlockedNow) newAchievements.push('stocker_marathon');
+
+    const r5 = this.achievementEngine.trackProgress('stocker_distance', this.stockerData.totalDistance, true);
+    if (r5.unlockedNow) newAchievements.push('stocker_distance');
+
     return {
       vpEarned,
       newAchievements,
@@ -167,6 +173,21 @@ export class ArcadeStore {
     if (data.lifetimeCookies >= 100000) {
       const c = this.achievementEngine.trackProgress('cookie_100000', data.lifetimeCookies, true);
       if (c.unlockedNow) newAchievements.push('cookie_100000');
+    }
+    if (data.lifetimeCookies >= 1000000) {
+      const d = this.achievementEngine.trackProgress('cookie_million', data.lifetimeCookies, true);
+      if (d.unlockedNow) newAchievements.push('cookie_million');
+    }
+    if (data.totalClicks >= 1000) {
+      const e = this.achievementEngine.trackProgress('cookie_clicker', data.totalClicks, true);
+      if (e.unlockedNow) newAchievements.push('cookie_clicker');
+    }
+
+    // Count total upgrades purchased
+    const totalUpgrades = Object.values(data.upgrades).reduce((sum, count) => sum + count, 0);
+    if (totalUpgrades >= 5) {
+      const f = this.achievementEngine.trackProgress('cookie_upgrader', totalUpgrades, true);
+      if (f.unlockedNow) newAchievements.push('cookie_upgrader');
     }
 
     // Award VP for every 5,000 lifetime cookies milestone

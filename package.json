@@ -26,12 +26,12 @@
     "dev": "vite",
     "electron:compile": "tsc -p electron/tsconfig.json",
     "build": "tsc -p electron/tsconfig.json && vite build",
-    "app:dev": "npm run electron:compile && concurrently -k -n VITE,ELECTRON -c cyan,magenta \"vite\" \"cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron . --enable-logging\"",
+    "app:dev": "npm.cmd run electron:compile && concurrently -k -n VITE,ELECTRON -c cyan,magenta \"vite\" \"cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron . --enable-logging\"",
     "start": "electron .",
     "test": "vitest run",
     "catalog:build": "node tools/generate-catalog-vpacks.mjs",
-    "dist": "npm run build && electron-builder --win --x64 --config.win.target=nsis --config.directories.output=dist-installer",
-    "dist:portable": "npm run build && electron-builder --win --x64 --config.win.target=portable --config.directories.output=dist-portable"
+    "dist": "npm.cmd run build && electron-builder --win --x64 --config.win.target=nsis --config.directories.output=dist-installer",
+    "dist:portable": "npm.cmd run build && electron-builder --win --x64 --config.win.target=portable --config.directories.output=dist-portable"
   },
   "dependencies": {
     "adm-zip": "^0.5.16"

@@ -128,6 +128,11 @@ const api = {
     const handler = (_: any, event: DownloadProgressEvent) => callback(event);
     ipcRenderer.on('event:downloadProgress', handler);
     return () => ipcRenderer.removeListener('event:downloadProgress', handler);
+  },
+  onAchievementUnlocked: (callback: (data: { achievementName: string; rewardVP: number; isWinCondition: boolean }) => void) => {
+    const handler = (_: any, data: { achievementName: string; rewardVP: number; isWinCondition: boolean }) => callback(data);
+    ipcRenderer.on('event:achievementUnlocked', handler);
+    return () => ipcRenderer.removeListener('event:achievementUnlocked', handler);
   }
 };
 

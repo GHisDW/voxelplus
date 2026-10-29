@@ -5,6 +5,7 @@ import { PathManager } from './backend/storage/paths';
 import { LogStreamer } from './backend/processes/logStreamer';
 import { ProcessManager } from './backend/processes/processManager';
 import { DownloadManager } from './backend/modrinth/downloader';
+import { setAchievementUnlockCallback } from './backend/player/achievementEngine';
 import { encodeVoxelIpcError } from './backend/diagnostics';
 import { VoxelErrorCategory } from './types';
 
@@ -196,6 +197,13 @@ function createWindow() {
   DownloadManager.onProgress((event) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('event:downloadProgress', event);
+    }
+  });
+
+  // Achievement unlock notifications
+  setAchievementUnlockCallback((data) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('event:achievementUnlocked', data);
     }
   });
 

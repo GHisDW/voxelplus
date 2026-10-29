@@ -233,7 +233,54 @@ export class CommandManager {
     title: string,
     type: 'mod' | 'resourcepack' | 'shader'
   ): Promise<{ success: boolean; filename: string; error?: string }> {
-    return DownloadManager.downloadToInstance(instanceId, fileUrl, filename, title, type);
+    const result = await DownloadManager.downloadToInstance(instanceId, fileUrl, filename, title, type);
+
+    if (result.success) {
+      const engine = new AchievementEngine();
+
+      if (type === 'mod') {
+        engine.trackProgress('first_mod', 1);
+
+        // Count total mods across all instances
+        const instances = await InstanceManager.listInstances();
+        let totalMods = 0;
+        for (const inst of instances) {
+          const instDir = await InstanceManager.getInstanceDir(inst.id);
+          if (instDir) {
+            const modsDir = require('node:path').join(instDir, 'mods');
+            const fs = require('node:fs');
+            if (fs.existsSync(modsDir)) {
+              totalMods += fs.readdirSync(modsDir).filter(f => f.endsWith('.jar')).length;
+            }
+          }
+        }
+        engine.trackProgress('mod_overload', totalMods, true);
+        engine.trackProgress('mod_master', totalMods, true);
+      } else if (type === 'resourcepack') {
+        engine.trackProgress('resource_packer', 1);
+      } else if (type === 'shader') {
+        engine.trackProgress('shader_enthusiast', 1);
+
+        // Count total shader packs
+        const instances = await InstanceManager.listInstances();
+        let totalShaders = 0;
+        for (const inst of instances) {
+          const instDir = await InstanceManager.getInstanceDir(inst.id);
+          if (instDir) {
+            const shaderDir = require('node:path').join(instDir, 'shaderpacks');
+            const fs = require('node:fs');
+            if (fs.existsSync(shaderDir)) {
+              totalShaders += fs.readdirSync(shaderDir).length;
+            }
+          }
+        }
+        engine.trackProgress('shader_master', totalShaders, true);
+      }
+
+      engine.checkWinCondition();
+    }
+
+    return result;
   }
 
   // Logs
@@ -253,7 +300,9 @@ export class CommandManager {
   public static async exportInstance(instanceId: string, targetZipPath: string): Promise<boolean> {
     const success = await InstanceManager.exportInstance(instanceId, targetZipPath);
     if (success) {
-      new AchievementEngine().trackProgress('vpack_export', 1);
+      const engine = new AchievementEngine();
+      engine.trackProgress('vpack_export', 1);
+      engine.checkWinCondition();
     }
     return success;
   }
@@ -261,7 +310,9 @@ export class CommandManager {
   public static async importInstance(zipPath: string, customName?: string): Promise<InstanceMetadata | null> {
     const meta = await InstanceManager.importInstance(zipPath, customName);
     if (meta) {
-      new AchievementEngine().trackProgress('vpack_import', 1);
+      const engine = new AchievementEngine();
+      engine.trackProgress('vpack_import', 1);
+      engine.checkWinCondition();
     }
     return meta;
   }
@@ -344,7 +395,9 @@ export class CommandManager {
     }
 
     store.recordVPackPurchase(packId, authoritativePrice);
-    new AchievementEngine(store).trackProgress('vpack_import', 1);
+    const engine = new AchievementEngine(store);
+    engine.trackProgress('vpack_import', 1);
+    engine.checkWinCondition();
     return { success: true, instance: meta };
   }
 
@@ -403,8 +456,11 @@ export class CommandManager {
     }
 
     store.grantCosmetic(cosmeticId, 'purchase');
-    new AchievementEngine(store).trackProgress('first_purchase', 1);
-    new AchievementEngine(store).trackProgress('fashion_icon', store.getOwnedCosmetics().length, true);
+    const engine = new AchievementEngine(store);
+    engine.trackProgress('first_purchase', 1);
+    engine.trackProgress('fashion_icon', store.getOwnedCosmetics().length, true);
+    engine.trackProgress('collector_elite', store.getOwnedCosmetics().length, true);
+    engine.checkWinCondition();
 
     return { success: true, wallet: tx.wallet };
   }

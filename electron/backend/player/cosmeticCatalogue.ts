@@ -4,7 +4,15 @@ export const COSMETIC_EFFECTS: CosmeticEffect[] = [
   { id: 'fx-sparkle', name: 'Nether Stardust Sparkle', family: 'glitter', cssClass: 'fx-sparkle' },
   { id: 'fx-rainbow', name: 'Prismatic Beacon Aura', family: 'rainbow', cssClass: 'fx-rainbow' },
   { id: 'fx-shine', name: 'Diamond Hyper Luster', family: 'shine', cssClass: 'fx-shine' },
-  { id: 'fx-enchant', name: 'Arcane Enchantment Glint', family: 'enchantment', cssClass: 'fx-enchant' }
+  { id: 'fx-enchant', name: 'Arcane Enchantment Glint', family: 'enchantment', cssClass: 'fx-enchant' },
+  { id: 'fx-fire', name: 'Blaze Fire Trail', family: 'fire', cssClass: 'fx-fire' },
+  { id: 'fx-ice', name: 'Frost Crystal Aura', family: 'ice', cssClass: 'fx-ice' },
+  { id: 'fx-poison', name: 'Witch Poison Cloud', family: 'poison', cssClass: 'fx-poison' },
+  { id: 'fx-ender', name: 'Enderman Teleport Dust', family: 'ender', cssClass: 'fx-ender' },
+  { id: 'fx-golden', name: 'Golden Apple Radiance', family: 'golden', cssClass: 'fx-golden' },
+  { id: 'fx-redstone', name: 'Redstone Pulse Energy', family: 'redstone', cssClass: 'fx-redstone' },
+  { id: 'fx-nether', name: 'Nether Portal Swirl', family: 'nether', cssClass: 'fx-nether' },
+  { id: 'fx-wither', name: 'Wither Skull Decay', family: 'wither', cssClass: 'fx-wither' }
 ];
 
 export const COSMETIC_CATALOGUE: CosmeticDefinition[] = [
@@ -30,7 +38,7 @@ export const COSMETIC_CATALOGUE: CosmeticDefinition[] = [
     artworkPath: 'minecraft:diamond',
     unlockCondition: null,
     price: 350,
-    supportedEffectIds: ['fx-sparkle', 'fx-rainbow', 'fx-shine'],
+    supportedEffectIds: ['fx-sparkle', 'fx-rainbow', 'fx-shine', 'fx-ice'],
     available: true
   },
   {
@@ -42,7 +50,7 @@ export const COSMETIC_CATALOGUE: CosmeticDefinition[] = [
     artworkPath: 'minecraft:amethyst_shard',
     unlockCondition: null,
     price: 250,
-    supportedEffectIds: ['fx-sparkle', 'fx-enchant'],
+    supportedEffectIds: ['fx-sparkle', 'fx-enchant', 'fx-ender'],
     available: true
   },
   {
@@ -54,7 +62,7 @@ export const COSMETIC_CATALOGUE: CosmeticDefinition[] = [
     artworkPath: 'minecraft:netherite_ingot',
     unlockCondition: null,
     price: 850,
-    supportedEffectIds: ['fx-enchant', 'fx-shine'],
+    supportedEffectIds: ['fx-enchant', 'fx-shine', 'fx-fire', 'fx-nether'],
     available: true
   },
   {
@@ -200,7 +208,7 @@ export const COSMETIC_CATALOGUE: CosmeticDefinition[] = [
     artworkPath: 'minecraft:netherite_sword',
     unlockCondition: null,
     price: 750,
-    supportedEffectIds: ['fx-enchant', 'fx-rainbow'],
+    supportedEffectIds: ['fx-enchant', 'fx-rainbow', 'fx-fire', 'fx-nether'],
     available: true
   },
   {
@@ -274,7 +282,7 @@ export const COSMETIC_CATALOGUE: CosmeticDefinition[] = [
     artworkPath: 'minecraft:nether_star',
     unlockCondition: null,
     price: 1200,
-    supportedEffectIds: ['fx-sparkle', 'fx-rainbow', 'fx-shine', 'fx-enchant'],
+    supportedEffectIds: ['fx-sparkle', 'fx-rainbow', 'fx-shine', 'fx-enchant', 'fx-wither', 'fx-golden'],
     available: true
   },
   {
@@ -298,7 +306,7 @@ export const COSMETIC_CATALOGUE: CosmeticDefinition[] = [
     artworkPath: 'minecraft:elytra',
     unlockCondition: null,
     price: 1500,
-    supportedEffectIds: ['fx-sparkle', 'fx-rainbow', 'fx-shine', 'fx-enchant'],
+    supportedEffectIds: ['fx-sparkle', 'fx-rainbow', 'fx-shine', 'fx-enchant', 'fx-ender'],
     available: true
   },
   {
@@ -322,7 +330,7 @@ export const COSMETIC_CATALOGUE: CosmeticDefinition[] = [
     artworkPath: 'minecraft:golden_apple',
     unlockCondition: null,
     price: 700,
-    supportedEffectIds: ['fx-enchant', 'fx-shine'],
+    supportedEffectIds: ['fx-enchant', 'fx-shine', 'fx-golden'],
     available: true
   },
   {

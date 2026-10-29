@@ -404,6 +404,12 @@ export interface AchievementDefinition {
   rewardCosmeticId?: string;
   /** Multi-stage: ordered list of sub-targets, each granting partial credit. */
   stages?: { target: number; rewardVP: number }[];
+  /** Hex color for achievement badge (e.g., '#6366f1') */
+  color?: string;
+  /** Badge shape: hexagon, diamond, shield, octagon, badge */
+  shape?: 'hexagon' | 'diamond' | 'shield' | 'octagon' | 'badge';
+  /** Whether this is a win condition (master achievement) */
+  isWinCondition?: boolean;
 }
 
 export interface AchievementProgress {
@@ -444,7 +450,7 @@ export interface CosmeticDefinition {
 export interface CosmeticEffect {
   id: string;
   name: string;
-  family: 'glitter' | 'rainbow' | 'shine' | 'enchantment';
+  family: 'glitter' | 'rainbow' | 'shine' | 'enchantment' | 'fire' | 'ice' | 'poison' | 'ender' | 'golden' | 'redstone' | 'nether' | 'wither';
   cssClass: string;
 }
 

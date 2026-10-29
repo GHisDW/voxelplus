@@ -1896,6 +1896,172 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
+/* Fire Effect - Blaze Trail */
+.fx-fire {
+  position: relative;
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.5), inset 0 0 12px rgba(249, 115, 22, 0.3) !important;
+  animation: fx-fire-flicker 0.15s ease-in-out infinite alternate;
+}
+
+@keyframes fx-fire-flicker {
+  0% {
+    box-shadow: 0 0 18px rgba(239, 68, 68, 0.4), inset 0 0 10px rgba(249, 115, 22, 0.25);
+    border-color: #ef4444;
+  }
+  100% {
+    box-shadow: 0 0 28px rgba(249, 115, 22, 0.7), inset 0 0 16px rgba(251, 146, 60, 0.5);
+    border-color: #f97316;
+  }
+}
+
+/* Ice Effect - Frost Crystal */
+.fx-ice {
+  position: relative;
+  border-color: #67e8f9 !important;
+  box-shadow: 0 0 22px rgba(103, 232, 249, 0.5), inset 0 0 14px rgba(165, 243, 252, 0.3) !important;
+  animation: fx-ice-crystal 3s ease-in-out infinite;
+}
+
+@keyframes fx-ice-crystal {
+  0%, 100% {
+    box-shadow: 0 0 18px rgba(103, 232, 249, 0.4), inset 0 0 10px rgba(165, 243, 252, 0.25);
+    border-color: #67e8f9;
+  }
+  50% {
+    box-shadow: 0 0 32px rgba(34, 211, 238, 0.7), inset 0 0 20px rgba(186, 230, 253, 0.5);
+    border-color: #22d3ee;
+  }
+}
+
+/* Poison Effect - Witch Cloud */
+.fx-poison {
+  position: relative;
+  border-color: #4ade80 !important;
+  box-shadow: 0 0 20px rgba(74, 222, 128, 0.4), inset 0 0 12px rgba(34, 197, 94, 0.3) !important;
+  animation: fx-poison-drip 2s ease-in-out infinite;
+}
+
+@keyframes fx-poison-drip {
+  0%, 100% {
+    box-shadow: 0 0 16px rgba(74, 222, 128, 0.35), inset 0 0 10px rgba(34, 197, 94, 0.25);
+    border-color: #4ade80;
+  }
+  50% {
+    box-shadow: 0 0 28px rgba(22, 163, 74, 0.6), inset 0 0 18px rgba(21, 128, 61, 0.45);
+    border-color: #22c55e;
+  }
+}
+
+/* Ender Effect - Teleport Dust */
+.fx-ender {
+  position: relative;
+  border-color: #a855f7 !important;
+  box-shadow: 0 0 24px rgba(168, 85, 247, 0.5), inset 0 0 16px rgba(147, 51, 234, 0.3) !important;
+  animation: fx-ender-teleport 2.5s ease-in-out infinite;
+}
+
+@keyframes fx-ender-teleport {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(168, 85, 247, 0.4), inset 0 0 12px rgba(147, 51, 234, 0.25);
+    border-color: #a855f7;
+    opacity: 1;
+  }
+  50% {
+    box-shadow: 0 0 36px rgba(124, 58, 237, 0.7), inset 0 0 24px rgba(109, 40, 217, 0.5);
+    border-color: #9333ea;
+    opacity: 0.85;
+  }
+}
+
+/* Golden Effect - Golden Apple */
+.fx-golden {
+  position: relative;
+  border-color: #fbbf24 !important;
+  box-shadow: 0 0 26px rgba(251, 191, 36, 0.6), inset 0 0 18px rgba(250, 204, 21, 0.4) !important;
+  animation: fx-golden-radiance 3s ease-in-out infinite alternate;
+}
+
+@keyframes fx-golden-radiance {
+  0% {
+    box-shadow: 0 0 20px rgba(251, 191, 36, 0.5), inset 0 0 14px rgba(250, 204, 21, 0.3);
+    border-color: #fbbf24;
+  }
+  100% {
+    box-shadow: 0 0 36px rgba(234, 179, 8, 0.8), inset 0 0 24px rgba(202, 138, 4, 0.6);
+    border-color: #eab308;
+  }
+}
+
+/* Redstone Effect - Pulse Energy */
+.fx-redstone {
+  position: relative;
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 22px rgba(239, 68, 68, 0.5), inset 0 0 14px rgba(220, 38, 38, 0.3) !important;
+  animation: fx-redstone-pulse 1s ease-in-out infinite;
+}
+
+@keyframes fx-redstone-pulse {
+  0%, 100% {
+    box-shadow: 0 0 18px rgba(239, 68, 68, 0.4), inset 0 0 10px rgba(220, 38, 38, 0.25);
+    border-color: #ef4444;
+  }
+  50% {
+    box-shadow: 0 0 32px rgba(185, 28, 28, 0.7), inset 0 0 20px rgba(153, 27, 27, 0.5);
+    border-color: #dc2626;
+  }
+}
+
+/* Nether Effect - Portal Swirl */
+.fx-nether {
+  position: relative;
+  border-color: #b91c1c !important;
+  box-shadow: 0 0 24px rgba(185, 28, 28, 0.5), inset 0 0 16px rgba(127, 29, 29, 0.3) !important;
+  animation: fx-nether-swirl 4s linear infinite;
+}
+
+@keyframes fx-nether-swirl {
+  0% {
+    box-shadow: 0 0 20px rgba(185, 28, 28, 0.4), inset 0 0 12px rgba(127, 29, 29, 0.25);
+    border-color: #b91c1c;
+  }
+  25% {
+    box-shadow: 0 0 28px rgba(153, 27, 27, 0.6), inset 0 0 18px rgba(69, 10, 10, 0.4);
+    border-color: #991b1b;
+  }
+  50% {
+    box-shadow: 0 0 32px rgba(185, 28, 28, 0.7), inset 0 0 22px rgba(127, 29, 29, 0.5);
+    border-color: #b91c1c;
+  }
+  75% {
+    box-shadow: 0 0 28px rgba(220, 38, 38, 0.6), inset 0 0 18px rgba(153, 27, 27, 0.4);
+    border-color: #dc2626;
+  }
+  100% {
+    box-shadow: 0 0 20px rgba(185, 28, 28, 0.4), inset 0 0 12px rgba(127, 29, 29, 0.25);
+    border-color: #b91c1c;
+  }
+}
+
+/* Wither Effect - Skull Decay */
+.fx-wither {
+  position: relative;
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 24px rgba(59, 130, 246, 0.5), inset 0 0 16px rgba(30, 64, 175, 0.3) !important;
+  animation: fx-wither-decay 3s ease-in-out infinite alternate;
+}
+
+@keyframes fx-wither-decay {
+  0% {
+    box-shadow: 0 0 18px rgba(59, 130, 246, 0.4), inset 0 0 12px rgba(30, 64, 175, 0.25);
+    border-color: #3b82f6;
+  }
+  100% {
+    box-shadow: 0 0 34px rgba(37, 99, 235, 0.7), inset 0 0 24px rgba(29, 78, 216, 0.5);
+    border-color: #2563eb;
+  }
+}
+
 /* 1UP / Fortnite-style Coin Badge */
 .voxel-coin-badge {
   display: inline-flex;
