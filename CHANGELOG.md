@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 * Integration with existing Fabric Loom and Gradle configurations
 * Improved error messages with specific Java version requirements
 * Consistent `JAVA_HOME` propagation across all processes
+* Discord-style startup splash with a blurred-grayscale to full-colour logo reveal and rotating funny splash texts (skipped on first-time setup)
 
 ### Changed
 

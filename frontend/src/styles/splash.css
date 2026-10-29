@@ -1,0 +1,357 @@
+/* ==========================================================================
+   Startup splash — Discord-style boot animation
+   Logo resolves blurred grayscale -> grayscale -> partial colour -> normal,
+   with a rolling funny splash text underneath, then the overlay fades out.
+   ========================================================================== */
+
+.splash-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(35, 44, 74, 0.55) 0%, rgba(8, 10, 17, 0) 58%),
+    linear-gradient(180deg, #080b12 0%, #07090f 55%, #05070c 100%);
+  color: #f8fafc;
+  cursor: pointer;
+  animation: splashFadeIn 0.4s ease both;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.splash-screen.splash-exit {
+  pointer-events: none;
+  animation: splashExit 0.55s cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
+/* Slow drifting light behind everything, keeps the void from feeling flat. */
+.splash-aura {
+  position: absolute;
+  inset: -20%;
+  background:
+    radial-gradient(circle at 30% 25%, rgba(99, 102, 241, 0.16), transparent 45%),
+    radial-gradient(circle at 72% 70%, rgba(6, 182, 212, 0.12), transparent 48%);
+  filter: blur(50px) grayscale(1);
+  opacity: 0.35;
+  transition: opacity 1s ease, filter 1s ease;
+  animation: splashAuraDrift 9s ease-in-out infinite alternate;
+}
+
+.splash-screen[data-phase="2"] .splash-aura {
+  opacity: 0.6;
+  filter: blur(50px) saturate(1.2);
+}
+
+.splash-screen[data-phase="3"] .splash-aura {
+  opacity: 0.85;
+  filter: blur(50px) saturate(1.4);
+}
+
+.splash-stage {
+  position: relative;
+  /* Exactly the logo frame: the mark itself is dead-centre in the window. */
+  display: grid;
+  place-items: center;
+  width: 260px;
+  height: 260px;
+  animation: splashRise 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Splash text + progress live in an overlay block pinned under the logo. */
+.splash-meta {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  white-space: nowrap;
+}
+
+/* ---------- Logo ---------- */
+
+.splash-logo-frame {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 260px;
+  height: 260px;
+}
+
+.splash-logo-glow {
+  position: absolute;
+  inset: 8%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.75) 0%, rgba(6, 182, 212, 0.35) 45%, transparent 72%);
+  filter: blur(22px) grayscale(1) saturate(0);
+  opacity: 0.12;
+  transition: opacity 0.9s ease, filter 0.9s ease;
+}
+
+.splash-screen[data-phase="1"] .splash-logo-glow {
+  opacity: 0.24;
+}
+
+.splash-screen[data-phase="2"] .splash-logo-glow {
+  opacity: 0.62;
+  filter: blur(24px) grayscale(0.35) saturate(1.3);
+}
+
+.splash-screen[data-phase="3"] .splash-logo-glow {
+  opacity: 1;
+  filter: blur(26px) saturate(1.5);
+  animation: splashGlowPulse 2.6s ease-in-out infinite;
+}
+
+.splash-logo-ring {
+  position: absolute;
+  inset: 14%;
+  border-radius: 40px;
+  border: 2px solid transparent;
+  opacity: 0;
+}
+
+.splash-screen[data-phase="3"] .splash-logo-ring {
+  animation: splashRingBurst 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.splash-logo {
+  position: relative;
+  width: 152px;
+  height: 152px;
+  object-fit: contain;
+  border-radius: 30px;
+  /* Phase 0: blurred, fully desaturated, a bit dim. */
+  filter: blur(24px) grayscale(1) brightness(0.6) contrast(1.15);
+  opacity: 0.3;
+  transform: scale(1.1);
+  transition:
+    filter 0.9s cubic-bezier(0.22, 0.61, 0.36, 1),
+    opacity 0.8s ease,
+    transform 0.9s cubic-bezier(0.22, 0.61, 0.36, 1);
+  will-change: filter, opacity, transform;
+}
+
+/* Phase 1: sharp, but still completely grayscale. */
+.splash-logo.splash-phase-1 {
+  filter: blur(0) grayscale(1) brightness(0.92) contrast(1.02);
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Phase 2: first hint of colour bleeding back in. */
+.splash-logo.splash-phase-2 {
+  filter: blur(0) grayscale(0.55) saturate(1.5) brightness(1);
+  opacity: 1;
+  transform: scale(1.03);
+}
+
+/* Phase 3: normal. */
+.splash-logo.splash-phase-3 {
+  filter: blur(0) grayscale(0) saturate(1) brightness(1) contrast(1);
+  opacity: 1;
+  transform: scale(1);
+  animation: splashLogoLand 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* ---------- Splash text ---------- */
+
+.splash-text-row {
+  margin-top: 4px;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: rotate(-7deg);
+}
+
+.splash-text {
+  display: inline-block;
+  font-family: var(--font-main, 'Outfit', sans-serif);
+  font-size: 1.4rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: #fde047;
+  text-align: center;
+  text-shadow:
+    0 2px 0 #a16207,
+    0 0 18px rgba(250, 204, 21, 0.45);
+  opacity: 0;
+  transform: scale(0.6);
+}
+
+.splash-text.splash-text-pop {
+  animation: splashTextPop 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+/* ---------- Progress + status ---------- */
+
+.splash-progress {
+  margin-top: 14px;
+  width: 220px;
+  height: 4px;
+  border-radius: var(--radius-pill, 9999px);
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.splash-progress-fill {
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 50%, #06b6d4 100%);
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.6);
+  animation: splashProgress 3.35s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.splash-status {
+  margin-top: 12px;
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+  transition: color 0.4s ease;
+}
+
+.splash-screen[data-phase="3"] .splash-status {
+  color: #818cf8;
+}
+
+.splash-footer {
+  position: absolute;
+  bottom: 26px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-size: 0.62rem;
+  letter-spacing: 0.4em;
+  color: rgba(148, 163, 184, 0.35);
+}
+
+.splash-skip-hint {
+  position: absolute;
+  bottom: 48px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  color: rgba(148, 163, 184, 0.22);
+  transition: color 0.3s ease;
+}
+
+.splash-screen:hover .splash-skip-hint {
+  color: rgba(148, 163, 184, 0.5);
+}
+
+
+
+/* ---------- Keyframes ---------- */
+
+@keyframes splashFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes splashExit {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.06);
+    filter: blur(6px);
+  }
+}
+
+@keyframes splashRise {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes splashAuraDrift {
+  0% { transform: translate3d(-1.5%, -1%, 0) scale(1); }
+  100% { transform: translate3d(1.5%, 1.5%, 0) scale(1.08); }
+}
+
+@keyframes splashGlowPulse {
+  0%, 100% { opacity: 0.85; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.06); }
+}
+
+@keyframes splashRingBurst {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.72);
+    border-color: rgba(129, 140, 248, 0.85);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.45);
+    border-color: rgba(6, 182, 212, 0);
+  }
+}
+
+@keyframes splashLogoLand {
+  0% { transform: scale(1.03); }
+  45% { transform: scale(0.97); }
+  100% { transform: scale(1); }
+}
+
+@keyframes splashTextPop {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.14);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes splashProgress {
+  0% { width: 0%; }
+  45% { width: 58%; }
+  75% { width: 84%; }
+  100% { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .splash-screen,
+  .splash-stage,
+  .splash-aura,
+  .splash-logo,
+  .splash-logo-glow,
+  .splash-progress-fill,
+  .splash-text.splash-text-pop {
+    animation: none !important;
+    transition-duration: 0.15s;
+  }
+
+  .splash-text.splash-text-pop {
+    opacity: 1;
+    transform: none;
+  }
+
+  .splash-progress-fill {
+    width: 100%;
+  }
+}

@@ -13,6 +13,7 @@ import { ThemeService } from './services/themeService';
 import { api } from './services/api';
 import { InstanceMetadata } from '../../electron/types';
 import { NotificationToast } from './components/NotificationToast';
+import { SplashScreen } from './components/SplashScreen';
 
 class VPlusApp {
   private activePage: PageId = 'instances';
@@ -31,9 +32,14 @@ class VPlusApp {
     const settings = await api.getAppSettings();
 
     if (!settings.firstRunCompleted) {
+      // First setup skips the boot animation and opens the wizard right away.
       this.showOnboarding();
     } else {
+      // Play the startup splash while the launcher builds itself behind it, so
+      // the app is already there the moment the overlay fades out.
+      const splash = SplashScreen.show();
       this.showMainApp();
+      await splash;
     }
 
     // Global listener for process notifications
