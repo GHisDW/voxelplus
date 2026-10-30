@@ -27,6 +27,10 @@
   animation: splashExit 0.55s cubic-bezier(0.4, 0, 1, 1) forwards;
 }
 
+.splash-screen.splash-exit .splash-logo {
+  animation: splashLogoExit 0.55s cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
 /* Slow drifting light behind everything, keeps the void from feeling flat. */
 .splash-aura {
   position: absolute;
@@ -38,6 +42,49 @@
   opacity: 0.35;
   transition: opacity 1s ease, filter 1s ease;
   animation: splashAuraDrift 9s ease-in-out infinite alternate;
+}
+
+/* Floating particles around the logo */
+.splash-particles {
+  position: absolute;
+  inset: -30%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.8s ease;
+}
+
+.splash-screen[data-phase="2"] .splash-particles {
+  opacity: 0.6;
+}
+
+.splash-screen[data-phase="3"] .splash-particles {
+  opacity: 1;
+}
+
+.splash-particles::before,
+.splash-particles::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  animation: splashParticleFloat 4s ease-in-out infinite;
+}
+
+.splash-particles::before {
+  width: 6px;
+  height: 6px;
+  background: rgba(99, 102, 241, 0.5);
+  top: 20%;
+  left: 25%;
+  animation-delay: 0s;
+}
+
+.splash-particles::after {
+  width: 4px;
+  height: 4px;
+  background: rgba(6, 182, 212, 0.5);
+  top: 70%;
+  right: 30%;
+  animation-delay: 2s;
 }
 
 .splash-screen[data-phase="2"] .splash-aura {
@@ -117,6 +164,26 @@
 
 .splash-screen[data-phase="3"] .splash-logo-ring {
   animation: splashRingBurst 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Additional pulsing aura around the logo */
+.splash-logo-aura {
+  position: absolute;
+  inset: 20%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, transparent 70%);
+  opacity: 0;
+  transition: opacity 0.8s ease;
+}
+
+.splash-screen[data-phase="2"] .splash-logo-aura {
+  opacity: 0.5;
+  animation: splashAuraPulse 2s ease-in-out infinite;
+}
+
+.splash-screen[data-phase="3"] .splash-logo-aura {
+  opacity: 0.8;
+  animation: splashAuraPulse 1.5s ease-in-out infinite;
 }
 
 .splash-logo {
@@ -334,12 +401,55 @@
   100% { width: 100%; }
 }
 
+@keyframes splashLogoExit {
+  0% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.28) rotate(360deg);
+    opacity: 0;
+  }
+}
+
+@keyframes splashParticleFloat {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.5;
+  }
+  25% {
+    transform: translate(20px, -30px) scale(1.2);
+    opacity: 0.8;
+  }
+  50% {
+    transform: translate(-15px, -50px) scale(0.9);
+    opacity: 0.6;
+  }
+  75% {
+    transform: translate(25px, -20px) scale(1.1);
+    opacity: 0.7;
+  }
+}
+
+@keyframes splashAuraPulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.9;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .splash-screen,
   .splash-stage,
   .splash-aura,
+  .splash-particles,
   .splash-logo,
   .splash-logo-glow,
+  .splash-logo-aura,
   .splash-progress-fill,
   .splash-text.splash-text-pop {
     animation: none !important;

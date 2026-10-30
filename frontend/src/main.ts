@@ -44,7 +44,7 @@ class VPlusApp {
     // Paint the splash before the first IPC round-trip: a warm launch shows the
     // branding on frame one instead of an empty window.
     const returningUser = readBootFlag();
-    if (returningUser) SplashScreen.show();
+    if (returningUser) SplashScreen.show(() => this.triggerSidebarAnimation());
 
     const settings = await api.getAppSettings();
 
@@ -57,7 +57,7 @@ class VPlusApp {
       this.showOnboarding();
     } else {
       // The app builds itself behind the splash, so the fade reveals a ready UI.
-      if (!returningUser) SplashScreen.show();
+      if (!returningUser) SplashScreen.show(() => this.triggerSidebarAnimation());
       this.showMainApp();
     }
     writeBootFlag();
@@ -87,6 +87,21 @@ class VPlusApp {
         NotificationToast.show(`🎉 Achievement Unlocked: ${achievementName} (+${rewardVP} VP)`, 'success', 5000);
       }
     });
+  }
+
+  private triggerSidebarAnimation(): void {
+    const sidebarLogo = document.querySelector('.sidebar-logo');
+    const sidebarText = document.querySelector('.sidebar-brand-text');
+    if (sidebarLogo) {
+      (sidebarLogo as HTMLElement).style.animation = 'none';
+      void (sidebarLogo as HTMLElement).offsetWidth;
+      (sidebarLogo as HTMLElement).style.animation = '';
+    }
+    if (sidebarText) {
+      (sidebarText as HTMLElement).style.animation = 'none';
+      void (sidebarText as HTMLElement).offsetWidth;
+      (sidebarText as HTMLElement).style.animation = '';
+    }
   }
 
   /** Delayed GitHub release check; failures stay silent on automatic checks. */

@@ -96,13 +96,16 @@ export class SplashScreen {
   private static hasPlayed = false;
   private static activeOverlay: HTMLElement | null = null;
   private static cancelPlayback: (() => void) | null = null;
+  private static onSplashComplete: (() => void) | null = null;
 
-  public static show(): Promise<void> {
+  public static show(onComplete?: () => void): Promise<void> {
     // Never replay during the same session (hot reloads, re-inits, etc).
     if (this.hasPlayed || typeof document === 'undefined') {
+      onComplete?.();
       return Promise.resolve();
     }
     this.hasPlayed = true;
+    this.onSplashComplete = onComplete || null;
 
     const overlay = document.createElement('div');
     overlay.className = 'splash-screen';
@@ -112,10 +115,12 @@ export class SplashScreen {
     overlay.dataset.phase = '0';
     overlay.innerHTML = `
       <div class="splash-aura" aria-hidden="true"></div>
+      <div class="splash-particles" aria-hidden="true"></div>
       <div class="splash-stage">
         <div class="splash-logo-frame">
           <div class="splash-logo-glow" aria-hidden="true"></div>
           <div class="splash-logo-ring" aria-hidden="true"></div>
+          <div class="splash-logo-aura" aria-hidden="true"></div>
           <img class="splash-logo" src="logo.png" alt="Voxel+" draggable="false" />
         </div>
         <div class="splash-meta">
@@ -174,6 +179,8 @@ export class SplashScreen {
             this.activeOverlay = null;
             this.cancelPlayback = null;
           }
+          this.onSplashComplete?.();
+          this.onSplashComplete = null;
           resolve();
         }, PHASE_TIMINGS.exit);
       };
