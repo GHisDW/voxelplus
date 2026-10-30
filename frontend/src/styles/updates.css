@@ -15,9 +15,17 @@
   animation: updateOverlayIn 0.25s ease both;
 }
 
+body.theme-light .update-overlay {
+  background: rgba(0, 0, 0, 0.4);
+}
+
 .update-overlay[data-mandatory="true"] {
   background: rgba(4, 6, 12, 0.9);
   cursor: not-allowed;
+}
+
+body.theme-light .update-overlay[data-mandatory="true"] {
+  background: rgba(0, 0, 0, 0.6);
 }
 
 .update-card {

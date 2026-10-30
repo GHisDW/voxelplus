@@ -22,6 +22,13 @@
   user-select: none;
 }
 
+body.theme-light .splash-screen {
+  background:
+    radial-gradient(circle at 50% 42%, rgba(99, 102, 241, 0.15) 0%, rgba(248, 250, 252, 0) 58%),
+    linear-gradient(180deg, #f8fafc 0%, #f1f5f9 55%, #e2e8f0 100%);
+  color: #1e293b;
+}
+
 .splash-screen.splash-exit {
   pointer-events: none;
   animation: splashExit 0.55s cubic-bezier(0.4, 0, 1, 1) forwards;
