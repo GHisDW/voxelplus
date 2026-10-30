@@ -51,7 +51,7 @@ export const api = {
   // Java
   scanJava: (): Promise<JavaRuntime[]> => electronApi.scanJava(),
   testJava: (path: string): Promise<JavaRuntime | null> => electronApi.testJava(path),
-  installJava: (version: 21 | 17 = 21): Promise<{ success: boolean; runtime?: JavaRuntime; error?: string }> => electronApi.installJava(version),
+  installJava: (version: 8 | 17 | 21 | 25 = 21): Promise<{ success: boolean; runtime?: JavaRuntime; error?: string }> => electronApi.installJava(version),
 
   // Instances
   listInstances: (): Promise<InstanceMetadata[]> => electronApi.listInstances(),

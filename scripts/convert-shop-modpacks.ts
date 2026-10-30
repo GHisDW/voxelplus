@@ -11,28 +11,20 @@ const SHOP_OUTPUT_DIR = path.join(process.cwd(), 'vpacks');
 
 const SHOP_PACKS = [
   {
-    input: 'Fresh-Smooth-26.3.mrpack',
-    output: 'Fresh-Smooth-26.3.vpack',
-    name: 'Fresh & Smooth 26.3',
-    description: 'Optimization modpack for Minecraft 26.3. Reduces lag and improves FPS with carefully tuned performance mods.',
-    price: 250,
-    author: 'Modrinth Community'
+    input: 'Cobblemon Official Modpack [Fabric] 1.8.4.mrpack',
+    output: 'Cobblemon-Official-1.8.4.vpack',
+    name: 'Cobblemon Official Modpack 1.8.4',
+    description: 'This modpack is copied from the official Cobblemon modpack. Features a complete Pokémon experience in Minecraft with Fabric loader. Includes all necessary mods, configs, and resources for the full Cobblemon gameplay.',
+    price: 400,
+    author: 'Cobblemon Team (Original) + Voxel+ (Converted)'
   },
   {
-    input: 'Cobblemon-Fabric-1.3.2.mrpack',
-    output: 'Cobblemon-1.3.2.vpack',
-    name: 'Cobblemon Official Modpack',
-    description: 'Official Cobblemon modpack for Fabric. Includes all necessary mods for a complete Pokémon experience in Minecraft.',
-    price: 350,
-    author: 'Cobblemon Team'
-  },
-  {
-    input: 'Fabulously-Optimized-v15.mrpack',
-    output: 'Fabulously-Optimized-v15.vpack',
-    name: 'Fabulously Optimimized v15',
-    description: 'Ultimate optimization modpack. Combines the best performance mods for maximum FPS and smooth gameplay.',
+    input: 'Zombie Invade 100 Days 2.3.mrpack',
+    output: 'Zombie-Invade-100-Days-2.3.vpack',
+    name: 'Zombie Invade 100 Days 2.3',
+    description: 'This modpack is copied from the Zombie Invade 100 Days modpack. A challenging survival experience with zombie-themed gameplay, custom structures, and immersive mechanics. Converted for Voxel+ launcher.',
     price: 300,
-    author: 'Modrinth Community'
+    author: 'Original Creator + Voxel+ (Converted)'
   }
 ];
 
@@ -73,10 +65,29 @@ async function convertShopPacks() {
           result.manifest.price = pack.price;
           result.manifest.shareSource = 'shop';
 
-          // Re-write the VPack with updated manifest
+          // Create voxel-instance.json metadata
+          const metadata = {
+            schemaVersion: 1,
+            id: result.manifest.packId,
+            name: pack.name,
+            description: pack.description,
+            minecraft: result.manifest.minecraft,
+            loader: result.manifest.loader,
+            runtime: { java: 'auto', memoryMb: 4096 },
+            appearance: { artwork: result.manifest.artwork, item: result.manifest.item },
+            isFavorite: false,
+            createdAt: new Date().toISOString(),
+            lastPlayedAt: null,
+            status: 'READY',
+            shareSource: 'shop',
+            isVPack: true
+          };
+
+          // Re-write the VPack with updated manifest and metadata
           const AdmZip = await import('adm-zip');
           const zip = new AdmZip.default(outputPath);
           zip.addFile('manifest.json', Buffer.from(JSON.stringify(result.manifest, null, 2), 'utf-8'));
+          zip.addFile('voxel-instance.json', Buffer.from(JSON.stringify(metadata, null, 2), 'utf-8'));
           zip.writeZip(outputPath);
 
           console.log(`  ✓ Updated shop metadata`);

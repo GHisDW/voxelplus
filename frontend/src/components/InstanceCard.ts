@@ -4,6 +4,7 @@ import { getArtworkStyle } from '../assets/artworks';
 import { getItemDataUrl } from '../assets/items';
 import { ConfirmDialog } from './ConfirmDialog';
 import { NotificationToast } from './NotificationToast';
+import { JavaManagerModal } from './JavaManagerModal';
 import { describeIpcError } from '../services/errors';
 import { escapeHtml } from '../utils/html';
 
@@ -195,7 +196,23 @@ export class InstanceCard {
           } else {
             playBtn.disabled = false;
             playBtn.innerHTML = '▶ PLAY';
-            NotificationToast.show(`Launch failed: ${res.message}`, 'error');
+
+            if (res.requiresJavaInstall && res.recommendedJavaVersion) {
+              const confirmed = await ConfirmDialog.show({
+                title: 'Java Version Required',
+                message: `This instance requires Java ${res.recommendedJavaVersion} to run. Would you like to install it now?`,
+                confirmText: 'Install Java',
+                isDanger: false
+              });
+
+              if (confirmed) {
+                JavaManagerModal.show();
+              } else {
+                NotificationToast.show(res.message, 'error');
+              }
+            } else {
+              NotificationToast.show(`Launch failed: ${res.message}`, 'error');
+            }
           }
         } catch (err: any) {
           playBtn.disabled = false;

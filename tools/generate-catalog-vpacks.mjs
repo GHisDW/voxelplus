@@ -8,6 +8,28 @@ const outputDir = path.join(root, 'vpacks');
 
 const catalog = [
   {
+    slug: 'cobblemon-official-1.8.4',
+    sourceFile: 'Cobblemon-Official-1.8.4.vpack',
+    packId: 'voxelplus-cobblemon-official',
+    name: 'Cobblemon Official Modpack 1.8.4',
+    description: 'This modpack is copied from the official Cobblemon modpack. Features a complete Pokémon experience in Minecraft with Fabric loader. Includes all necessary mods, configs, and resources for the full Cobblemon gameplay.',
+    author: 'Cobblemon Team (Original) + Voxel+ (Converted)',
+    item: 'minecraft:ender_pearl',
+    artwork: 'preset:ocean_depths',
+    price: 400
+  },
+  {
+    slug: 'zombie-invade-100-days-2.3',
+    sourceFile: 'Zombie-Invade-100-Days-2.3.vpack',
+    packId: 'voxelplus-zombie-invade',
+    name: 'Zombie Invade 100 Days 2.3',
+    description: 'This modpack is copied from the Zombie Invade 100 Days modpack. A challenging survival experience with zombie-themed gameplay, custom structures, and immersive mechanics. Converted for Voxel+ launcher.',
+    author: 'Original Creator + Voxel+ (Converted)',
+    item: 'minecraft:rotten_flesh',
+    artwork: 'preset:nether_wastes',
+    price: 300
+  },
+  {
     slug: 'fabulously-optimized-voxelplus',
     sourceFile: 'fabulously-optimized.mrpack',
     packId: 'voxelplus-fabulously-optimized',
@@ -65,6 +87,52 @@ for (const file of fs.readdirSync(outputDir)) {
 }
 
 for (const item of catalog) {
+  const outputPath = path.join(outputDir, `${item.slug}.vpack`);
+
+  // Check if source is already a vpack (converted locally)
+  if (item.sourceFile.endsWith('.vpack')) {
+    const localVpackPath = path.join(researchDir, item.sourceFile);
+    if (fs.existsSync(localVpackPath)) {
+      // Copy and update existing vpack
+      const sourceZip = new AdmZip(localVpackPath);
+      let manifest;
+      try {
+        manifest = JSON.parse(sourceZip.readAsText('manifest.json'));
+      } catch (e) {
+        console.error(`Failed to parse manifest from ${localVpackPath}:`, e);
+        continue;
+      }
+
+      // Update metadata
+      manifest.description = item.description;
+      manifest.author = item.author;
+      manifest.artwork = item.artwork;
+      manifest.item = item.item;
+      manifest.price = item.price;
+      manifest.shareSource = 'voxelplus-catalog';
+
+      // Update instance metadata
+      let metadata;
+      try {
+        metadata = JSON.parse(sourceZip.readAsText('voxel-instance.json'));
+      } catch (e) {
+        console.error(`Failed to parse voxel-instance.json from ${localVpackPath}:`, e);
+        continue;
+      }
+      metadata.description = item.description;
+      metadata.appearance.artwork = item.artwork;
+      metadata.appearance.item = item.item;
+      metadata.shareSource = 'voxelplus-catalog';
+
+      sourceZip.addFile('manifest.json', Buffer.from(JSON.stringify(manifest, null, 2)));
+      sourceZip.addFile('voxel-instance.json', Buffer.from(JSON.stringify(metadata, null, 2)));
+      sourceZip.writeZip(outputPath);
+      console.log(`${item.name}: updated from existing vpack -> ${item.slug}.vpack`);
+      continue;
+    }
+  }
+
+  // Original logic for mrpack conversion
   const localSourcePath = path.join(researchDir, item.sourceFile);
   const source = fs.existsSync(localSourcePath)
     ? new AdmZip(localSourcePath)
@@ -135,6 +203,6 @@ for (const item of catalog) {
 
   archive.addFile('manifest.json', Buffer.from(JSON.stringify(manifest, null, 2)));
   archive.addFile('voxel-instance.json', Buffer.from(JSON.stringify(metadata, null, 2)));
-  archive.writeZip(path.join(outputDir, `${item.slug}.vpack`));
+  archive.writeZip(outputPath);
   console.log(`${item.name}: ${content.length} entries -> ${item.slug}.vpack`);
 }

@@ -49,7 +49,7 @@ const api = {
   // Java
   scanJava: (): Promise<JavaRuntime[]> => ipcRenderer.invoke('java:scan'),
   testJava: (path: string): Promise<JavaRuntime | null> => ipcRenderer.invoke('java:test', path),
-  installJava: (version: 21 | 17): Promise<{ success: boolean; runtime?: JavaRuntime; error?: string }> => ipcRenderer.invoke('java:install', version),
+  installJava: (version: 8 | 17 | 21 | 25): Promise<{ success: boolean; runtime?: JavaRuntime; error?: string }> => ipcRenderer.invoke('java:install', version),
 
   // Instances
   listInstances: (): Promise<InstanceMetadata[]> => ipcRenderer.invoke('instance:list'),

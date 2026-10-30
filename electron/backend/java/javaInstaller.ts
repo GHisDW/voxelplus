@@ -5,13 +5,20 @@ import { VoxelError } from '../diagnostics';
 
 export class JavaInstaller {
   /**
-   * Installs a Java version (e.g. 21 or 17) using winget.
+   * Installs a Java version (8, 17, 21, or 25) using winget.
    */
   public static async installJava(
-    version: 21 | 17 = 21,
+    version: 8 | 17 | 21 | 25 = 21,
     onProgress?: (status: string, percentage: number) => void
   ): Promise<{ success: boolean; runtime?: JavaRuntime; error?: string }> {
-    const packageId = version === 21 ? 'EclipseAdoptium.Temurin.21.JDK' : 'EclipseAdoptium.Temurin.17.JDK';
+    const packageMap: Record<number, string> = {
+      8: 'EclipseAdoptium.Temurin.8.JDK',
+      17: 'EclipseAdoptium.Temurin.17.JDK',
+      21: 'EclipseAdoptium.Temurin.21.JDK',
+      25: 'EclipseAdoptium.Temurin.25.JDK'
+    };
+
+    const packageId = packageMap[version] || packageMap[21];
 
     onProgress?.(`Starting installation of Eclipse Temurin ${version} JDK...`, 10);
 

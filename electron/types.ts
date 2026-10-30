@@ -319,6 +319,8 @@ export interface LaunchResult {
   pid?: number;
   message?: string;
   errorDetails?: string;
+  requiresJavaInstall?: boolean;
+  recommendedJavaVersion?: number;
 }
 
 export interface DownloadProgressEvent {

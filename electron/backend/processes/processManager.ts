@@ -72,23 +72,15 @@ export class ProcessManager {
 
     if (!resolvedEnv.isCompatible || !resolvedEnv.javaRuntime) {
       const recommended = resolvedEnv.compatibility?.java?.recommended ?? 'compatible';
-      const error = new VoxelError({
-        title: 'Minecraft Launch Failed',
-        message: `No compatible Java runtime was found for Minecraft ${metadata.minecraft.version}.`,
-        cause: 'The selected Java runtime is incompatible with this Minecraft version, or no Java runtime was detected.',
-        suggestedAction: `Install Java ${recommended} LTS (Java Manager or Adoptium) and launch again.`,
-        code: 'JAVA_VERSION_MISMATCH',
-        category: 'JAVA',
-        severity: 'ERROR',
-        details: `Minecraft version: ${metadata.minecraft.version}; recommended Java: ${recommended}; configured runtime: ${metadata.runtime.java}`
-      });
-      this.updateStatus(instanceId, 'ERROR', undefined, null, error.message);
-      error.log(instanceId, metadata.name);
+      const recommendedVersion = typeof recommended === 'number' ? recommended : parseInt(String(recommended)) || 21;
+
       return {
         success: false,
         instanceId,
-        message: `${error.message} ${error.suggestedAction ?? ''}`.trim(),
-        errorDetails: error.technicalDetails
+        message: `No compatible Java runtime was found for Minecraft ${metadata.minecraft.version}.`,
+        errorDetails: `Minecraft version: ${metadata.minecraft.version}; recommended Java: ${recommended}; configured runtime: ${metadata.runtime.java}`,
+        requiresJavaInstall: true,
+        recommendedJavaVersion: recommendedVersion
       };
     }
 

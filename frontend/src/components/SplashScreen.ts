@@ -77,11 +77,11 @@ export const SPLASH_TEXTS: readonly string[] = [
 
 const PHASE_TIMINGS = {
   /** Blurred grayscale is already on screen when the overlay mounts. */
-  grayscale: 850,
-  color: 850,
-  normal: 850,
-  hold: 650,
-  exit: 550
+  grayscale: 1500,
+  color: 1500,
+  normal: 1500,
+  hold: 1200,
+  exit: 700
 } as const;
 
 /**

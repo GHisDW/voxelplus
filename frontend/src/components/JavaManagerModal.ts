@@ -29,7 +29,10 @@ export class JavaManagerModal {
             </span>
             <div style="display: flex; gap: 8px;">
               <button class="btn btn-secondary" id="btn-rescan-java">🔄 Rescan</button>
-              <button class="btn btn-primary" id="btn-install-java-21">☕ Install Java 21 LTS</button>
+              <button class="btn btn-secondary" id="btn-install-java-8">☕ Java 8</button>
+              <button class="btn btn-secondary" id="btn-install-java-17">☕ Java 17</button>
+              <button class="btn btn-primary" id="btn-install-java-21">☕ Java 21 LTS</button>
+              <button class="btn btn-secondary" id="btn-install-java-25">☕ Java 25</button>
             </div>
           </div>
 
@@ -128,8 +131,8 @@ export class JavaManagerModal {
         await render();
       };
 
-      const installBtn = overlay.querySelector('#btn-install-java-21') as HTMLButtonElement;
-      installBtn.onclick = async () => {
+      const installHandler = async (version: number, btnId: string) => {
+        const installBtn = overlay.querySelector(btnId) as HTMLButtonElement;
         installBtn.disabled = true;
         const progressBox = overlay.querySelector('#java-install-progress') as HTMLElement;
         const statusText = overlay.querySelector('#install-status-text') as HTMLElement;
@@ -137,13 +140,13 @@ export class JavaManagerModal {
         const progressBar = overlay.querySelector('#install-progress-bar') as HTMLElement;
 
         progressBox.style.display = 'block';
-        statusText.textContent = 'Initiating Java 21 JDK installation...';
+        statusText.textContent = `Initiating Java ${version} JDK installation...`;
         statusPercent.textContent = '10%';
         progressBar.style.width = '10%';
 
-        const result = await api.installJava(21);
+        const result = await api.installJava(version);
         if (result.success) {
-          NotificationToast.show('Java 21 LTS installed and verified!', 'success');
+          NotificationToast.show(`Java ${version} installed and verified!`, 'success');
           await render();
         } else {
           NotificationToast.show(`Installation failed: ${result.error}`, 'error');
@@ -151,6 +154,11 @@ export class JavaManagerModal {
           installBtn.disabled = false;
         }
       };
+
+      (overlay.querySelector('#btn-install-java-8') as HTMLElement).onclick = () => installHandler(8, '#btn-install-java-8');
+      (overlay.querySelector('#btn-install-java-17') as HTMLElement).onclick = () => installHandler(17, '#btn-install-java-17');
+      (overlay.querySelector('#btn-install-java-21') as HTMLElement).onclick = () => installHandler(21, '#btn-install-java-21');
+      (overlay.querySelector('#btn-install-java-25') as HTMLElement).onclick = () => installHandler(25, '#btn-install-java-25');
     };
 
     document.body.appendChild(overlay);
