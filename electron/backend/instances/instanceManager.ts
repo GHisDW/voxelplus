@@ -327,8 +327,7 @@ export class InstanceManager {
           loaderType: (mrpackRes.metadata.loader?.type as any) || 'fabric',
           loaderVersion: mrpackRes.metadata.loader?.version,
           javaRuntime: 'auto',
-          minMemory: 2048,
-          maxMemory: 4096
+          memoryMb: 4096
         });
         fs.renameSync(tempDir, finalTargetDir);
         scaffolded.instancePath = finalTargetDir;
@@ -351,8 +350,7 @@ export class InstanceManager {
           loaderType: (cfRes.metadata.loader?.type as any) || 'fabric',
           loaderVersion: cfRes.metadata.loader?.version,
           javaRuntime: 'auto',
-          minMemory: 2048,
-          maxMemory: 4096
+          memoryMb: 4096
         });
         fs.renameSync(tempDir, finalTargetDir);
         scaffolded.instancePath = finalTargetDir;
