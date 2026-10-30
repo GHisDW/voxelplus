@@ -30,10 +30,13 @@ export class JavaManagerModal {
             </span>
             <div style="display: flex; gap: 8px;">
               <button class="btn btn-secondary" id="btn-rescan-java">🔄 Rescan</button>
-              <button class="btn btn-secondary" id="btn-install-java-8">☕ Java 8</button>
-              <button class="btn btn-secondary" id="btn-install-java-17">☕ Java 17</button>
-              <button class="btn btn-primary" id="btn-install-java-21">☕ Java 21 LTS</button>
-              <button class="btn btn-secondary" id="btn-install-java-25">☕ Java 25</button>
+              <select class="select-field" id="java-install-select" style="padding: 8px 12px;">
+                <option value="">☕ Install Java...</option>
+                <option value="8">Java 8 (Legacy)</option>
+                <option value="17">Java 17</option>
+                <option value="21">Java 21 LTS (Recommended)</option>
+                <option value="25">Java 25</option>
+              </select>
             </div>
           </div>
 
@@ -132,9 +135,12 @@ export class JavaManagerModal {
         await render();
       };
 
-      const installHandler = async (version: number, btnId: string) => {
-        const installBtn = overlay.querySelector(btnId) as HTMLButtonElement;
-        installBtn.disabled = true;
+      const installSelect = overlay.querySelector('#java-install-select') as HTMLSelectElement;
+      installSelect.onchange = async () => {
+        const version = parseInt(installSelect.value);
+        if (!version) return;
+
+        installSelect.disabled = true;
         const progressBox = overlay.querySelector('#java-install-progress') as HTMLElement;
         const statusText = overlay.querySelector('#install-status-text') as HTMLElement;
         const statusPercent = overlay.querySelector('#install-status-percent') as HTMLElement;
@@ -152,14 +158,9 @@ export class JavaManagerModal {
         } else {
           NotificationToast.show(`Installation failed: ${result.error}`, 'error');
           progressBox.style.display = 'none';
-          installBtn.disabled = false;
+          installSelect.disabled = false;
         }
       };
-
-      (overlay.querySelector('#btn-install-java-8') as HTMLElement).onclick = () => installHandler(8, '#btn-install-java-8');
-      (overlay.querySelector('#btn-install-java-17') as HTMLElement).onclick = () => installHandler(17, '#btn-install-java-17');
-      (overlay.querySelector('#btn-install-java-21') as HTMLElement).onclick = () => installHandler(21, '#btn-install-java-21');
-      (overlay.querySelector('#btn-install-java-25') as HTMLElement).onclick = () => installHandler(25, '#btn-install-java-25');
     };
 
     document.body.appendChild(overlay);

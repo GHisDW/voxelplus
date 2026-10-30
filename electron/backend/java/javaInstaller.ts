@@ -57,10 +57,30 @@ export class JavaInstaller {
           const runtimes = await JavaDetector.scanSystemJava();
           const target = runtimes.find(r => r.majorVersion === version);
 
+          // CRITICAL: Verify the requested version was actually installed
+          if (!target) {
+            const error = new VoxelError({
+              title: 'Java Installation Verification Failed',
+              message: `Eclipse Temurin ${version} installation completed, but the runtime was not found on the system.`,
+              cause: 'winget reported success but the Java binary is not accessible.',
+              suggestedAction: 'Rescan Java in the Java Manager. If the issue persists, install the JDK manually from Adoptium.',
+              code: 'JAVA_INSTALL_VERIFICATION_FAILED',
+              category: 'JAVA',
+              severity: 'ERROR',
+              details: `Requested version: ${version}, found runtimes: ${runtimes.map(r => r.majorVersion).join(', ')}`
+            });
+            error.log();
+            resolve({
+              success: false,
+              error: `${error.message} ${error.suggestedAction ?? ''}`.trim()
+            });
+            return;
+          }
+
           onProgress?.(`Java ${version} successfully installed and ready.`, 100);
           resolve({
             success: true,
-            runtime: target || runtimes[0]
+            runtime: target
           });
         } else {
           const error = new VoxelError({

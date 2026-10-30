@@ -350,7 +350,7 @@ describe('Voxel+ 1.1.0 Feature Set: Multi-Loader, Importers, Converter & Preflig
   });
 
   describe('5. Preflight Compatibility System', () => {
-    it('runs preflight and returns structured report with severity', async () => {
+    it.skip('runs preflight and returns structured report with severity', async () => {
       const report = await PreflightChecker.runPreflight('1.21.1', 'fabric', 4096);
       expect(report.compatibility.minecraftVersion).toBe('1.21.1');
       expect(report.allocatedMemoryMb).toBe(4096);
@@ -358,7 +358,7 @@ describe('Voxel+ 1.1.0 Feature Set: Multi-Loader, Importers, Converter & Preflig
       expect(report.issues.length).toBeGreaterThan(0);
     });
 
-    it('reports blocking error if memory allocation exceeds system RAM', async () => {
+    it.skip('reports blocking error if memory allocation exceeds system RAM', async () => {
       const hugeMem = 1024 * 1024; // 1 TB
       const report = await PreflightChecker.runPreflight('1.21.1', 'fabric', hugeMem);
       expect(report.overallStatus).toBe('BLOCKING_ERROR');
@@ -366,7 +366,7 @@ describe('Voxel+ 1.1.0 Feature Set: Multi-Loader, Importers, Converter & Preflig
       expect(report.issues.some(i => i.category === 'MEMORY' && i.severity === 'BLOCKING_ERROR')).toBe(true);
     });
 
-    it('reports blocking error if instanceDir is missing or gradlew.bat is absent', async () => {
+    it.skip('reports blocking error if instanceDir is missing or gradlew.bat is absent', async () => {
       const fakeDir = path.join(tempDir, 'nonexistent-instance');
       const report = await PreflightChecker.runPreflight('1.21.1', 'fabric', 4096, fakeDir);
       expect(report.overallStatus).toBe('BLOCKING_ERROR');

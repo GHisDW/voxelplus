@@ -319,10 +319,21 @@ export class InstanceManager {
         if (!mrpackRes.success || !mrpackRes.metadata) {
           throw new Error(mrpackRes.errors.join(', ') || 'Failed to import Modrinth pack.');
         }
+        // CRITICAL: Modrinth packs don't include Gradle wrapper - scaffold it
+        const scaffolded = await LoomProjectGenerator.generateProject(tempDir, {
+          name: customName || mrpackRes.metadata.name || suggestedName,
+          description: mrpackRes.metadata.description,
+          minecraftVersion: mrpackRes.metadata.minecraft?.version || '1.21.1',
+          loaderType: (mrpackRes.metadata.loader?.type as any) || 'fabric',
+          loaderVersion: mrpackRes.metadata.loader?.version,
+          javaRuntime: 'auto',
+          minMemory: 2048,
+          maxMemory: 4096
+        });
         fs.renameSync(tempDir, finalTargetDir);
-        mrpackRes.metadata.instancePath = finalTargetDir;
-        InstanceMetadataStore.writeMetadata(finalTargetDir, mrpackRes.metadata);
-        return mrpackRes.metadata;
+        scaffolded.instancePath = finalTargetDir;
+        InstanceMetadataStore.writeMetadata(finalTargetDir, scaffolded);
+        return scaffolded;
       }
 
       // 2. Check if the file is a CurseForge modpack zip
@@ -332,10 +343,21 @@ export class InstanceManager {
         if (!cfRes.success || !cfRes.metadata) {
           throw new Error(cfRes.errors.join(', ') || 'Failed to import CurseForge pack.');
         }
+        // CRITICAL: CurseForge packs don't include Gradle wrapper - scaffold it
+        const scaffolded = await LoomProjectGenerator.generateProject(tempDir, {
+          name: customName || cfRes.metadata.name || suggestedName,
+          description: cfRes.metadata.description,
+          minecraftVersion: cfRes.metadata.minecraft?.version || '1.21.1',
+          loaderType: (cfRes.metadata.loader?.type as any) || 'fabric',
+          loaderVersion: cfRes.metadata.loader?.version,
+          javaRuntime: 'auto',
+          minMemory: 2048,
+          maxMemory: 4096
+        });
         fs.renameSync(tempDir, finalTargetDir);
-        cfRes.metadata.instancePath = finalTargetDir;
-        InstanceMetadataStore.writeMetadata(finalTargetDir, cfRes.metadata);
-        return cfRes.metadata;
+        scaffolded.instancePath = finalTargetDir;
+        InstanceMetadataStore.writeMetadata(finalTargetDir, scaffolded);
+        return scaffolded;
       }
 
       // 3. Fallback to standard Voxel⁺ VPack validation
