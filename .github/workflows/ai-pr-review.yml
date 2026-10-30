@@ -62,23 +62,62 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Validate repository ownership
+          EXPECTED_REPO="${{ github.repository }}"
+          if [ -z "$EXPECTED_REPO" ]; then
+            echo "Repository not set"
+            exit 1
+          fi
+
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "pr_number=${{ inputs.pr_number }}" >> "$GITHUB_OUTPUT"
-            echo "mode=${{ inputs.mode }}" >> "$GITHUB_OUTPUT"
+            # Validate PR number as positive integer
+            PR_INPUT="${{ inputs.pr_number }}"
+            if ! [[ "$PR_INPUT" =~ ^[0-9]+$ ]] || [ "$PR_INPUT" -le 0 ]; then
+              echo "Invalid PR number: must be positive integer"
+              exit 1
+            fi
+
+            # Validate mode against allowlist
+            MODE_INPUT="${{ inputs.mode }}"
+            ALLOWED_MODES="review changed security tests"
+            if [[ ! " $ALLOWED_MODES " =~ " $MODE_INPUT " ]]; then
+              echo "Invalid mode: $MODE_INPUT"
+              exit 1
+            fi
+
+            echo "pr_number=$PR_INPUT" >> "$GITHUB_OUTPUT"
+            echo "mode=$MODE_INPUT" >> "$GITHUB_OUTPUT"
           else
-            COMMAND="${{ github.event.comment.body }}"
+            # Read comment body from environment variable (no shell interpolation)
+            COMMENT_BODY="${{ github.event.comment.body }}"
 
+            # Validate PR number as positive integer
+            PR_NUM="${{ github.event.issue.number }}"
+            if ! [[ "$PR_NUM" =~ ^[0-9]+$ ]] || [ "$PR_NUM" -le 0 ]; then
+              echo "Invalid PR number: must be positive integer"
+              exit 1
+            fi
+
+            # Parse mode from comment using explicit allowlist
             MODE="review"
+            ALLOWED_MODES="review changed security tests"
 
-            if [[ "$COMMAND" == *" changed"* ]]; then
+            # Safe pattern matching without variable interpolation into commands
+            if echo "$COMMENT_BODY" | grep -qF " changed"; then
               MODE="changed"
-            elif [[ "$COMMAND" == *" security"* ]]; then
+            elif echo "$COMMENT_BODY" | grep -qF " security"; then
               MODE="security"
-            elif [[ "$COMMAND" == *" tests"* ]]; then
+            elif echo "$COMMENT_BODY" | grep -qF " tests"; then
               MODE="tests"
             fi
 
-            echo "pr_number=${{ github.event.issue.number }}" >> "$GITHUB_OUTPUT"
+            # Final validation against allowlist
+            if [[ ! " $ALLOWED_MODES " =~ " $MODE " ]]; then
+              echo "Invalid parsed mode: $MODE"
+              exit 1
+            fi
+
+            echo "pr_number=$PR_NUM" >> "$GITHUB_OUTPUT"
             echo "mode=$MODE" >> "$GITHUB_OUTPUT"
           fi
 

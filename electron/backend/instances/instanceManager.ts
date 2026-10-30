@@ -233,6 +233,38 @@ export class InstanceManager {
   }
 
   public static async importInstance(importZipPath: string, customName?: string): Promise<InstanceMetadata | null> {
+    // Validate source file path
+    if (!importZipPath || typeof importZipPath !== 'string') {
+      new VoxelError({
+        title: 'Instance Import Failed',
+        message: 'Invalid package path provided.',
+        cause: 'The package path is missing or invalid.',
+        suggestedAction: 'Select a valid package file and try again.',
+        code: 'INVALID_PACKAGE_PATH',
+        category: 'FILESYSTEM',
+        severity: 'ERROR'
+      }).log();
+      return null;
+    }
+
+    // Normalize the source path for validation
+    const normalizedSource = path.resolve(importZipPath);
+
+    // Reject UNC paths or obvious path traversal attempts
+    if (normalizedSource.includes('..') || normalizedSource.startsWith('\\\\')) {
+      new VoxelError({
+        title: 'Instance Import Failed',
+        message: 'Invalid package path.',
+        cause: 'The package path contains invalid path components.',
+        suggestedAction: 'Select a valid package file from a standard location.',
+        code: 'INVALID_PATH_COMPONENTS',
+        category: 'FILESYSTEM',
+        severity: 'ERROR',
+        details: `Package path: ${importZipPath}`
+      }).log();
+      return null;
+    }
+
     if (!fs.existsSync(importZipPath)) {
       new VoxelError({
         title: 'Instance Import Failed',
@@ -240,6 +272,22 @@ export class InstanceManager {
         cause: 'The file may have been moved or deleted after being selected.',
         suggestedAction: 'Re-select the .voxelplus package and try again.',
         code: 'SOURCE_FILE_NOT_FOUND',
+        category: 'FILESYSTEM',
+        severity: 'ERROR',
+        details: `Package path: ${importZipPath}`
+      }).log();
+      return null;
+    }
+
+    // Ensure source is a file, not a directory
+    const sourceStat = fs.statSync(importZipPath);
+    if (!sourceStat.isFile()) {
+      new VoxelError({
+        title: 'Instance Import Failed',
+        message: 'The selected path is not a file.',
+        cause: 'Only files can be imported. Directories are not supported.',
+        suggestedAction: 'Select a valid package file (e.g., .vpack, .mrpack, .zip) and try again.',
+        code: 'NOT_A_FILE',
         category: 'FILESYSTEM',
         severity: 'ERROR',
         details: `Package path: ${importZipPath}`

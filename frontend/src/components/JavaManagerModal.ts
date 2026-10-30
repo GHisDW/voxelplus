@@ -1,6 +1,7 @@
 import { JavaRuntime } from '../../../electron/types';
 import { api } from '../services/api';
 import { NotificationToast } from './NotificationToast';
+import { escapeHtml } from '../utils/html';
 
 export class JavaManagerModal {
   public static async show(onSelectJava?: (java: JavaRuntime) => void): Promise<void> {
@@ -82,19 +83,19 @@ export class JavaManagerModal {
             <div style="display: flex; align-items: center; gap: 10px;">
               <span style="font-size: 1.4rem;">☕</span>
               <div>
-                <h4 style="font-size: 1.1rem; font-weight: 800; color: var(--text-primary);">${runtime.name}</h4>
-                <div style="font-size: 0.82rem; color: var(--text-secondary);">${runtime.vendor} · ${runtime.architecture} · ${runtime.fullVersion}</div>
+                <h4 style="font-size: 1.1rem; font-weight: 800; color: var(--text-primary);">${escapeHtml(runtime.name)}</h4>
+                <div style="font-size: 0.82rem; color: var(--text-secondary);">${escapeHtml(runtime.vendor)} · ${escapeHtml(runtime.architecture)} · ${escapeHtml(runtime.fullVersion)}</div>
               </div>
             </div>
             <div>${badgeHtml}</div>
           </div>
 
           <div style="font-size: 0.78rem; font-family: var(--font-mono); color: var(--text-muted); background: var(--bg-input); padding: 4px 8px; border-radius: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-            ${runtime.executablePath}
+            ${escapeHtml(runtime.executablePath)}
           </div>
 
           <div style="font-size: 0.84rem; color: var(--text-secondary);">
-            ${runtime.compatibilityDescription}
+            ${escapeHtml(runtime.compatibilityDescription)}
           </div>
 
           <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 4px;">
