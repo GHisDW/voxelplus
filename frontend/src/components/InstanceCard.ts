@@ -66,12 +66,12 @@ export class InstanceCard {
         <div class="card-title-row">
           <h3 class="card-instance-name">${escapeHtml(instance.name)}</h3>
           ${instance.isVPack ? `
-            <span style="font-size: 0.72rem; padding: 2px 8px; border-radius: 999px; background: rgba(245, 158, 11, 0.18); color: #f59e0b; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;">
+            <span style="font-size: 0.72rem; padding: 2px 8px; border-radius: 999px; background: rgba(245, 158, 11, 0.18); color: var(--warning); font-weight: 700; display: inline-flex; align-items: center; gap: 4px;">
               📦 VPACK
             </span>
           ` : ''}
           ${instance.shareSource ? `
-            <span style="font-size: 0.72rem; padding: 2px 8px; border-radius: 999px; background: rgba(88, 101, 242, 0.18); color: #818cf8; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;">
+            <span style="font-size: 0.72rem; padding: 2px 8px; border-radius: 999px; background: rgba(88, 101, 242, 0.18); color: var(--text-accent); font-weight: 700; display: inline-flex; align-items: center; gap: 4px;">
               <span style="opacity: 0.7;">VIA</span> ${escapeHtml(instance.shareSource)}
             </span>
           ` : ''}
@@ -138,7 +138,7 @@ export class InstanceCard {
         }
         <div class="card-secondary-actions">
           <button class="btn btn-secondary btn-sm" data-action="open">Details</button>
-          <button class="btn btn-icon btn-card-delete" style="color: #ef4444;" title="Delete instance">🗑</button>
+          <button class="btn btn-icon btn-card-delete" style="color: var(--danger);" title="Delete instance">🗑</button>
           <div style="position: relative;">
             <button class="btn btn-icon btn-more" title="More options">•••</button>
             <div class="dropdown-menu">

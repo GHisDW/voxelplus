@@ -185,7 +185,7 @@ export class CookieClickerGame {
           align-items: center;
           justify-content: space-between;
           padding: 12px 16px;
-          background: rgba(15, 23, 42, 0.75);
+          background: var(--bg-elevated-soft);
           backdrop-filter: blur(8px);
           border: 1px solid var(--border-subtle);
           border-radius: var(--radius-md);
@@ -197,8 +197,8 @@ export class CookieClickerGame {
               width: 44px;
               height: 44px;
               border-radius: var(--radius-md);
-              background: rgba(30, 41, 59, 0.8);
-              border: 1px solid rgba(255, 255, 255, 0.1);
+              background: var(--bg-elevated-soft);
+              border: 1px solid var(--border-subtle);
               display: flex;
               align-items: center;
               justify-content: center;
@@ -210,7 +210,7 @@ export class CookieClickerGame {
                 ${m.name} <span style="color: var(--accent-secondary); font-size: 0.82rem;">[x${owned}]</span>
               </div>
               <div style="font-size: 0.75rem; color: var(--text-secondary);">${m.description}</div>
-              <div style="font-size: 0.75rem; color: #10b981; font-weight: 700; margin-top: 2px;">+${m.cps} CPS each</div>
+              <div style="font-size: 0.75rem; color: var(--success); font-weight: 700; margin-top: 2px;">+${m.cps} CPS each</div>
             </div>
           </div>
           <button class="btn btn-sm ${canAfford ? 'btn-primary' : 'btn-secondary disabled'}" data-buy-miner="${m.id}" ${canAfford ? '' : 'disabled'} style="display: flex; align-items: center; gap: 4px;">
@@ -232,7 +232,7 @@ export class CookieClickerGame {
           align-items: center;
           justify-content: space-between;
           padding: 12px 16px;
-          background: rgba(15, 23, 42, 0.75);
+          background: var(--bg-elevated-soft);
           backdrop-filter: blur(8px);
           border: 1px solid var(--border-subtle);
           border-radius: var(--radius-md);
@@ -244,8 +244,8 @@ export class CookieClickerGame {
               width: 44px;
               height: 44px;
               border-radius: var(--radius-md);
-              background: rgba(30, 41, 59, 0.8);
-              border: 1px solid rgba(255, 255, 255, 0.1);
+              background: var(--bg-elevated-soft);
+              border: 1px solid var(--border-subtle);
               display: flex;
               align-items: center;
               justify-content: center;
@@ -254,11 +254,11 @@ export class CookieClickerGame {
             </div>
             <div>
               <div style="font-size: 0.92rem; font-weight: 800; color: var(--text-primary);">${p.name}</div>
-              <div style="font-size: 0.75rem; color: #38bdf8; font-weight: 600;">+${p.clickBonus} Cookies/Click • +${p.cpsBonus} CPS</div>
+              <div style="font-size: 0.75rem; color: var(--info); font-weight: 600;">+${p.clickBonus} Cookies/Click • +${p.cpsBonus} CPS</div>
             </div>
           </div>
           ${isOwned ? `
-            <span style="font-size: 0.82rem; font-weight: 800; color: #10b981;">✓ FORGED</span>
+            <span style="font-size: 0.82rem; font-weight: 800; color: var(--success);">✓ FORGED</span>
           ` : `
             <button class="btn btn-sm ${canAfford ? 'btn-primary' : 'btn-secondary disabled'}" data-buy-pick="${p.id}" ${canAfford ? '' : 'disabled'} style="display: flex; align-items: center; gap: 4px;">
               <span>${p.cost.toLocaleString()}</span>
@@ -276,7 +276,7 @@ export class CookieClickerGame {
         gap: 24px;
         width: 100%;
         max-width: 960px;
-        background: radial-gradient(circle at 20% 40%, rgba(245, 158, 11, 0.08) 0%, rgba(15, 23, 42, 0.95) 75%), repeating-linear-gradient(45deg, rgba(255,255,255,0.015) 0, rgba(255,255,255,0.015) 20px, transparent 20px, transparent 40px);
+        background: radial-gradient(circle at 20% 40%, rgba(245, 158, 11, 0.08) 0%, var(--bg-elevated) 75%), repeating-linear-gradient(45deg, rgba(255,255,255,0.015) 0, rgba(255,255,255,0.015) 20px, transparent 20px, transparent 40px);
         border: 1px solid var(--border-subtle);
         border-radius: var(--radius-xl);
         padding: 28px;
@@ -289,24 +289,24 @@ export class CookieClickerGame {
           align-items: center;
           justify-content: center;
           padding: 32px 20px;
-          background: rgba(15, 23, 42, 0.65);
+          background: var(--bg-elevated-soft);
           backdrop-filter: blur(10px);
           border: 1px solid var(--border-subtle);
           border-radius: var(--radius-lg);
           text-align: center;
           position: relative;
         ">
-          <div style="font-size: 0.85rem; font-weight: 800; color: #fbbf24; text-transform: uppercase; letter-spacing: 0.05em;">
+          <div style="font-size: 0.85rem; font-weight: 800; color: var(--warning); text-transform: uppercase; letter-spacing: 0.05em;">
             MINECRAFT BAKERY
           </div>
-          <div style="font-size: 2.6rem; font-weight: 900; color: #f59e0b; font-family: var(--font-mono); margin: 8px 0;" id="cookie-display">
+          <div style="font-size: 2.6rem; font-weight: 900; color: var(--warning); font-family: var(--font-mono); margin: 8px 0;" id="cookie-display">
             ${Math.floor(this.data.cookies).toLocaleString()}
           </div>
           <div style="display: flex; gap: 16px; font-size: 0.88rem; margin-bottom: 28px;">
-            <span style="color: #10b981; font-weight: 800; background: rgba(16,185,129,0.15); padding: 2px 10px; border-radius: 999px;">
+            <span style="color: var(--success); font-weight: 800; background: rgba(16,185,129,0.15); padding: 2px 10px; border-radius: 999px;">
               +${this.data.cookiesPerSecond.toFixed(1)} CPS
             </span>
-            <span style="color: #38bdf8; font-weight: 800; background: rgba(56,189,248,0.15); padding: 2px 10px; border-radius: 999px;">
+            <span style="color: var(--info); font-weight: 800; background: rgba(56,189,248,0.15); padding: 2px 10px; border-radius: 999px;">
               +${this.data.cookiesPerClick} / Click
             </span>
           </div>

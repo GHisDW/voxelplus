@@ -47,10 +47,10 @@ export class StockerGame {
           </div>
         </div>
 
-        <div style="position: relative; width: 680px; height: 320px; background: #07090e; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden; box-shadow: 0 8px 30px rgba(0,0,0,0.5);">
+        <div style="position: relative; width: 680px; height: 320px; background: var(--bg-terminal); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); overflow: hidden; box-shadow: 0 8px 30px rgba(0,0,0,0.5);">
           <canvas id="stocker-canvas" width="680" height="320" style="display: block; width: 100%; height: 100%; cursor: pointer;"></canvas>
-          <div id="stocker-overlay" style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(5,7,12,0.85); backdrop-filter: blur(4px);">
-            <div style="font-size: 1.6rem; font-weight: 900; color: #fff; margin-bottom: 6px;">STOCKER</div>
+          <div id="stocker-overlay" style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--scrim); backdrop-filter: blur(4px);">
+            <div style="font-size: 1.6rem; font-weight: 900; color: var(--text-terminal); margin-bottom: 6px;">STOCKER</div>
             <div style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 18px;">Hold Space / Click / Touch to thrust upward</div>
             <button class="btn btn-primary" id="stocker-btn-start" style="padding: 10px 32px; font-weight: 700;">START RUN</button>
           </div>
@@ -302,8 +302,8 @@ export class StockerGame {
     if (overlay) {
       overlay.style.display = 'flex';
       overlay.innerHTML = `
-        <div style="font-size: 1.8rem; font-weight: 900; color: #ef4444; margin-bottom: 4px;">GAME OVER</div>
-        <div style="font-size: 1.1rem; font-weight: 700; color: #fff; margin-bottom: 2px;">Score: ${this.score}</div>
+        <div style="font-size: 1.8rem; font-weight: 900; color: var(--danger); margin-bottom: 4px;">GAME OVER</div>
+        <div style="font-size: 1.1rem; font-weight: 700; color: var(--text-terminal); margin-bottom: 2px;">Score: ${this.score}</div>
         <div style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 18px;">Cleared ${this.obstaclesCleared} barriers</div>
         <button class="btn btn-primary" id="stocker-btn-restart" style="padding: 10px 32px; font-weight: 700;">PLAY AGAIN</button>
       `;

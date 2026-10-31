@@ -52,13 +52,13 @@ export class LogViewer {
             ${this.autoScroll ? '🔒 Auto-Scroll ON' : '🔓 Auto-Scroll OFF'}
           </button>
           <button class="btn btn-secondary" id="btn-export-logs">📥 Export File</button>
-          <button class="btn btn-secondary" id="btn-clear-logs" style="color: #ef4444;">Clear</button>
+          <button class="btn btn-secondary" id="btn-clear-logs" style="color: var(--danger);">Clear</button>
         </div>
       </div>
 
       <!-- Console Window -->
       <div id="log-terminal" style="
-        background: #07090e;
+        background: var(--bg-terminal);
         border: 1px solid var(--border-subtle);
         border-radius: var(--radius-lg);
         height: calc(100vh - 210px);
@@ -67,7 +67,7 @@ export class LogViewer {
         font-family: var(--font-mono);
         font-size: 0.85rem;
         line-height: 1.6;
-        color: #e2e8f0;
+        color: var(--text-terminal);
         box-shadow: inset 0 2px 10px rgba(0,0,0,0.5);
         user-select: text;
         -webkit-user-select: text;
@@ -209,7 +209,7 @@ export class LogViewer {
       align-items: flex-start;
       gap: 12px;
       padding: 2px 0;
-      border-bottom: 1px solid rgba(255,255,255,0.02);
+      border-bottom: 1px solid var(--border-row);
       user-select: text;
       -webkit-user-select: text;
     `;

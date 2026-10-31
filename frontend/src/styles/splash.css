@@ -22,6 +22,43 @@
   user-select: none;
 }
 
+/* Light theme splash: same composition and motion, inverted surfaces so the
+   boot animation never flashes a dark void for light-mode users. */
+body.theme-light .splash-screen {
+  background:
+    radial-gradient(circle at 50% 42%, rgba(99, 102, 241, 0.16) 0%, rgba(238, 242, 249, 0) 60%),
+    linear-gradient(180deg, #f8fafc 0%, #eef2f9 55%, #e8edf7 100%);
+  color: var(--text-primary);
+}
+
+body.theme-light .splash-aura {
+  filter: blur(50px);
+  opacity: 0.5;
+}
+
+body.theme-light .splash-track {
+  background: rgba(15, 23, 42, 0.08);
+}
+
+body.theme-light .splash-status {
+  color: #475569;
+}
+
+body.theme-light .splash-status.is-ready {
+  color: var(--text-accent);
+}
+
+body.theme-light .splash-hint,
+body.theme-light .splash-build,
+body.theme-light .splash-copyright,
+body.theme-light .splash-skip-hint {
+  color: rgba(15, 23, 42, 0.45);
+}
+
+body.theme-light .splash-text {
+  color: #b45309;
+}
+
 .splash-screen.splash-exit {
   pointer-events: none;
   animation: splashExit 0.55s cubic-bezier(0.4, 0, 1, 1) forwards;

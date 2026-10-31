@@ -116,8 +116,8 @@ export class JavaManagerModal {
 
           <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 4px;">
             <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-              ${runtime.pros.map(p => `<span class="badge" style="font-size: 0.72rem; color: #10b981;">✓ ${p}</span>`).join('')}
-              ${runtime.cons.map(c => `<span class="badge" style="font-size: 0.72rem; color: #ef4444;">⚠ ${c}</span>`).join('')}
+              ${runtime.pros.map(p => `<span class="badge" style="font-size: 0.72rem; color: var(--success);">✓ ${p}</span>`).join('')}
+              ${runtime.cons.map(c => `<span class="badge" style="font-size: 0.72rem; color: var(--danger);">⚠ ${c}</span>`).join('')}
             </div>
 
             ${onSelectJava

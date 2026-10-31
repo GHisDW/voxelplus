@@ -190,7 +190,7 @@ export class InstanceDetails {
               padding: 16px;
               background: rgba(15, 19, 29, 0.75);
               backdrop-filter: blur(12px);
-              border: 1px solid rgba(255, 255, 255, 0.2);
+              border: 1px solid var(--border-hover);
               border-radius: var(--radius-lg);
               display: flex;
               flex-direction: column;
@@ -411,7 +411,7 @@ export class InstanceDetails {
             <input type="checkbox" ${mod.enabled ? 'checked' : ''} class="mod-toggle" style="accent-color: var(--accent-primary); width: 16px; height: 16px;" />
             <span>${mod.enabled ? 'Enabled' : 'Disabled'}</span>
           </label>
-          <button class="btn btn-icon btn-delete-mod" style="color: #ef4444;" title="Delete mod">🗑</button>
+          <button class="btn btn-icon btn-delete-mod" style="color: var(--danger);" title="Delete mod">🗑</button>
         </div>
       `;
 
@@ -518,7 +518,7 @@ export class InstanceDetails {
           <h4 style="font-size: 1rem; font-weight: 700; color: var(--text-primary);">${escapeHtml(pack.name)}</h4>
           <p style="font-size: 0.82rem; color: var(--text-muted);">${escapeHtml(pack.description)}</p>
         </div>
-        <button class="btn btn-icon btn-del-pack" style="color: #ef4444;">🗑</button>
+        <button class="btn btn-icon btn-del-pack" style="color: var(--danger);">🗑</button>
       `;
 
       (card.querySelector('.btn-del-pack') as HTMLElement).onclick = async () => {
@@ -611,7 +611,7 @@ export class InstanceDetails {
           <h4 style="font-size: 1rem; font-weight: 700; color: var(--text-primary);">${escapeHtml(shader.name)}</h4>
           <p style="font-size: 0.82rem; color: var(--text-muted);">${(shader.sizeBytes / 1024 / 1024).toFixed(2)} MB</p>
         </div>
-        <button class="btn btn-icon btn-del-shader" style="color: #ef4444;">🗑</button>
+        <button class="btn btn-icon btn-del-shader" style="color: var(--danger);">🗑</button>
       `;
 
       (card.querySelector('.btn-del-shader') as HTMLElement).onclick = async () => {
@@ -652,7 +652,7 @@ export class InstanceDetails {
               <span style="
                 padding: 4px 12px;
                 background: rgba(99, 102, 241, 0.15);
-                color: #818cf8;
+                color: var(--text-accent);
                 border-radius: 999px;
                 font-size: 0.82rem;
                 font-weight: 600;
@@ -661,7 +661,7 @@ export class InstanceDetails {
                 gap: 6px;
               ">
                 ${escapeHtml(tag)}
-                <button class="btn-icon remove-tag" data-tag="${escapeHtml(tag)}" style="color: #ef4444; font-size: 14px;">×</button>
+                <button class="btn-icon remove-tag" data-tag="${escapeHtml(tag)}" style="color: var(--danger); font-size: 14px;">×</button>
               </span>
             `).join('')}
           </div>

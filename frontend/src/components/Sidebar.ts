@@ -97,7 +97,7 @@ export class Sidebar {
       font-family: var(--font-main);
       font-size: 0.92rem;
       font-weight: 600;
-      color: ${isActive ? '#ffffff' : 'var(--text-secondary)'};
+      color: ${isActive ? 'var(--text-on-accent)' : 'var(--text-secondary)'};
       background: ${isActive ? 'var(--accent-gradient)' : 'transparent'};
       border: 1px solid ${isActive ? 'transparent' : 'transparent'};
       box-shadow: ${isActive ? '0 4px 14px var(--accent-glow)' : 'none'};

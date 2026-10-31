@@ -165,7 +165,7 @@ export class ShopPage {
               width: 56px;
               height: 56px;
               border-radius: var(--radius-md);
-              background: #111827;
+              background: var(--bg-elevated);
               border: 1px solid var(--border-subtle);
               display: flex;
               align-items: center;
@@ -195,7 +195,7 @@ export class ShopPage {
           grid-template-columns: repeat(3, 1fr);
           gap: 12px;
           padding: 14px;
-          background: rgba(15, 23, 42, 0.8);
+          background: var(--bg-elevated-soft);
           border: 1px solid var(--border-subtle);
           border-radius: var(--radius-md);
           margin-bottom: 20px;
@@ -203,15 +203,15 @@ export class ShopPage {
         ">
           <div>
             <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Minecraft</div>
-            <div style="font-size: 0.92rem; font-weight: 800; color: #10b981;">v${escapeHtml(manifest.minecraft?.version || '1.21.1')}</div>
+            <div style="font-size: 0.92rem; font-weight: 800; color: var(--success);">v${escapeHtml(manifest.minecraft?.version || '1.21.1')}</div>
           </div>
           <div>
             <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Loader</div>
-            <div style="font-size: 0.92rem; font-weight: 800; color: #38bdf8;">${escapeHtml(manifest.loader?.type || 'fabric')}</div>
+            <div style="font-size: 0.92rem; font-weight: 800; color: var(--info);">${escapeHtml(manifest.loader?.type || 'fabric')}</div>
           </div>
           <div>
             <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Pack Price</div>
-            <div style="font-size: 0.92rem; font-weight: 800; color: #f59e0b;">${price} VP</div>
+            <div style="font-size: 0.92rem; font-weight: 800; color: var(--warning);">${price} VP</div>
           </div>
         </div>
 
@@ -222,7 +222,7 @@ export class ShopPage {
           </div>
           <div style="max-height: 160px; overflow-y: auto; background: var(--bg-input); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 10px;">
             ${contentList.map((c: any) => `
-              <div style="display: flex; justify-content: space-between; padding: 6px 8px; font-size: 0.8rem; font-family: var(--font-mono); border-bottom: 1px solid rgba(255,255,255,0.04);">
+              <div style="display: flex; justify-content: space-between; padding: 6px 8px; font-size: 0.8rem; font-family: var(--font-mono); border-bottom: 1px solid var(--border-row);">
                 <span style="color: var(--text-primary);">${escapeHtml(c.relativePath)}</span>
                 <span style="color: var(--text-muted);">${escapeHtml(c.type)}</span>
               </div>
@@ -285,7 +285,7 @@ export class ShopPage {
             display: flex;
             flex-direction: column;
             padding: 20px;
-            background: rgba(15, 23, 42, 0.75);
+            background: var(--bg-elevated-soft);
             backdrop-filter: blur(8px);
             border: 1px solid var(--border-subtle);
             border-radius: var(--radius-xl);
@@ -299,10 +299,10 @@ export class ShopPage {
                 padding: 3px 10px;
                 border-radius: 999px;
                 background: rgba(99, 102, 241, 0.2);
-                color: #818cf8;
+                color: var(--text-accent);
                 border: 1px solid rgba(99, 102, 241, 0.4);
               ">📦 VPACK MODPACK</span>
-              <span style="font-size: 0.75rem; color: #10b981; font-weight: 700;">MC ${escapeHtml(manifest.minecraft?.version || '1.21.1')}</span>
+              <span style="font-size: 0.75rem; color: var(--success); font-weight: 700;">MC ${escapeHtml(manifest.minecraft?.version || '1.21.1')}</span>
             </div>
 
             <!-- Item Texture / Visual Header -->
@@ -311,7 +311,7 @@ export class ShopPage {
               align-items: center;
               gap: 16px;
               padding: 14px;
-              background: rgba(30, 41, 59, 0.8);
+              background: var(--bg-elevated-soft);
               border-radius: var(--radius-md);
               margin-bottom: 14px;
             ">
@@ -319,7 +319,7 @@ export class ShopPage {
                 width: 52px;
                 height: 52px;
                 border-radius: var(--radius-md);
-                background: #111827;
+                background: var(--bg-elevated);
                 border: 1px solid var(--border-subtle);
                 display: flex;
                 align-items: center;
@@ -342,7 +342,7 @@ export class ShopPage {
               ${escapeHtml(manifest.description || 'Packed Voxel+ Minecraft instance ready to install and play.')}
             </div>
 
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: auto; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.06); gap: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border-row); gap: 10px;">
               <button class="btn btn-sm btn-secondary" data-inspect-vpack="${item.filePath}">
                 Inspect Mods
               </button>
@@ -375,11 +375,11 @@ export class ShopPage {
         const canAfford = item.price !== null && wallet.balance >= item.price;
         const textureUrl = getItemDataUrl(item.artworkPath);
 
-        let badgeColor = '#10b981';
-        if (item.rarity === 'uncommon') badgeColor = '#38bdf8';
-        if (item.rarity === 'rare') badgeColor = '#818cf8';
-        if (item.rarity === 'epic') badgeColor = '#c084fc';
-        if (item.rarity === 'legendary') badgeColor = '#f59e0b';
+        let badgeColor = 'var(--rarity-common)';
+        if (item.rarity === 'uncommon') badgeColor = 'var(--rarity-uncommon)';
+        if (item.rarity === 'rare') badgeColor = 'var(--rarity-rare)';
+        if (item.rarity === 'epic') badgeColor = 'var(--rarity-epic)';
+        if (item.rarity === 'legendary') badgeColor = 'var(--rarity-legendary)';
 
         return `
           <div class="card" style="
@@ -398,7 +398,7 @@ export class ShopPage {
                 text-transform: uppercase;
                 padding: 2px 8px;
                 border-radius: 999px;
-                background: ${badgeColor}22;
+                background: color-mix(in srgb, ${badgeColor} 15%, transparent);
                 color: ${badgeColor};
               ">${item.rarity}</span>
               <span style="font-size: 0.72rem; color: var(--text-muted); font-family: var(--font-mono);">${escapeHtml(item.artworkPath)}</span>
@@ -434,7 +434,7 @@ export class ShopPage {
 
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: auto;">
               ${isOwned ? `
-                <span style="font-size: 0.8rem; font-weight: 700; color: #10b981;">
+                <span style="font-size: 0.8rem; font-weight: 700; color: var(--success);">
                   ${isEquipped ? '✓ EQUIPPED' : '✓ OWNED'}
                 </span>
                 <button class="btn btn-sm ${isEquipped ? 'btn-secondary' : 'btn-primary'}" data-equip-cosmetic="${item.id}">
@@ -481,7 +481,7 @@ export class ShopPage {
                 width: 52px;
                 height: 52px;
                 border-radius: var(--radius-md);
-                background: #111827;
+                background: var(--bg-elevated);
                 border: 1px solid var(--border-subtle);
                 display: flex;
                 align-items: center;

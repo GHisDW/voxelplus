@@ -235,7 +235,7 @@ export class OnboardingPage {
               <div style="font-size: 1rem; font-weight: 700; color: var(--text-primary); font-family: var(--font-mono); word-break: break-all;">
                 ${this.instanceDir}
               </div>
-              <div style="font-size: 0.82rem; color: #10b981; margin-top: 4px; font-weight: 600;">
+              <div style="font-size: 0.82rem; color: var(--success); margin-top: 4px; font-weight: 600;">
                 ✓ Valid storage directory with write permissions
               </div>
             </div>
@@ -319,15 +319,15 @@ export class OnboardingPage {
           ">
             <div style="display: flex; justify-content: space-between; font-size: 0.9rem; font-weight: 600;">
               <span style="color: var(--text-secondary);">Java runtime</span>
-              <span style="color: #10b981;">✓ Ready</span>
+              <span style="color: var(--success);">✓ Ready</span>
             </div>
             <div style="display: flex; justify-content: space-between; font-size: 0.9rem; font-weight: 600;">
               <span style="color: var(--text-secondary);">Storage directory</span>
-              <span style="color: #10b981;">✓ Configured</span>
+              <span style="color: var(--success);">✓ Configured</span>
             </div>
             <div style="display: flex; justify-content: space-between; font-size: 0.9rem; font-weight: 600;">
               <span style="color: var(--text-secondary);">Development engine</span>
-              <span style="color: #10b981;">✓ Fabric Loom</span>
+              <span style="color: var(--success);">✓ Fabric Loom</span>
             </div>
           </div>
 
@@ -379,7 +379,7 @@ export class OnboardingPage {
       `;
       row.innerHTML = `
         <span style="font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
-          <span style="color: #10b981;">✓</span> ${items[i].title}
+          <span style="color: var(--success);">✓</span> ${items[i].title}
         </span>
         <span style="color: var(--text-muted); font-size: 0.82rem;">${items[i].val}</span>
       `;
@@ -413,9 +413,9 @@ export class OnboardingPage {
         border-radius: var(--radius-md);
       `;
 
-      let icon = '<span style="color: #10b981; font-weight: 700;">✓</span>';
-      if (item.status === 'warning') icon = '<span style="color: #f59e0b; font-weight: 700;">⚠</span>';
-      if (item.status === 'failed') icon = '<span style="color: #ef4444; font-weight: 700;">✕</span>';
+      let icon = '<span style="color: var(--success); font-weight: 700;">✓</span>';
+      if (item.status === 'warning') icon = '<span style="color: var(--warning); font-weight: 700;">⚠</span>';
+      if (item.status === 'failed') icon = '<span style="color: var(--danger); font-weight: 700;">✕</span>';
 
       row.innerHTML = `
         <div style="display: flex; align-items: center; gap: 12px;">
