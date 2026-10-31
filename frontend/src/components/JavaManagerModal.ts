@@ -40,11 +40,11 @@ export class JavaManagerModal {
           </div>
 
           <!-- Actions Bar -->
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-            <span style="font-size: 0.9rem; font-weight: 700; color: var(--text-primary);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; flex-wrap: wrap;">
+            <span style="font-size: 0.9rem; font-weight: 700; color: var(--text-primary); white-space: nowrap;">
               ${runtimes.length} Runtimes Detected
             </span>
-            <div style="display: flex; gap: 8px;">
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
               <button class="btn btn-secondary" id="btn-rescan-java">🔄 Rescan</button>
               <button class="btn btn-secondary" id="btn-install-java-8">☕ Java 8</button>
               <button class="btn btn-secondary" id="btn-install-java-17">☕ Java 17</button>

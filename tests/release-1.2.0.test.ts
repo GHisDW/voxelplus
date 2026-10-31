@@ -247,3 +247,15 @@ describe('ThemeService', () => {
     ThemeService.dispose();
   });
 });
+
+describe('log level filters', () => {
+  it('accepts the viewer defaults (ALL and every selectable level)', async () => {
+    const { requireLogLevel, LOG_LEVEL_FILTERS } = await import('../electron/backend/ipc/validate');
+    for (const level of LOG_LEVEL_FILTERS) {
+      expect(requireLogLevel(level)).toBe(level);
+    }
+    // The Log page defaults to ALL; rejecting it broke the log viewer.
+    expect(requireLogLevel('ALL')).toBe('ALL');
+    expect(() => requireLogLevel('TRACE')).toThrow(IpcValidationError);
+  });
+});

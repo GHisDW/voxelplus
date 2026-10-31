@@ -125,6 +125,17 @@ export function requireJavaMajorVersion(value: unknown): SupportedJavaMajor {
 }
 
 
+/** Log levels the viewer can filter by ("ALL" = no level filter). */
+export const LOG_LEVEL_FILTERS = ['ALL', 'INFO', 'WARN', 'ERROR', 'DEBUG', 'GRADLE', 'LOOM'] as const;
+
+/**
+ * Validates a log-level filter. `ALL` must be accepted: the Log page's default
+ * option is `ALL`, and rejecting it would break the log viewer entirely.
+ */
+export function requireLogLevel(value: unknown): (typeof LOG_LEVEL_FILTERS)[number] {
+  return requireEnum(value, LOG_LEVEL_FILTERS, 'log level');
+}
+
 /**
  * Download URLs supplied by the renderer (Modrinth CDN links) must be HTTPS with
  * a host we accept. This mirrors the stricter check in the update service.

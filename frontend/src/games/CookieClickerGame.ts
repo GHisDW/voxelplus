@@ -124,10 +124,27 @@ export class CookieClickerGame {
   public async render(parent: HTMLElement): Promise<void> {
     try {
       this.data = await api.getCookieData();
-      this.recalculateBonuses();
     } catch (e) {
       console.error('Failed to load cookie data', e);
     }
+
+    // A save written by an older build (or one that failed to migrate) can be
+    // missing newer fields. Normalise it here so a stale save renders the game
+    // instead of leaving the whole Arcade page blank.
+    this.data = {
+      ...this.data,
+      upgrades: this.data?.upgrades ?? {},
+      producers: this.data?.producers ?? {},
+      milestonesClaimed: this.data?.milestonesClaimed ?? [],
+      cookies: Number.isFinite(this.data?.cookies) ? this.data.cookies : 0,
+      lifetimeCookies: Number.isFinite(this.data?.lifetimeCookies) ? this.data.lifetimeCookies : 0,
+      cookiesPerClick: Number.isFinite(this.data?.cookiesPerClick) && this.data.cookiesPerClick > 0 ? this.data.cookiesPerClick : 1,
+      cookiesPerSecond: Number.isFinite(this.data?.cookiesPerSecond) ? this.data.cookiesPerSecond : 0,
+      totalClicks: Number.isFinite(this.data?.totalClicks) ? this.data.totalClicks : 0,
+      totalTimePlayedMs: Number.isFinite(this.data?.totalTimePlayedMs) ? this.data.totalTimePlayedMs : 0,
+      lastTickTimestamp: this.data?.lastTickTimestamp || new Date().toISOString()
+    };
+    this.recalculateBonuses();
 
     this.container = parent;
     this.updateUI();

@@ -69,6 +69,7 @@ We'll continue monitoring Fabric and Loom development as Voxel⁺ grows, but use
 * ✨ Shader support
 * 📜 Live Minecraft and Gradle logs
 * 🛠️ Per-instance Loom and Gradle environments
+* 🌗 Full light, dark and “follow Windows” themes across every screen
 * 👤 Built-in Skin Manager
 * 💾 Persistent per-instance configuration
 * ⚙️ Automatic Minecraft development environment setup

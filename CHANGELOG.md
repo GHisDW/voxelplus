@@ -104,6 +104,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   * **Mod Compatibility**: Verified with Fabric API 0.155.3+26.1.2, Sodium 0.9.2-beta.1+mc26.1.2, and Xaero's Minimap 26.5.0.
   * **Play Launch**: OpenGL 3.3.0 initialized via NVIDIA GeForce RTX 5050 Laptop GPU, texture atlases baked, sound engine started, options saved directly to instance root (`options.txt`).
 
+### Fixed — Release Hardening (verified for the 1.2.0 build)
+
+**Security**
+
+* `.github/workflows/ai-pr-review.yml` interpolated `github.event.comment.body` (and the `workflow_dispatch` inputs) directly into a `run:` block, so a crafted `/voxel-review` comment could break out of the quotes and execute arbitrary commands with repository secrets. Untrusted values are now passed through `env:` and validated (digits-only PR number, mode allow-list). *Applied as `docs/patches/ai-pr-review-command-injection.patch` because the automation token lacks `workflow` scope — see that file.*
+* Every renderer → main IPC handler now validates its arguments (`electron/backend/ipc/validate.ts`): instance ids cannot contain path separators, content filenames must be a single path segment, import/export paths must be absolute, Java versions are restricted to 8/17/21/25, downloads must be HTTPS from Modrinth/GitHub hosts, dialog filters are sanitised and string lengths are capped.
+* `DownloadManager.downloadToInstance` joined a renderer-supplied filename straight into `mods/`, allowing `../../` traversal outside the instance folder (and wrote arbitrary paths); it now sanitises the name, re-checks containment, enforces a 512 MB cap and removes partial files.
+
+**Auto-updater**
+
+* Asset selection could pick `VoxelPlus-Setup-*.exe` (an NSIS installer) as the "portable replacement" and copy an installer over the running launcher. Only a `portable`/`standalone` `.exe` is accepted now; a release that ships installers only falls back to the manual download path.
+* SHA-256 verification is now mandatory: a release without a published digest cannot be auto-installed (previously the check silently passed), and the staged file is re-hashed and size-checked immediately before installation.
+* Downloads follow at most 5 redirects (each hop re-validated against the GitHub host allow-list), enforce a 512 MB cap, time out after 30 s of inactivity, serialise concurrent requests and always delete `.partial` files on failure.
+* The Windows swap helper no longer deletes the `.old` backup after a successful swap — it verifies the copied file size, keeps the rollback copy until the new build has started once, and refuses to run when the downloaded file is missing or empty.
+
+**Java**
+
+* `JavaInstaller` reported success whenever `winget` exited 0, even if no runtime of the requested major version existed (it could return an unrelated version). It now re-scans, executes the detected `java.exe` through `JavaTester`, and fails with an actionable error when the requested version is not present or not runnable.
+* Concurrent installs are blocked, `winget` is spawned without a shell, and Java install progress is streamed to the UI over a new `event:javaInstallProgress` channel (the modal previously showed fixed fake 10 %/40 % values).
+* The "Java Version Required → Install Java" prompt now actually installs the required version instead of only opening the Java Manager.
+
+**Launch lifecycle**
+
+* A launch aborted because no compatible Java runtime was found returned without clearing `PREPARING`, leaving the instance and its Play/Stop buttons stuck forever.
+* `spawn()` failures were reported as a successful launch (the async `error` event arrived after the return). Launches now await the spawn result and surface a real failure.
+* Instances were marked `RUNNING` as soon as Gradle started; they now stay `LAUNCHING` until the client is actually reported, and metadata is persisted accordingly.
+* Quitting the launcher left the Minecraft/Gradle child process running; `ProcessManager.shutdownAll()` now terminates the process tree on `before-quit`.
+
+**Light mode**
+
+* Added semantic theme tokens (`--bg-elevated`, `--bg-elevated-soft`, `--bg-terminal`, `--scrim`, `--success/--warning/--danger/--info`, `--rarity-*`, `--focus-ring`, `--shadow-modal`, …) with a full `body.theme-light` override set, native `color-scheme`, focus-visible rings and disabled states.
+* Replaced hardcoded dark surfaces and light text in the splash, log viewer, create-instance modal, player page, shop, arcade cookie clicker, Stocker overlay, Java manager, instance details, sidebar and settings.
+* Darkened state/rarity accents in light mode for readable contrast (≈WCAG AA), and kept terminal/canvas areas intentionally dark on a light chrome.
+* `ThemeService` registers its OS `prefers-color-scheme` listener exactly once (repeated initialisation no longer stacks listeners) and resolves `system` into an explicit `theme-dark`/`theme-light` class.
+* The window is created with a background colour that matches the saved theme, so light-mode launches no longer flash a dark frame.
+* A stale Cookie Clicker save (missing `producers`/`upgrades`) no longer blanks the arcade page.
+
 ## [1.0.0] - 2026-09-03
 
 ### Added

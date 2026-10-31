@@ -16,7 +16,6 @@ import { VoxelErrorCategory } from './types';
 const LOADER_TYPES = ['fabric', 'quilt', 'forge', 'neoforge'] as const;
 /** Content kinds that can be installed into an instance. */
 const CONTENT_TYPES = ['mod', 'resourcepack', 'shader'] as const;
-const LOG_LEVELS = ['INFO', 'WARN', 'ERROR', 'DEBUG'] as const;
 /** Modrinth serves version files from its CDN; external URLs are rejected. */
 const MODRINTH_DOWNLOAD_HOSTS = [
   'cdn.modrinth.com',
@@ -162,7 +161,7 @@ function registerIpcHandlers() {
   handle('logs:get', 'IPC', async (_, id, level, q) =>
     CommandManager.getLogs(
       optionalId(id),
-      level === undefined || level === null ? undefined : v.enum(level, LOG_LEVELS, 'log level'),
+      level === undefined || level === null ? undefined : validate.requireLogLevel(level),
       q === undefined || q === null ? undefined : v.text(q, 'log query', 256)
     ));
   handle('logs:clear', 'IPC', async (_, id) => CommandManager.clearLogs(optionalId(id)));
@@ -174,7 +173,10 @@ function registerIpcHandlers() {
   handle('instance:export', 'INSTANCE', async (_, id, targetPath) =>
     CommandManager.exportInstance(v.id(id), v.path(targetPath, 'export path')));
   handle('instance:import', 'INSTANCE', async (_, zipPath, name) =>
-    CommandManager.importInstance(v.path(zipPath, 'archive path'), v.text(name, 'instance name', 120)));
+    CommandManager.importInstance(
+      v.path(zipPath, 'archive path'),
+      name === undefined || name === null ? undefined : v.text(name, 'instance name', 120)
+    ));
   handle('vpack:validate', 'INSTANCE', async (_, zipPath) => CommandManager.validateVPack(v.path(zipPath, 'vpack path')));
   handle('vpack:convert', 'INSTANCE', async (_, inPath, outPath) =>
     CommandManager.convertModpackToVPack(v.path(inPath, 'source path'), v.path(outPath, 'output path')));
