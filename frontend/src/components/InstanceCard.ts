@@ -206,9 +206,13 @@ export class InstanceCard {
               });
 
               if (confirmed) {
-                JavaManagerModal.show();
+                // Open the manager with the required version preselected so the
+                // prompt's "Install Java" action really installs that version.
+                const target = Number(res.recommendedJavaVersion);
+                const installVersion = [8, 17, 21, 25].includes(target) ? (target as 8 | 17 | 21 | 25) : undefined;
+                JavaManagerModal.show(undefined, { installVersion });
               } else {
-                NotificationToast.show(res.message, 'error');
+                NotificationToast.show(res.message || 'Launch cancelled.', 'error');
               }
             } else {
               NotificationToast.show(`Launch failed: ${res.message}`, 'error');

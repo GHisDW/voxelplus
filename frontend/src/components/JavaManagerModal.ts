@@ -1,11 +1,28 @@
 import { JavaRuntime } from '../../../electron/types';
 import { api } from '../services/api';
+import { describeIpcError } from '../services/errors';
 import { NotificationToast } from './NotificationToast';
 
 export class JavaManagerModal {
-  public static async show(onSelectJava?: (java: JavaRuntime) => void): Promise<void> {
+  /**
+   * Opens the Java Runtime Manager.
+   *
+   * `options.installVersion` is used by the launch flow: when an instance fails
+   * because it needs a specific Java major version, the modal immediately starts
+   * installing that version instead of just opening a list and leaving the user
+   * to guess which button installs what the prompt promised.
+   */
+  public static async show(
+    onSelectJava?: (java: JavaRuntime) => void,
+    options: { installVersion?: 8 | 17 | 21 | 25 } = {}
+  ): Promise<void> {
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay animate-fade-in';
+
+    // One installation at a time; `autoInstallStarted` stops a re-render (after a
+    // successful install) from kicking off the same install again.
+    let installLocked = false;
+    let autoInstallStarted = false;
 
     const render = async () => {
       const runtimes = await api.scanJava();
@@ -36,14 +53,14 @@ export class JavaManagerModal {
             </div>
           </div>
 
-          <!-- Progress Bar if installing -->
+          <!-- Live install progress (driven by real installation events) -->
           <div id="java-install-progress" style="display: none; margin-bottom: 16px; padding: 12px 16px; background: var(--bg-surface); border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
             <div style="display: flex; justify-content: space-between; font-size: 0.85rem; font-weight: 600; margin-bottom: 6px;">
-              <span id="install-status-text">Downloading Eclipse Temurin 21...</span>
-              <span id="install-status-percent">40%</span>
+              <span id="install-status-text">Preparing installation…</span>
+              <span id="install-status-percent">0%</span>
             </div>
-            <div style="width: 100%; height: 6px; background: var(--bg-app); border-radius: 3px; overflow: hidden;">
-              <div id="install-progress-bar" style="width: 40%; height: 100%; background: var(--accent-gradient); transition: width 0.3s ease;"></div>
+            <div class="progress-track" style="width: 100%; height: 6px; background: var(--bg-app); border-radius: 3px; overflow: hidden;">
+              <div id="install-progress-bar" style="width: 0%; height: 100%; background: var(--accent-gradient); transition: width 0.3s ease;"></div>
             </div>
           </div>
 
@@ -132,26 +149,50 @@ export class JavaManagerModal {
       };
 
       const installHandler = async (version: number, btnId: string) => {
-        const installBtn = overlay.querySelector(btnId) as HTMLButtonElement;
-        installBtn.disabled = true;
+        if (installLocked) return;
+        const installBtn = overlay.querySelector(btnId) as HTMLButtonElement | null;
+        if (installBtn?.disabled) return;
+        if (installBtn) installBtn.disabled = true;
+        installLocked = true;
+
         const progressBox = overlay.querySelector('#java-install-progress') as HTMLElement;
         const statusText = overlay.querySelector('#install-status-text') as HTMLElement;
         const statusPercent = overlay.querySelector('#install-status-percent') as HTMLElement;
         const progressBar = overlay.querySelector('#install-progress-bar') as HTMLElement;
 
         progressBox.style.display = 'block';
-        statusText.textContent = `Initiating Java ${version} JDK installation...`;
-        statusPercent.textContent = '10%';
-        progressBar.style.width = '10%';
+        statusText.textContent = `Starting Java ${version} JDK installation…`;
+        statusPercent.textContent = '0%';
+        progressBar.style.width = '0%';
 
-        const result = await api.installJava(version);
-        if (result.success) {
-          NotificationToast.show(`Java ${version} installed and verified!`, 'success');
-          await render();
-        } else {
+        // Real milestones are streamed from the main process (JavaInstaller).
+        const unsubscribe = api.onJavaInstallProgress(event => {
+          if (event.version !== version) return;
+          statusText.textContent = event.status;
+          statusPercent.textContent = `${Math.max(0, Math.min(100, Math.round(event.percentage)))}%`;
+          progressBar.style.width = `${Math.max(0, Math.min(100, event.percentage))}%`;
+        });
+
+        try {
+          const result = await api.installJava(version as 8 | 17 | 21 | 25);
+          if (result.success) {
+            NotificationToast.show(`Java ${version} installed and verified!`, 'success');
+            unsubscribe();
+            await render();
+            return;
+          }
+
+          unsubscribe();
           NotificationToast.show(`Installation failed: ${result.error}`, 'error');
           progressBox.style.display = 'none';
-          installBtn.disabled = false;
+          if (installBtn) installBtn.disabled = false;
+        } catch (error) {
+          unsubscribe();
+          NotificationToast.show(`Installation failed: ${describeIpcError(error)}`, 'error');
+          progressBox.style.display = 'none';
+          if (installBtn) installBtn.disabled = false;
+        } finally {
+          installLocked = false;
         }
       };
 
@@ -159,6 +200,13 @@ export class JavaManagerModal {
       (overlay.querySelector('#btn-install-java-17') as HTMLElement).onclick = () => installHandler(17, '#btn-install-java-17');
       (overlay.querySelector('#btn-install-java-21') as HTMLElement).onclick = () => installHandler(21, '#btn-install-java-21');
       (overlay.querySelector('#btn-install-java-25') as HTMLElement).onclick = () => installHandler(25, '#btn-install-java-25');
+
+      // The "Install Java X" prompt from a failed launch actually installs X.
+      if (options.installVersion && !autoInstallStarted) {
+        autoInstallStarted = true;
+        const version = options.installVersion;
+        void installHandler(version, `#btn-install-java-${version}`);
+      }
     };
 
     document.body.appendChild(overlay);

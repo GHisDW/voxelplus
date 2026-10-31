@@ -33,7 +33,8 @@ import {
   UpdateInfo,
   UpdateInstallResult,
   UpdateProgressEvent,
-  UpdateRuntimeInfo
+  UpdateRuntimeInfo,
+  JavaInstallProgressEvent
 } from './types';
 
 const api = {
@@ -147,6 +148,11 @@ const api = {
     const handler = (_: any, event: UpdateProgressEvent) => callback(event);
     ipcRenderer.on('event:updateProgress', handler);
     return () => ipcRenderer.removeListener('event:updateProgress', handler);
+  },
+  onJavaInstallProgress: (callback: (event: JavaInstallProgressEvent) => void) => {
+    const handler = (_: any, event: JavaInstallProgressEvent) => callback(event);
+    ipcRenderer.on('event:javaInstallProgress', handler);
+    return () => ipcRenderer.removeListener('event:javaInstallProgress', handler);
   },
   onAchievementUnlocked: (callback: (data: { achievementName: string; rewardVP: number; isWinCondition: boolean }) => void) => {
     const handler = (_: any, data: { achievementName: string; rewardVP: number; isWinCondition: boolean }) => callback(data);

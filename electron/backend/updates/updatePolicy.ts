@@ -101,27 +101,48 @@ export function parseSha256Digest(digest: string | null | undefined): string | n
  * Picks the portable Windows executable from a release. Falls back to any .exe
  * asset (excluding delta/blockmap artefacts) so alternate packaging still works.
  */
+/**
+ * Names that identify an *installer* rather than a self-contained portable
+ * executable. Installers cannot be swapped over the running executable, so they
+ * must never be chosen for automatic replacement.
+ */
+const INSTALLER_ASSET_PATTERN =
+  /(setup|installer|install[-_.]?package|nsis|msi|uninstall|squirrel|web[-_.]?setup)/i;
+
+/** The only artefact shape the auto-updater can replace in place. */
+const PORTABLE_ASSET_PATTERN = /(portable|standalone)/i;
+
+export function isPortableAssetName(name: string): boolean {
+  return /\.exe$/i.test(name) && !INSTALLER_ASSET_PATTERN.test(name) && PORTABLE_ASSET_PATTERN.test(name);
+}
+
+/**
+ * Picks the *portable* Windows executable from a release.
+ *
+ * Returns `null` when the release only ships installers (NSIS/Setup) or other
+ * artefacts: swapping an installer over the running launcher would corrupt the
+ * installation, so callers must fall back to a manual download instead of
+ * guessing.
+ */
 export function selectUpdateAsset(assets: ReleaseAsset[] | undefined | null): SelectedAsset | null {
   const candidates = (assets ?? []).filter(asset =>
     typeof asset?.name === 'string' &&
     typeof asset?.browser_download_url === 'string' &&
-    /\.exe$/i.test(asset.name) &&
+    isPortableAssetName(asset.name) &&
     !/\.(blockmap|sha256|sig)$/i.test(asset.name)
   );
   if (candidates.length === 0) return null;
 
-  const preferred =
-    candidates.find(asset => /^VoxelPlus-Portable-.*\.exe$/i.test(asset.name)) ??
-    candidates.find(asset => /portable/i.test(asset.name)) ??
-    candidates[0];
+  const preferred = candidates.find(asset => /^VoxelPlus-Portable-.*\.exe$/i.test(asset.name)) ?? candidates[0];
 
   return {
     name: preferred.name,
     url: preferred.browser_download_url,
-    size: typeof preferred.size === 'number' && preferred.size >= 0 ? preferred.size : 0,
+    size: typeof preferred.size === 'number' && preferred.size > 0 ? preferred.size : 0,
     sha256: parseSha256Digest(preferred.digest)
   };
 }
+
 
 const MANDATORY_FLAG = /\[(?:mandatory|required|force(?:d)?[-_\s]?update)\]/i;
 const MANDATORY_HTML = /<!--\s*voxelplus:mandatory\s*-->/i;

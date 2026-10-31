@@ -601,6 +601,13 @@ export interface UpdateProgressEvent {
   fileName: string;
 }
 
+/** Live status emitted while the Java Manager installs a JDK via winget. */
+export interface JavaInstallProgressEvent {
+  version: number;
+  status: string;
+  percentage: number;
+}
+
 export interface UpdateInstallResult {
   started: boolean;
   reason?: string;

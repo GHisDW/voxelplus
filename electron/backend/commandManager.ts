@@ -111,8 +111,11 @@ export class CommandManager {
     return JavaTester.testBinary(executablePath);
   }
 
-  public static async installJava(version: 8 | 17 | 21 | 25 = 21): Promise<{ success: boolean; runtime?: JavaRuntime; error?: string }> {
-    return JavaInstaller.installJava(version);
+  public static async installJava(
+    version: 8 | 17 | 21 | 25 = 21,
+    onProgress?: (status: string, percentage: number) => void
+  ): Promise<{ success: boolean; runtime?: JavaRuntime; error?: string }> {
+    return JavaInstaller.installJava(version, onProgress);
   }
 
   // Instances

@@ -59,14 +59,35 @@ jobs:
       - name: Resolve inputs
         id: inputs
         shell: bash
+        # Security: untrusted values (comment body, dispatch input) are passed
+        # through `env:` and only ever referenced as shell variables. Inlining
+        # `${{ ... }}` into a `run:` block lets a crafted comment body break out
+        # of the quotes and execute arbitrary commands with repository secrets.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          INPUT_PR_NUMBER: ${{ inputs.pr_number }}
+          INPUT_MODE: ${{ inputs.mode }}
+          COMMENT_PR_NUMBER: ${{ github.event.issue.number }}
         run: |
           set -euo pipefail
 
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "pr_number=${{ inputs.pr_number }}" >> "$GITHUB_OUTPUT"
-            echo "mode=${{ inputs.mode }}" >> "$GITHUB_OUTPUT"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            # Only digits are accepted; anything else would reach `gh api`.
+            if ! [[ "$INPUT_PR_NUMBER" =~ ^[0-9]{1,10}$ ]]; then
+              echo "Invalid pull request number." >&2
+              exit 1
+            fi
+
+            case "$INPUT_MODE" in
+              review|changed|security|tests) MODE="$INPUT_MODE" ;;
+              *) echo "Invalid review mode." >&2; exit 1 ;;
+            esac
+
+            echo "pr_number=$INPUT_PR_NUMBER" >> "$GITHUB_OUTPUT"
+            echo "mode=$MODE" >> "$GITHUB_OUTPUT"
           else
-            COMMAND="${{ github.event.comment.body }}"
+            COMMAND="$COMMENT_BODY"
 
             MODE="review"
 
@@ -78,7 +99,12 @@ jobs:
               MODE="tests"
             fi
 
-            echo "pr_number=${{ github.event.issue.number }}" >> "$GITHUB_OUTPUT"
+            if ! [[ "$COMMENT_PR_NUMBER" =~ ^[0-9]{1,10}$ ]]; then
+              echo "Invalid pull request number." >&2
+              exit 1
+            fi
+
+            echo "pr_number=$COMMENT_PR_NUMBER" >> "$GITHUB_OUTPUT"
             echo "mode=$MODE" >> "$GITHUB_OUTPUT"
           fi
 

@@ -32,7 +32,8 @@ import {
   UpdateInfo,
   UpdateInstallResult,
   UpdateProgressEvent,
-  UpdateRuntimeInfo
+  UpdateRuntimeInfo,
+  JavaInstallProgressEvent
 } from '../../../electron/types';
 
 // Access the contextBridge exposed API
@@ -131,6 +132,7 @@ export const api = {
   onProcessStatus: (callback: (event: ProcessStatusEvent) => void) => electronApi.onProcessStatus(callback),
   onDownloadProgress: (callback: (event: DownloadProgressEvent) => void) => electronApi.onDownloadProgress(callback),
   onAchievementUnlocked: (callback: (data: { achievementName: string; rewardVP: number; isWinCondition: boolean }) => void) => electronApi.onAchievementUnlocked(callback),
-  onUpdateProgress: (callback: (event: UpdateProgressEvent) => void) => electronApi.onUpdateProgress(callback)
+  onUpdateProgress: (callback: (event: UpdateProgressEvent) => void) => electronApi.onUpdateProgress(callback),
+  onJavaInstallProgress: (callback: (event: JavaInstallProgressEvent) => void) => electronApi.onJavaInstallProgress(callback)
 };
 

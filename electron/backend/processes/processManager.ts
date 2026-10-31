@@ -74,10 +74,17 @@ export class ProcessManager {
       const recommended = resolvedEnv.compatibility?.java?.recommended ?? 'compatible';
       const recommendedVersion = typeof recommended === 'number' ? recommended : parseInt(String(recommended)) || 21;
 
+      const message = `No compatible Java runtime was found for Minecraft ${metadata.minecraft.version}.`;
+      // Returning without clearing PREPARING left the instance stuck on
+      // "Preparing…" forever — the UI kept offering Stop for a process that
+      // never started. Always settle on a recoverable status.
+      this.updateStatus(instanceId, 'ERROR', undefined, null, message);
+      LogStreamer.addLog(`[Voxel+] ${message} Launch aborted before starting Gradle.`, 'ERROR', instanceId, metadata.name);
+
       return {
         success: false,
         instanceId,
-        message: `No compatible Java runtime was found for Minecraft ${metadata.minecraft.version}.`,
+        message,
         errorDetails: `Minecraft version: ${metadata.minecraft.version}; recommended Java: ${recommended}; configured runtime: ${metadata.runtime.java}`,
         requiresJavaInstall: true,
         recommendedJavaVersion: recommendedVersion
@@ -185,6 +192,32 @@ export class ProcessManager {
         }
       );
 
+      // `spawn()` only reports synchronous errors; a missing/locked Gradle
+      // wrapper surfaces asynchronously. Wait for the real spawn result so a
+      // failed launch is reported as a failure instead of a fake success.
+      const spawnResult = await new Promise<'spawned' | 'error'>((resolve) => {
+        child.once('spawn', () => resolve('spawned'));
+        child.once('error', () => resolve('error'));
+      });
+
+      if (spawnResult === 'error') {
+        const error = new VoxelError({
+          title: 'Minecraft Launch Failed',
+          message: 'The Minecraft development client process could not be started.',
+          cause: 'The Gradle process failed to spawn, possibly because the instance folder is inaccessible or blocked by antivirus.',
+          suggestedAction: 'Check that the instance folder is accessible, then launch again. See the logs page for details.',
+          code: 'GRADLE_PROCESS_SPAWN_FAILED',
+          category: 'GRADLE',
+          severity: 'ERROR',
+          details: `Command: ${command} ${args.join(' ')}`
+        });
+        error.log(instanceId, metadata.name);
+        metadata.status = 'ERROR';
+        InstanceMetadataStore.writeMetadata(instanceDir, metadata);
+        this.updateStatus(instanceId, 'ERROR', undefined, null, error.message);
+        return { success: false, instanceId, message: `${error.message} ${error.suggestedAction ?? ''}`.trim() };
+      }
+
       const active: ActiveProcess = {
         instanceId,
         instanceName: metadata.name,
@@ -198,9 +231,24 @@ export class ProcessManager {
       this.activeProcesses.set(instanceId, active);
       this.updateStatus(instanceId, 'LAUNCHING', child.pid);
 
+      // Only Gradle has started at this point — Minecraft itself is not running
+      // yet. Record the honest intermediate state; the status listener below
+      // promotes the instance to RUNNING once Loom reports the client.
       metadata.lastPlayedAt = new Date().toISOString();
-      metadata.status = 'RUNNING';
+      metadata.status = 'LAUNCHING';
       InstanceMetadataStore.writeMetadata(instanceDir, metadata);
+
+      const markRunning = (): void => {
+        if (active.status === 'RUNNING') return;
+        active.status = 'RUNNING';
+        this.updateStatus(instanceId, 'RUNNING', child.pid);
+        metadata.status = 'RUNNING';
+        try {
+          InstanceMetadataStore.writeMetadata(instanceDir, metadata);
+        } catch {
+          // Status persistence is best-effort; the live status is authoritative.
+        }
+      };
 
       // Use readline to process stdout/stderr line-by-line which plays nicely with batching in LogStreamer
       if (child.stdout) {
@@ -208,11 +256,8 @@ export class ProcessManager {
         rlOut.on('line', (line) => {
           if (!line.trim()) return;
           LogStreamer.addLog(line, 'INFO', instanceId, metadata.name);
-          if (line.includes('Fabric Loom') || line.includes(':runClient')) {
-            if (active.status !== 'RUNNING') {
-              this.updateStatus(instanceId, 'RUNNING', child.pid);
-              active.status = 'RUNNING';
-            }
+          if (line.includes('Fabric Loom') || line.includes(':runClient') || line.includes('Setting user:')) {
+            markRunning();
           }
         });
       }
@@ -286,6 +331,32 @@ export class ProcessManager {
         message: `${error.message} ${error.suggestedAction ?? ''}`.trim()
       };
     }
+  }
+
+  /**
+   * Kills every running Minecraft/Gradle child process. Called when the
+   * launcher quits so a dev client is never orphaned in the background.
+   */
+  public static shutdownAll(): void {
+    for (const [instanceId, active] of this.activeProcesses) {
+      try {
+        if (process.platform === 'win32' && active.pid) {
+          spawn('taskkill', ['/pid', String(active.pid), '/T', '/F'], { windowsHide: true }).on('error', () => {
+            try {
+              active.childProcess.kill('SIGKILL');
+            } catch {
+              /* already gone */
+            }
+          });
+        } else {
+          active.childProcess.kill('SIGKILL');
+        }
+      } catch {
+        // Process already exited.
+      }
+      this.instanceStates.set(instanceId, 'STOPPED');
+    }
+    this.activeProcesses.clear();
   }
 
   public static async stopInstance(instanceId: string): Promise<boolean> {

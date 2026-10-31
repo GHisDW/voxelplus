@@ -36,7 +36,9 @@ const CHECK_CACHE_MS = 5 * 60 * 1000;
 
 export class UpdateService {
   private static cached: UpdateInfo | null = null;
-  private static staged: { name: string; filePath: string } | null = null;
+  private static staged: { name: string; filePath: string; size: number; sha256: string } | null = null;
+  private static downloadInFlight: Promise<string> | null = null;
+  private static installInFlight = false;
   private static progressListeners: ((event: UpdateProgressEvent) => void)[] = [];
 
   public static onProgress(listener: (event: UpdateProgressEvent) => void): () => void {
@@ -157,11 +159,36 @@ export class UpdateService {
   /**
    * Downloads a release asset into the launcher's user data directory
    * (`downloads/updates/`). Nothing outside that folder is written.
+   *
+   * Security contract:
+   *  - the release must publish a SHA-256 digest (never install unverified code);
+   *  - redirects are followed at most 5 times and every hop must stay on a
+   *    trusted GitHub host;
+   *  - the transfer is capped in size and aborts after 30s of inactivity;
+   *  - partial files are removed on every failure and concurrent calls share one
+   *    download instead of racing over the same staging file.
    */
   public static async downloadUpdate(asset: UpdateAssetInfo): Promise<string> {
     if (!asset?.url) throw new Error('No update download is available for this release.');
+    if (!asset.sha256) {
+      throw new Error(
+        'This release does not publish a SHA-256 digest for its launcher file, so automatic installation is disabled. Download the update manually from the release page.'
+      );
+    }
     assertAllowedDownloadUrl(asset.url);
 
+    // Serialise concurrent requests (double-click / retry) over the same staging file.
+    if (this.downloadInFlight) return this.downloadInFlight;
+    const task = this.performDownload(asset);
+    this.downloadInFlight = task;
+    try {
+      return await task;
+    } finally {
+      if (this.downloadInFlight === task) this.downloadInFlight = null;
+    }
+  }
+
+  private static async performDownload(asset: UpdateAssetInfo): Promise<string> {
     const updatesDir = path.join(PathManager.getDownloadsDir(), 'updates');
     if (!fs.existsSync(updatesDir)) fs.mkdirSync(updatesDir, { recursive: true });
 
@@ -171,93 +198,144 @@ export class UpdateService {
     const partial = `${destination}.partial`;
 
     if (await this.fileMatches(destination, asset)) {
-      this.staged = { name: fileName, filePath: destination };
+      this.staged = { name: fileName, filePath: destination, size: asset.size, sha256: asset.sha256! };
       return destination;
     }
 
     fs.rmSync(partial, { force: true });
-    const hash = crypto.createHash('sha256');
-    let received = 0;
-    let lastPercent = -1;
+    const sha256 = asset.sha256!;
 
-    await new Promise<void>((resolve, reject) => {
-      const request = https.get(asset.url, {
-        headers: {
-          'User-Agent': `VoxelPlus-Launcher/${this.getCurrentVersion()}`,
-          Accept: 'application/octet-stream'
-        }
-      }, response => {
-        const status = response.statusCode || 0;
-        if (status >= 300 && status < 400 && response.headers.location) {
-          response.resume();
-          this.downloadUpdate({ ...asset, url: response.headers.location }).then(() => resolve()).catch(reject);
-          return;
-        }
-        if (status !== 200) {
-          response.resume();
-          reject(new Error(`Update download failed with HTTP ${status}.`));
-          return;
-        }
+    try {
+      const received = await this.streamToFile(asset, partial, fileName);
+      if (received !== asset.size) {
+        throw new Error(`Update download was incomplete (${received} of ${asset.size} bytes).`);
+      }
+      const digest = await hashFile(partial);
+      if (digest.toLowerCase() !== sha256.toLowerCase()) {
+        throw new Error('Update download failed its SHA-256 integrity check.');
+      }
+      fs.renameSync(partial, destination);
+      this.staged = { name: fileName, filePath: destination, size: received, sha256 };
+      this.emitProgress({ received, total: received, percent: 100, fileName });
+      return destination;
+    } catch (error) {
+      fs.rmSync(partial, { force: true });
+      throw error;
+    }
+  }
 
-        const total = Number(response.headers['content-length'] || asset.size || 0);
-        const output = fs.createWriteStream(partial);
-        let failed = false;
+  /**
+   * Streams an asset to `partial`, following a bounded number of redirects.
+   * Returns the number of bytes written.
+   */
+  private static streamToFile(asset: UpdateAssetInfo, partial: string, fileName: string): Promise<number> {
+    const MAX_REDIRECTS = 5;
+    const IDLE_TIMEOUT_MS = 30_000;
+    const MAX_BYTES = 512 * 1024 * 1024;
 
-        const fail = (error: Error): void => {
-          if (failed) return;
-          failed = true;
-          output.destroy();
-          fs.rmSync(partial, { force: true });
-          reject(error);
-        };
+    return new Promise<number>((resolve, reject) => {
+      let bytesReceived = 0;
+      let settled = false;
+      let lastPercent = -1;
+      const output = fs.createWriteStream(partial);
 
-        response.on('data', (chunk: Buffer) => {
-          received += chunk.length;
-          hash.update(chunk);
-          const percent = total > 0 ? Math.min(100, Math.round((received / total) * 100)) : 0;
-          if (percent !== lastPercent) {
-            lastPercent = percent;
-            this.emitProgress({ received, total, percent, fileName });
-          }
-        });
-
-        response.on('error', fail);
-        output.on('error', fail);
-
-        output.on('finish', () => {
-          output.close(() => {
-            if (failed) return;
-            if (asset.size > 0 && received !== asset.size) {
-              fs.rmSync(partial, { force: true });
-              reject(new Error(`Update download was incomplete (${received} of ${asset.size} bytes).`));
-              return;
-            }
-            const digest = hash.digest('hex');
-            if (asset.sha256 && digest.toLowerCase() !== asset.sha256.toLowerCase()) {
-              fs.rmSync(partial, { force: true });
-              reject(new Error('Update download failed its SHA-256 integrity check.'));
-              return;
-            }
-            fs.renameSync(partial, destination);
-            this.staged = { name: fileName, filePath: destination };
-            this.emitProgress({ received, total: total || received, percent: 100, fileName });
-            resolve();
-          });
-        });
-
-        response.pipe(output);
-      });
-
-      request.on('error', error => {
-        fs.rmSync(partial, { force: true });
+      const fail = (error: Error): void => {
+        if (settled) return;
+        settled = true;
+        output.destroy();
         reject(error);
-      });
-      request.setTimeout(REQUEST_TIMEOUT_MS, () => {
-        request.destroy(new Error('Update download timed out.'));
-      });
-    });
+      };
 
-    return destination;
+      const request = (url: string, redirects: number): void => {
+        if (redirects > MAX_REDIRECTS) {
+          fail(new Error('Too many redirects while downloading the update.'));
+          return;
+        }
+
+        let hop: URL;
+        try {
+          hop = new URL(url);
+          assertAllowedDownloadUrl(hop.toString());
+        } catch (error: any) {
+          fail(error instanceof Error ? error : new Error(String(error)));
+          return;
+        }
+
+        const req = https.get(
+          hop,
+          {
+            headers: {
+              'User-Agent': `VoxelPlus-Launcher/${this.getCurrentVersion()}`,
+              Accept: 'application/octet-stream'
+            }
+          },
+          response => {
+            const status = response.statusCode || 0;
+
+            if (status >= 300 && status < 400 && response.headers.location) {
+              response.resume();
+              // Relative redirects are resolved against the current hop.
+              const next = new URL(String(response.headers.location), hop).toString();
+              request(next, redirects + 1);
+              return;
+            }
+
+            if (status !== 200) {
+              response.resume();
+              fail(new Error(`Update download failed with HTTP ${status}.`));
+              return;
+            }
+
+            const advertised = Number(response.headers['content-length'] || 0);
+            if (advertised > MAX_BYTES) {
+              response.destroy();
+              fail(new Error('The update download is larger than the launcher allows.'));
+              return;
+            }
+
+            const total = advertised > 0 ? advertised : asset.size;
+
+            response.on('data', (chunk: Buffer) => {
+              bytesReceived += chunk.length;
+              if (bytesReceived > MAX_BYTES) {
+                req.destroy();
+                fail(new Error('The update download is larger than the launcher allows.'));
+                return;
+              }
+              const percent = total > 0 ? Math.min(100, Math.round((bytesReceived / total) * 100)) : 0;
+              if (percent !== lastPercent) {
+                lastPercent = percent;
+                this.emitProgress({ received: bytesReceived, total, percent, fileName });
+              }
+            });
+
+            response.on('aborted', () => fail(new Error('The update download was interrupted.')));
+            response.on('error', fail);
+            response.pipe(output, { end: true });
+          }
+        );
+
+        req.on('error', fail);
+        req.setTimeout(IDLE_TIMEOUT_MS, () => {
+          req.destroy(new Error('The update download timed out.'));
+        });
+      };
+
+      output.on('error', fail);
+      output.on('finish', () => {
+        output.close(done => {
+          if (settled) return;
+          if (done) {
+            fail(done);
+            return;
+          }
+          settled = true;
+          resolve(bytesReceived);
+        });
+      });
+
+      request(asset.url, 0);
+    });
   }
 
   /**
@@ -266,22 +344,55 @@ export class UpdateService {
    * Data safety: the helper only replaces the launcher executable and keeps a
    * `.old` backup. It never touches the portable data folder, instances,
    * configuration, VPack caches or the player profile.
+   *
+   * Installation refuses to continue unless the staged file still matches the
+   * size and SHA-256 digest published by the release, so a file swapped on disk
+   * between download and install can never be executed.
    */
-  public static installUpdate(): UpdateInstallResult {
+  public static async installUpdate(): Promise<UpdateInstallResult> {
     if (process.platform !== 'win32') {
       return { started: false, reason: 'unsupported-platform' };
     }
     if (!this.canAutoInstall()) {
       return { started: false, reason: 'not-packaged' };
     }
+    if (this.installInFlight) {
+      return { started: false, reason: 'install-in-progress' };
+    }
     if (!this.staged || !fs.existsSync(this.staged.filePath)) {
       return { started: false, reason: 'nothing-downloaded' };
+    }
+    if (!this.staged.sha256) {
+      return { started: false, reason: 'integrity-unavailable' };
     }
 
     const target = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
     if (!target || !/\.exe$/i.test(target) || !fs.existsSync(target)) {
       return { started: false, reason: 'target-not-found' };
     }
+    if (path.resolve(target).toLowerCase() === path.resolve(this.staged.filePath).toLowerCase()) {
+      return { started: false, reason: 'invalid-target' };
+    }
+
+    const { filePath, size, sha256 } = this.staged;
+    try {
+      const stat = fs.statSync(filePath);
+      if (size > 0 && stat.size !== size) {
+        fs.rmSync(filePath, { force: true });
+        this.staged = null;
+        return { started: false, reason: 'integrity-check-failed' };
+      }
+      const digest = await hashFile(filePath);
+      if (digest.toLowerCase() !== sha256.toLowerCase()) {
+        fs.rmSync(filePath, { force: true });
+        this.staged = null;
+        return { started: false, reason: 'integrity-check-failed' };
+      }
+    } catch {
+      return { started: false, reason: 'integrity-check-failed' };
+    }
+
+    this.installInFlight = true;
 
     const workDir = path.join(os.tmpdir(), `voxelplus-update-${crypto.randomUUID()}`);
     fs.mkdirSync(workDir, { recursive: true });
@@ -292,18 +403,38 @@ export class UpdateService {
     try {
       const helper = spawn(
         process.env.ComSpec || 'cmd.exe',
-        ['/d', '/c', scriptPath, String(process.pid), this.staged.filePath, target, logPath],
+        ['/d', '/c', scriptPath, String(process.pid), filePath, target, logPath],
         { detached: true, stdio: 'ignore', windowsHide: true }
       );
       helper.unref();
     } catch (error) {
       console.error('[updates] Failed to start the update helper:', error);
+      this.installInFlight = false;
       return { started: false, reason: 'helper-spawn-failed' };
     }
 
     // Let the helper start before this process exits.
     setTimeout(() => app.quit(), 400);
     return { started: true };
+  }
+
+  /**
+   * Removes the `.old` backup left behind by a *successful* previous update.
+   *
+   * The swap helper deliberately keeps the backup after relaunching so a broken
+   * build can still be restored manually. Reaching this code means the new
+   * executable started correctly, so the backup is no longer needed. A backup
+   * that is still locked (e.g. an antivirus scan) is left for the next start.
+   */
+  public static cleanupStaleBackup(): void {
+    try {
+      const target = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
+      if (!target) return;
+      const backup = `${target}.old`;
+      if (fs.existsSync(backup)) fs.rmSync(backup, { force: true });
+    } catch {
+      // Best-effort housekeeping; never block startup.
+    }
   }
 
   public static async openReleasePage(url?: string): Promise<boolean> {
@@ -343,9 +474,9 @@ export class UpdateService {
 
   private static async fileMatches(filePath: string, asset: UpdateAssetInfo): Promise<boolean> {
     try {
+      if (!asset.sha256) return false;
       const stat = fs.statSync(filePath);
-      if (asset.size > 0 && stat.size !== asset.size) return false;
-      if (!asset.sha256) return true;
+      if (asset.size <= 0 || stat.size !== asset.size) return false;
       const digest = await hashFile(filePath);
       return digest.toLowerCase() === asset.sha256.toLowerCase();
     } catch {
