@@ -26,6 +26,10 @@ export class JavaInstaller {
         await new Promise(resolve => setTimeout(resolve, 1500));
       }
 
+      // A freshly installed JDK is only visible after a real rescan, so the
+      // detector cache must be dropped before each verification attempt.
+      JavaDetector.invalidateCache();
+
       let runtimes: JavaRuntime[] = [];
       try {
         runtimes = await JavaDetector.scanSystemJava();

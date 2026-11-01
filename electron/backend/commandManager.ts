@@ -104,6 +104,9 @@ export class CommandManager {
 
   // Java
   public static async scanJava(): Promise<JavaRuntime[]> {
+    // This backs the Java Manager's explicit "Rescan" action, so it must bypass
+    // the detector cache instead of returning a result from up to 30s ago.
+    JavaDetector.invalidateCache();
     return JavaDetector.scanSystemJava();
   }
 
