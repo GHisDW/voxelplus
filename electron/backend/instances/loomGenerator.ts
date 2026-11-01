@@ -196,7 +196,9 @@ zipStorePath=wrapper/dists
     const env: NodeJS.ProcessEnv = {
       ...process.env,
       JAVA_HOME: resolvedEnv.javaHome || undefined,
-      PATH: `${path.join(resolvedEnv.javaHome || '', 'bin')};${process.env.PATH || ''}`
+      // path.delimiter, not a hard-coded ';' — a Windows-only separator broke the
+      // inherited PATH on POSIX and mis-joined entries containing spaces.
+      PATH: `${path.join(resolvedEnv.javaHome || '', 'bin')}${path.delimiter}${process.env.PATH || ''}`
     };
 
     if (!fs.existsSync(instanceDir)) {
@@ -212,17 +214,24 @@ zipStorePath=wrapper/dists
     }
 
     return new Promise<void>((resolve) => {
-      const comspec = process.env.ComSpec || 'cmd.exe';
-      const child = spawn(
-        comspec,
-        ['/d', '/c', 'gradlew.bat dependencies --no-daemon'],
-        {
-          cwd: instanceDir,
-          env,
-          windowsHide: true,
-          shell: true
-        }
-      );
+      // Gradle wrapper invocation without a shell:
+      //  - Windows: `cmd.exe /d /c gradlew.bat <args>` is already a shell, so
+      //    `shell: true` only added a second parsing layer (install paths with
+      //    `&`, `^`, `%` or spaces could be re-interpreted). Arguments are passed
+      //    as an array and quoted by Node, never concatenated into a string.
+      //  - POSIX: run the wrapper directly.
+      const isWindows = process.platform === 'win32';
+      const wrapperName = isWindows ? 'gradlew.bat' : 'gradlew';
+      const command = isWindows ? (process.env.ComSpec || 'cmd.exe') : path.join(instanceDir, wrapperName);
+      const args = isWindows
+        ? ['/d', '/c', wrapperName, 'dependencies', '--no-daemon']
+        : ['dependencies', '--no-daemon'];
+
+      const child = spawn(command, args, {
+        cwd: instanceDir,
+        env,
+        windowsHide: true
+      });
 
       if (child.stdout) {
         child.stdout.on('data', (data: Buffer) => {

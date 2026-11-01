@@ -35,10 +35,9 @@
     "dist:nsis": "npm run build && electron-builder --win --x64 --config.win.target=nsis --config.directories.output=dist-installer"
   },
   "dependencies": {
-    "adm-zip": "^0.5.16"
+    "adm-zip": "^0.6.1"
   },
   "devDependencies": {
-    "@types/adm-zip": "^0.5.5",
     "@types/node": "^22.10.2",
     "concurrently": "^9.2.5",
     "cross-env": "^7.0.3",
