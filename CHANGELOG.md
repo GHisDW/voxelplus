@@ -104,11 +104,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   * **Mod Compatibility**: Verified with Fabric API 0.155.3+26.1.2, Sodium 0.9.2-beta.1+mc26.1.2, and Xaero's Minimap 26.5.0.
   * **Play Launch**: OpenGL 3.3.0 initialized via NVIDIA GeForce RTX 5050 Laptop GPU, texture atlases baked, sound engine started, options saved directly to instance root (`options.txt`).
 
-### Fixed — Release Hardening (verified for the 1.2.0 build)
+### Fixed — Release Completion Pass (Windows build verified)
+
+**Preflight / Java detection performance (fixes the 5 s preflight timeout)**
+
+* `JavaDetector.scanSystemJava()` walked the filesystem, then queried the Windows registry, then ran one `java -version` process per candidate **sequentially**, and did so again on every preflight, launch and Java-Manager render. On Windows a single preflight (e.g. the 1 TB allocation check) exceeded the 5 s test budget.
+* Scans are now cached for 30 s with a single shared in-flight promise, the registry query starts before the filesystem walk (and is skipped off Windows), and candidate probes run in parallel with a bounded concurrency of 4. The 1 TB preflight now returns in **0 ms** instead of seconds.
+* `CommandManager.scanJava()` (the Java Manager's "Rescan") and `JavaInstaller` verification explicitly invalidate the cache so a freshly installed JDK is always detected.
+
+**Dependencies**
+
+* `adm-zip` **0.5.18 → 0.6.1**, clearing eight advisories (crafted 4 GB allocation, decompression-bomb guard bypass, symlink extraction, duplicate-entry mismatch, async size-guard bypass, unhandled DEFLATE error, SUID/SGID preservation). `npm audit --omit=dev` now reports **0 vulnerabilities**.
+* Removed the now-redundant `@types/adm-zip` dev dependency (0.6.x ships its own types).
+
+**Process invocation**
+
+* Removed the last `shell: true` (`loomGenerator` Gradle dependency pre-fetch) and the two remaining string-command `exec()` calls (`systemScanner` PowerShell probes) — everything uses argument-array `spawn`/`execFile`.
+* The Gradle wrapper pre-fetch is now argument-based (`cmd.exe /d /c gradlew.bat dependencies --no-daemon` on Windows, the wrapper directly elsewhere) and uses `path.delimiter` instead of a hard-coded `;`, so install paths containing spaces or shell metacharacters are never re-parsed.
+
+**CI security**
+
+* The command-injection fix for `.github/workflows/ai-pr-review.yml` is verified and shipped as `docs/patches/ai-pr-review-command-injection.patch` (the automation credential used here cannot push workflow changes). Applying it moves untrusted comment/dispatch values into `env:` and reduces the token to `contents: read`, `pull-requests: read`, `issues: write`.
 
 **Security**
 
-* `.github/workflows/ai-pr-review.yml` interpolated `github.event.comment.body` (and the `workflow_dispatch` inputs) directly into a `run:` block, so a crafted `/voxel-review` comment could break out of the quotes and execute arbitrary commands with repository secrets. Untrusted values are now passed through `env:` and validated (digits-only PR number, mode allow-list). *Applied as `docs/patches/ai-pr-review-command-injection.patch` because the automation token lacks `workflow` scope — see that file.*
+* `.github/workflows/ai-pr-review.yml` interpolated `github.event.comment.body` (and the `workflow_dispatch` inputs) directly into a `run:` block, so a crafted `/voxel-review` comment could break out of the quotes and execute arbitrary commands with repository secrets. Untrusted values are now passed through `env:` and validated (digits-only PR number, mode allow-list).
 * Every renderer → main IPC handler now validates its arguments (`electron/backend/ipc/validate.ts`): instance ids cannot contain path separators, content filenames must be a single path segment, import/export paths must be absolute, Java versions are restricted to 8/17/21/25, downloads must be HTTPS from Modrinth/GitHub hosts, dialog filters are sanitised and string lengths are capped.
 * `DownloadManager.downloadToInstance` joined a renderer-supplied filename straight into `mods/`, allowing `../../` traversal outside the instance folder (and wrote arbitrary paths); it now sanitises the name, re-checks containment, enforces a 512 MB cap and removes partial files.
 

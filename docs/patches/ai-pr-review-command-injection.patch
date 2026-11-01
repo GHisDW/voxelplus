@@ -1,14 +1,21 @@
-commit e18d540d29230402aa9368601a7a9d98be204bd3
-Author: Cline <cline@voxelplus.local>
-Date:   Sat Oct 31 04:48:42 2026 +0000
-
-    fix(security,updates,java,launch): harden IPC, verify update integrity, verify Java installs, fix stuck PREPARING state
-
 diff --git a/.github/workflows/ai-pr-review.yml b/.github/workflows/ai-pr-review.yml
-index 1878e9b..8c820d3 100644
+index 1878e9b..89d3e33 100644
 --- a/.github/workflows/ai-pr-review.yml
 +++ b/.github/workflows/ai-pr-review.yml
-@@ -59,14 +59,35 @@ jobs:
+@@ -26,8 +26,11 @@ on:
+ 
+ permissions:
+   contents: read
++  # PR metadata (`.pulls/{n}`, `.pulls/{n}/files`, `.pulls/{n}.diff`) is read-only.
++  pull-requests: read
++  # The review is published as an issue comment (PRs are issues), which needs
++  # write access to the issues API only.
+   issues: write
+-  pull-requests: write
+ 
+ concurrency:
+   group: voxel-ai-review-${{ github.event.issue.number || inputs.pr_number }}
+@@ -59,14 +62,35 @@ jobs:
        - name: Resolve inputs
          id: inputs
          shell: bash
@@ -48,7 +55,7 @@ index 1878e9b..8c820d3 100644
  
              MODE="review"
  
-@@ -78,7 +99,12 @@ jobs:
+@@ -78,7 +102,12 @@ jobs:
                MODE="tests"
              fi
  

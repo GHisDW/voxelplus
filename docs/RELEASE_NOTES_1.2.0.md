@@ -55,7 +55,27 @@ Every screen now has a deliberately designed light theme: startup splash, onboar
 * If you update manually, replace only `VoxelPlus.exe` next to your `portable/` data folder.
 * A `.old` file may appear next to the executable after an automatic update; it is deleted automatically on the next clean start.
 
+## Downloads (built and hashed for 1.2.0)
+
+| Artifact | Size | SHA-256 |
+|---|---|---|
+| `VoxelPlus-Portable-1.2.0.exe` | 73,200,262 bytes (69.8 MiB) | `cd8e64c7d9157e074d29238b52295fe47b9650fa7bf35d31b81c2cc919054522` |
+| `VoxelPlus-1.2.0-x64.zip` | 107,400,355 bytes (102.4 MiB) | `d775615da216d2d055b472f68d1ad88764229cab6c363d149e541dbf35fb3bee` |
+
+* **Portable** – single file, no install: run `VoxelPlus-Portable-1.2.0.exe`. This is the file the auto-updater replaces.
+* **Zip** – pre-extracted build for people who prefer a folder install. Run `VoxelPlus.exe` inside it. (`VoxelPlus.exe` keeps Electron's default file icon/version resource; the portable wrapper carries the Voxel+ branding. Building on Windows with `signAndEditExecutable: true` embeds it in both.)
+* Windows SmartScreen may warn because the build is not code-signed.
+* `VoxelPlus-Setup-1.2.0.exe` (NSIS) is configured but was **not** produced in the Linux build environment — it needs Windows or wine. Use the portable build instead.
+
+### Install / upgrade
+
+1. Existing 1.1.x users: keep the app in the same folder and run the new portable executable; the auto-updater can also replace it in place (it verifies the published SHA-256 first).
+2. New users: put the portable executable anywhere writable and run it. Data lives in `portable\` next to the executable (portable mode) or `%APPDATA%\VoxelPlus`.
+3. Instances, worlds, configuration, VPack cache and the VP wallet are never touched by an update.
+
 ## Known limitations
 
-* A live Minecraft launch (Fabric/Quilt/Forge/NeoForge) was **not** executed during this release audit — it requires a Windows host with JDK and download access. Loader scaffolding, argument generation and metadata are covered by tests, and the launch code paths were reviewed and hardened, but end-to-end client boot is unverified here.
+* A live Minecraft launch (Fabric/Quilt/Forge/NeoForge) was **not** executed during this release audit — it requires a Windows host with JDK, network and GPU access. Loader scaffolding, argument generation, Java selection, launch failure handling and metadata are covered by automated tests and by a packaged-code harness, but an end-to-end client boot is unverified here.
+* The Windows executable was built and its packaged payload verified (booting, IPC, instance lifecycle, updater check/download), but the `.exe` itself could not be executed on this Linux host.
 * Code signing is not configured; Windows SmartScreen may warn on first run of the portable executable.
+* Electron is pinned to 33.4.11 for 1.2.0. That major line is out of support and carries published runtime advisories; a framework upgrade (Electron 45.x) is the recommended next-cycle work, since it requires re-verifying sandbox/CSP/IPC behaviour.
