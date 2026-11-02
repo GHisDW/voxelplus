@@ -41,14 +41,14 @@
     "@types/node": "^22.10.2",
     "concurrently": "^9.2.5",
     "cross-env": "^7.0.3",
-    "electron": "^33.2.1",
+    "electron": "^39.2.0",
     "electron-builder": "^25.1.8",
     "typescript": "^5.7.2",
     "vite": "^6.0.3",
     "vitest": "^5.0.4"
   },
   "allowScripts": {
-    "electron@33.4.11": true,
+    "electron@39.2.0": true,
     "esbuild@0.25.12": true
   },
   "build": {

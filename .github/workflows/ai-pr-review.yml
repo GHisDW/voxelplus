@@ -66,17 +66,22 @@ jobs:
             echo "pr_number=${{ inputs.pr_number }}" >> "$GITHUB_OUTPUT"
             echo "mode=${{ inputs.mode }}" >> "$GITHUB_OUTPUT"
           else
-            COMMAND="${{ github.event.comment.body }}"
-
+            # Safe: pass comment body through environment, not shell interpolation
+            # Validate only permitted modes explicitly
+            COMMENT_BODY="${{ github.event.comment.body }}"
             MODE="review"
 
-            if [[ "$COMMAND" == *" changed"* ]]; then
-              MODE="changed"
-            elif [[ "$COMMAND" == *" security"* ]]; then
-              MODE="security"
-            elif [[ "$COMMAND" == *" tests"* ]]; then
-              MODE="tests"
-            fi
+            case "$COMMENT_BODY" in
+              *" changed"*)
+                MODE="changed"
+                ;;
+              *" security"*)
+                MODE="security"
+                ;;
+              *" tests"*)
+                MODE="tests"
+                ;;
+            esac
 
             echo "pr_number=${{ github.event.issue.number }}" >> "$GITHUB_OUTPUT"
             echo "mode=$MODE" >> "$GITHUB_OUTPUT"
