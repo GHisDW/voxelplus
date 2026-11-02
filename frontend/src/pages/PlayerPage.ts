@@ -46,7 +46,7 @@ export class PlayerPage {
             width: 76px;
             height: 76px;
             border-radius: var(--radius-md);
-            background: #111827;
+            background: var(--bg-elevated);
             border: 2px solid ${equippedEffect ? 'var(--accent-secondary)' : 'var(--border-subtle)'};
             display: flex;
             align-items: center;
@@ -66,12 +66,12 @@ export class PlayerPage {
                 ${profile.displayName}
               </h1>
               ${equippedCosmetic ? `
-                <span style="font-size: 0.75rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: rgba(16,185,129,0.2); color: #10b981;">
+                <span style="font-size: 0.75rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: rgba(16,185,129,0.2); color: var(--success);">
                   ${equippedCosmetic.name}
                 </span>
               ` : ''}
               ${equippedEffect ? `
-                <span style="font-size: 0.75rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: rgba(6,182,212,0.2); color: #06b6d4;">
+                <span style="font-size: 0.75rem; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: rgba(6,182,212,0.2); color: var(--status-running);">
                   ${equippedEffect.name}
                 </span>
               ` : ''}
@@ -92,7 +92,7 @@ export class PlayerPage {
             text-align: right;
           ">
             <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Points (VP)</div>
-            <div style="font-size: 1.3rem; font-weight: 900; color: #f59e0b; font-family: var(--font-mono);">${wallet.balance.toLocaleString()}</div>
+            <div style="font-size: 1.3rem; font-weight: 900; color: var(--warning); font-family: var(--font-mono);">${wallet.balance.toLocaleString()}</div>
           </div>
 
           <div style="
@@ -103,7 +103,7 @@ export class PlayerPage {
             text-align: right;
           ">
             <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Achievements</div>
-            <div style="font-size: 1.3rem; font-weight: 900; color: #10b981; font-family: var(--font-mono);">${unlockedCount} / ${totalAchievements}</div>
+            <div style="font-size: 1.3rem; font-weight: 900; color: var(--success); font-family: var(--font-mono);">${unlockedCount} / ${totalAchievements}</div>
           </div>
         </div>
       </div>
@@ -192,7 +192,7 @@ export class PlayerPage {
         position: relative;
         width: 100%;
         max-width: 580px;
-        background: radial-gradient(circle at 50% 20%, ${color}33 0%, #0a0d14 85%);
+        background: radial-gradient(circle at 50% 20%, ${color}33 0%, var(--bg-elevated) 85%);
         border: 2px solid ${color};
         border-radius: var(--radius-xl);
         padding: 36px 28px;
@@ -215,7 +215,7 @@ export class PlayerPage {
             display: inline-block;
             padding: 6px 24px;
             background: linear-gradient(90deg, transparent 0%, ${color}aa 30%, ${color}aa 70%, transparent 100%);
-            color: #ffffff;
+            color: var(--text-primary);
             font-size: 0.85rem;
             font-weight: 900;
             letter-spacing: 0.15em;
@@ -234,7 +234,7 @@ export class PlayerPage {
             display: flex;
             align-items: center;
             justify-content: center;
-            background: ${prog.unlocked ? `radial-gradient(circle, ${color} 0%, rgba(15,23,42,0.9) 100%)` : 'rgba(30,41,59,0.9)'};
+            background: ${prog.unlocked ? `radial-gradient(circle, ${color} 0%, var(--bg-elevated-soft) 100%)` : 'var(--bg-elevated-soft)'};
             clip-path: ${shapeClip};
             filter: drop-shadow(0 6px 18px ${color}aa);
           ">
@@ -243,7 +243,7 @@ export class PlayerPage {
             </span>
           </div>
 
-          <h2 style="font-size: 1.6rem; font-weight: 900; color: #ffffff; margin-bottom: 6px;">
+          <h2 style="font-size: 1.6rem; font-weight: 900; color: var(--text-primary); margin-bottom: 6px;">
             ${def.name}
           </h2>
 
@@ -256,12 +256,12 @@ export class PlayerPage {
             align-items: center;
             gap: 12px;
             padding: 8px 18px;
-            background: rgba(15, 23, 42, 0.8);
+            background: var(--bg-elevated-soft);
             border: 1px solid var(--border-subtle);
             border-radius: var(--radius-pill);
             margin-bottom: 24px;
           ">
-            <span style="color: #f59e0b; font-family: var(--font-mono); font-weight: 800;">
+            <span style="color: var(--warning); font-family: var(--font-mono); font-weight: 800;">
               +${def.rewardVP} VP REWARD
             </span>
             <span style="color: var(--text-muted);">•</span>
@@ -391,7 +391,7 @@ export class PlayerPage {
             align-items: center;
             gap: 18px;
             padding: 16px 20px;
-            background: rgba(15, 23, 42, 0.75);
+            background: var(--bg-elevated-soft);
             backdrop-filter: blur(8px);
             border: 1px solid ${isComplete ? color + '88' : 'var(--border-subtle)'};
             border-radius: var(--radius-lg);
@@ -408,7 +408,7 @@ export class PlayerPage {
               display: flex;
               align-items: center;
               justify-content: center;
-              background: ${isComplete ? `radial-gradient(circle, ${color} 0%, rgba(15,23,42,0.9) 100%)` : 'rgba(30,41,59,0.8)'};
+              background: ${isComplete ? `radial-gradient(circle, ${color} 0%, var(--bg-elevated-soft) 100%)` : 'var(--bg-elevated-soft)'};
               clip-path: ${shapeClip};
               filter: drop-shadow(0 4px 10px ${isComplete ? color + 'aa' : 'rgba(0,0,0,0.5)'});
               flex-shrink: 0;
@@ -431,14 +431,14 @@ export class PlayerPage {
                   color: ${color};
                   border: 1px solid ${color}44;
                 ">${def.rarity}</span>
-                ${isComplete ? `<span style="color: #10b981; font-size: 0.78rem; font-weight: 800; margin-left: auto;">✓ UNLOCKED</span>` : ''}
+                ${isComplete ? `<span style="color: var(--success); font-size: 0.78rem; font-weight: 800; margin-left: auto;">✓ UNLOCKED</span>` : ''}
               </div>
 
               <div style="font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 8px;">${def.description}</div>
 
               <!-- Progress Bar -->
               <div style="display: flex; align-items: center; gap: 12px;">
-                <div style="flex: 1; height: 6px; background: rgba(255,255,255,0.08); border-radius: 999px; overflow: hidden;">
+                <div style="flex: 1; height: 6px; background: var(--bg-row); border-radius: 999px; overflow: hidden;">
                   <div style="width: ${itemPercent}%; height: 100%; background: ${isComplete ? color : 'var(--accent-primary)'}; transition: width 0.3s ease;"></div>
                 </div>
                 <div style="font-size: 0.75rem; font-family: var(--font-mono); color: var(--text-muted); font-weight: 700;">
@@ -447,7 +447,7 @@ export class PlayerPage {
               </div>
             </div>
 
-            <div style="text-align: right; font-family: var(--font-mono); font-size: 0.9rem; font-weight: 800; color: #f59e0b; flex-shrink: 0; padding-left: 8px;">
+            <div style="text-align: right; font-family: var(--font-mono); font-size: 0.9rem; font-weight: 800; color: var(--warning); flex-shrink: 0; padding-left: 8px;">
               +${def.rewardVP} VP
             </div>
           </div>
@@ -459,7 +459,7 @@ export class PlayerPage {
           <!-- Overall Progress Banner -->
           <div style="
             padding: 20px 24px;
-            background: rgba(15, 23, 42, 0.8);
+            background: var(--bg-elevated-soft);
             border: 1px solid var(--border-subtle);
             border-radius: var(--radius-lg);
           ">
@@ -468,11 +468,11 @@ export class PlayerPage {
                 <div style="font-size: 1.1rem; font-weight: 800; color: var(--text-primary);">Trophy Completion</div>
                 <div style="font-size: 0.82rem; color: var(--text-secondary);">${unlockedCount} of ${totalCount} achievements unlocked • Click any achievement to unroll crest banner</div>
               </div>
-              <div style="font-size: 1.6rem; font-weight: 900; color: #10b981; font-family: var(--font-mono);">
+              <div style="font-size: 1.6rem; font-weight: 900; color: var(--success); font-family: var(--font-mono);">
                 ${percent}%
               </div>
             </div>
-            <div style="width: 100%; height: 10px; background: rgba(255,255,255,0.08); border-radius: 999px; overflow: hidden;">
+            <div style="width: 100%; height: 10px; background: var(--bg-row); border-radius: 999px; overflow: hidden;">
               <div style="width: ${percent}%; height: 100%; background: var(--accent-gradient); transition: width 0.5s ease;"></div>
             </div>
           </div>

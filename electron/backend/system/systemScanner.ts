@@ -1,5 +1,5 @@
 import os from 'node:os';
-import { exec } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { SystemScanResult, DiskDriveInfo } from '../../types';
 import { JavaDetector } from '../java/javaDetector';
 import { ConfigStore } from '../storage/configStore';
@@ -71,8 +71,9 @@ export class SystemScanner {
         return resolve(fallback);
       }
 
-      // Modern CIM queries (NO obsolete wmic)
-      const cmd = `powershell -NoProfile -NonInteractive -Command "
+      // Modern CIM queries (NO obsolete wmic). The script is static and is passed
+      // as an argument array (no shell), so nothing here is re-parsed by cmd.exe.
+      const script = `
         $os = (Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue).Caption;
         $cpu = (Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1);
         $gpu = (Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue | Select-Object -First 1).Name;
@@ -82,9 +83,9 @@ export class SystemScanner {
           Cores = $cpu.NumberOfCores;
           GPU = $gpu;
         } | ConvertTo-Json -Compress
-      "`.trim().replace(/\n/g, ' ');
+      `.trim().replace(/\n/g, ' ');
 
-      exec(cmd, { timeout: 6000 }, (error, stdout) => {
+      execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { timeout: 6000, windowsHide: true }, (error, stdout) => {
         if (error || !stdout) {
           return resolve(fallback);
         }
@@ -113,11 +114,11 @@ export class SystemScanner {
         return resolve(defaultDrives);
       }
 
-      const cmd = `powershell -NoProfile -NonInteractive -Command "
+      const script = `
         Get-PSDrive -PSProvider FileSystem | Select-Object Name, Description, @{Name='FreeGB';Expression={[math]::Round($_.Free/1GB, 1)}}, @{Name='UsedGB';Expression={[math]::Round($_.Used/1GB, 1)}} | ConvertTo-Json -Compress
-      "`.trim().replace(/\n/g, ' ');
+      `.trim().replace(/\n/g, ' ');
 
-      exec(cmd, { timeout: 5000 }, (error, stdout) => {
+      execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { timeout: 5000, windowsHide: true }, (error, stdout) => {
         if (error || !stdout) return resolve(defaultDrives);
 
         try {

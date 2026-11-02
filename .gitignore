@@ -85,3 +85,6 @@ vpacks/downloads/
 
 # Local runtime data created when the app runs outside Electron (tests/dev)
 .voxelplus/
+
+# Release staging (generated binaries, never committed)
+release/

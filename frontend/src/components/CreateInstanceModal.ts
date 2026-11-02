@@ -152,7 +152,7 @@ export class CreateInstanceModal {
               <div style="
                 width: 100%;
                 height: 10px;
-                background: rgba(255,255,255,0.08);
+                background: var(--bg-row);
                 border-radius: 999px;
                 overflow: hidden;
                 position: relative;
@@ -170,7 +170,7 @@ export class CreateInstanceModal {
 
               <!-- Live Setup Console Log -->
               <div id="dl-console-terminal" style="
-                background: #07090e;
+                background: var(--bg-terminal);
                 border: 1px solid var(--border-subtle);
                 border-radius: var(--radius-md);
                 height: 180px;
@@ -178,7 +178,7 @@ export class CreateInstanceModal {
                 padding: 12px 14px;
                 font-family: var(--font-mono);
                 font-size: 0.78rem;
-                color: #94a3b8;
+                color: var(--text-secondary);
                 line-height: 1.5;
                 user-select: text;
               "></div>
@@ -270,7 +270,7 @@ export class CreateInstanceModal {
             statusText.textContent = entry.message;
 
             const div = document.createElement('div');
-            div.style.color = entry.level === 'WARN' ? '#fbbf24' : entry.level === 'ERROR' ? '#f87171' : '#94a3b8';
+            div.style.color = entry.level === 'WARN' ? 'var(--warning)' : entry.level === 'ERROR' ? 'var(--danger)' : 'var(--text-secondary)';
             div.textContent = `[${entry.timeString}] ${entry.message}`;
             consoleTerminal.appendChild(div);
             consoleTerminal.scrollTop = consoleTerminal.scrollHeight;

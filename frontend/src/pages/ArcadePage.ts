@@ -23,9 +23,9 @@ export class ArcadePage {
           <p style="color: var(--text-secondary); font-size: 0.88rem;">Play offline Minecraft mini-games to earn V+ Points (VP) and milestone rewards.</p>
         </div>
         <div style="display: flex; align-items: center; gap: 14px;">
-          <div class="voxel-coin-badge" style="background: rgba(30, 41, 59, 0.8); border: 1px solid rgba(245, 158, 11, 0.3);">
+          <div class="voxel-coin-badge" style="background: var(--bg-elevated-soft); border: 1px solid rgba(245, 158, 11, 0.3);">
             <img src="${cookieTexture}" style="width: 18px; height: 18px; image-rendering: pixelated; margin-right: 6px;" />
-            <span style="color: #fbbf24; font-weight: 800;">${Math.floor(cookieData.lifetimeCookies).toLocaleString()} Cookies</span>
+            <span style="color: var(--warning); font-weight: 800;">${Math.floor(cookieData.lifetimeCookies).toLocaleString()} Cookies</span>
           </div>
         </div>
       </div>

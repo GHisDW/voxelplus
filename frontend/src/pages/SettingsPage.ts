@@ -111,7 +111,7 @@ export class SettingsPage {
             <button class="btn btn-secondary" id="btn-redo-onboarding">
               Redo Startup Introduction
             </button>
-            <button class="btn btn-danger" id="btn-reset-everything" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171;">
+            <button class="btn btn-danger" id="btn-reset-everything" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: var(--danger);">
               Reset Everything
             </button>
           </div>
@@ -353,8 +353,8 @@ export class SettingsPage {
     modalBg.innerHTML = `
       <div style="background: var(--bg-card); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: var(--radius-xl); padding: 28px; width: 480px; max-width: 90vw; box-shadow: 0 20px 40px rgba(0,0,0,0.6);">
         <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
-          <div style="width: 40px; height: 40px; border-radius: 50%; background: rgba(239, 68, 68, 0.2); display: flex; align-items: center; justify-content: center; color: #f87171; font-size: 1.4rem; font-weight: 800;">⚠️</div>
-          <h3 style="font-size: 1.3rem; font-weight: 800; color: #f87171; margin: 0;">Factory Reset Voxel⁺</h3>
+          <div style="width: 40px; height: 40px; border-radius: 50%; background: rgba(239, 68, 68, 0.2); display: flex; align-items: center; justify-content: center; color: var(--danger); font-size: 1.4rem; font-weight: 800;">⚠️</div>
+          <h3 style="font-size: 1.3rem; font-weight: 800; color: var(--danger); margin: 0;">Factory Reset Voxel⁺</h3>
         </div>
 
         <p style="font-size: 0.9rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 20px;">
@@ -370,7 +370,7 @@ export class SettingsPage {
 
         <div style="display: flex; justify-content: flex-end; gap: 12px;">
           <button class="btn btn-secondary" id="btn-cancel-reset">Cancel</button>
-          <button class="btn" id="btn-confirm-reset" style="background: #dc2626; color: #fff; font-weight: 700;">Yes, Reset Everything</button>
+          <button class="btn" id="btn-confirm-reset" style="background: var(--danger); color: var(--text-on-accent); font-weight: 700;">Yes, Reset Everything</button>
         </div>
       </div>
     `;

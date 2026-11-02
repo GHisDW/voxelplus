@@ -3,6 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { DownloadProgressEvent } from '../../types';
 import { InstanceManager } from '../instances/instanceManager';
+import { PathManager } from '../storage/paths';
 import { VoxelError } from '../diagnostics';
 
 export class DownloadManager {
@@ -56,7 +57,20 @@ export class DownloadManager {
       fs.mkdirSync(targetDir, { recursive: true });
     }
 
-    const destinationPath = path.join(targetDir, filename);
+    // The filename arrives from the renderer (Modrinth metadata). Reduce it to a
+    // single path segment so a crafted name like "../../config/x.json" can never
+    // escape the instance content folder.
+    const safeFilename = PathManager.sanitizeFilename(path.basename(filename || ''));
+    if (!safeFilename || safeFilename === '.' || safeFilename === '..') {
+      return { success: false, filename: '', error: 'The download filename is not valid.' };
+    }
+
+    const destinationPath = path.join(targetDir, safeFilename);
+    const resolvedTarget = path.resolve(destinationPath);
+    if (!resolvedTarget.startsWith(path.resolve(targetDir) + path.sep)) {
+      return { success: false, filename: '', error: 'The download filename is not valid.' };
+    }
+
     const downloadId = crypto.randomUUID();
 
     this.emit({
@@ -106,12 +120,40 @@ export class DownloadManager {
 
       const fileStream = fs.createWriteStream(destinationPath);
       const reader = response.body.getReader();
+      // Content files (mods/resource packs/shader packs) are never this large;
+      // cap the transfer so a hostile URL cannot fill the user's disk.
+      const MAX_CONTENT_BYTES = 512 * 1024 * 1024;
+
+      if (totalBytes > MAX_CONTENT_BYTES) {
+        throw new VoxelError({
+          title: 'Download Refused',
+          message: `"${safeFilename}" is larger than the launcher allows.`,
+          cause: 'The server advertised a file above the 512 MB content limit.',
+          suggestedAction: 'Download the file manually and import it instead.',
+          code: 'DOWNLOAD_TOO_LARGE',
+          category: 'DOWNLOAD',
+          severity: 'ERROR',
+          details: `URL: ${fileUrl}; advertised size: ${totalBytes}`
+        });
+      }
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         receivedBytes += value.length;
+        if (receivedBytes > MAX_CONTENT_BYTES) {
+          throw new VoxelError({
+            title: 'Download Refused',
+            message: `"${safeFilename}" is larger than the launcher allows.`,
+            cause: 'The download exceeded the 512 MB content limit.',
+            suggestedAction: 'Download the file manually and import it instead.',
+            code: 'DOWNLOAD_TOO_LARGE',
+            category: 'DOWNLOAD',
+            severity: 'ERROR',
+            details: `URL: ${fileUrl}; received: ${receivedBytes}`
+          });
+        }
         fileStream.write(Buffer.from(value));
 
         const percentage = totalBytes > 0 ? Math.min(100, Math.round((receivedBytes / totalBytes) * 100)) : 50;
@@ -140,7 +182,7 @@ export class DownloadManager {
         status: 'completed'
       });
 
-      return { success: true, filename };
+      return { success: true, filename: safeFilename };
     } catch (e: any) {
       // Classify low-level fetch failures (DNS, offline, aborted) for users.
       const error =
@@ -178,7 +220,7 @@ export class DownloadManager {
         try { fs.unlinkSync(destinationPath); } catch {}
       }
 
-      return { success: false, filename, error: `${error.message} ${error.suggestedAction ?? ''}`.trim() };
+      return { success: false, filename: safeFilename, error: `${error.message} ${error.suggestedAction ?? ''}`.trim() };
     }
   }
 }

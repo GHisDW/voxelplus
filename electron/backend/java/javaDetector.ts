@@ -1,15 +1,55 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
-import { exec } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { JavaRuntime } from '../../types';
 import { JavaTester } from './javaTester';
 
 export class JavaDetector {
+  /** Cached scan result and timestamp (scans spawn processes; never re-run them back to back). */
+  private static cache: { runtimes: JavaRuntime[]; at: number } | null = null;
+  /** Coalesces concurrent scans into one in-flight run. */
+  private static inFlight: Promise<JavaRuntime[]> | null = null;
+  private static readonly CACHE_TTL_MS = 30_000;
+  /** How many `java -version` probes may run at once. */
+  private static readonly TEST_CONCURRENCY = 4;
+  /** Registry lookups must never dominate a scan/preflight. */
+  private static readonly REGISTRY_TIMEOUT_MS = 3_000;
+
   /**
-   * Scans all sources for Java runtimes on the system.
+   * Returns detected Java runtimes.
+   *
+   * Detection is expensive (filesystem walk + a PowerShell registry query + one
+   * process spawn per candidate), so results are cached briefly and concurrent
+   * callers share a single scan. Preflight, launch, the Java Manager and the
+   * instance list all call this, and re-scanning each time made a single
+   * preflight take seconds on Windows.
    */
   public static async scanSystemJava(): Promise<JavaRuntime[]> {
+    if (this.cache && Date.now() - this.cache.at < this.CACHE_TTL_MS) {
+      return this.cache.runtimes;
+    }
+    if (this.inFlight) return this.inFlight;
+
+    const task = this.performScan()
+      .then(runtimes => {
+        this.cache = { runtimes, at: Date.now() };
+        return runtimes;
+      })
+      .finally(() => {
+        if (this.inFlight === task) this.inFlight = null;
+      });
+
+    this.inFlight = task;
+    return task;
+  }
+
+  /** Forces the next scan to hit the filesystem/registry again. */
+  public static invalidateCache(): void {
+    this.cache = null;
+  }
+
+  private static async performScan(): Promise<JavaRuntime[]> {
     const candidateBinaries = new Set<string>();
 
     // 1. Check JAVA_HOME & JDK_HOME
@@ -34,8 +74,19 @@ export class JavaDetector {
       }
     }
 
-    // 3. Scan Common Windows Directories
-    const searchRoots = [
+    // Start the registry query before the filesystem walk so both overlap.
+    const registryPromise: Promise<string[]> = process.platform === 'win32'
+      ? this.scanRegistryJava().catch(() => [] as string[])
+      : Promise.resolve([] as string[]);
+
+    // 3. Scan common install directories (Windows layout only; on other
+    // platforms PATH/JAVA_HOME are the sources that matter).
+    const searchRoots = process.platform !== 'win32' ? [
+      path.join(os.homedir(), '.jdks'),
+      path.join(os.homedir(), '.gradle', 'jdks'),
+      '/usr/lib/jvm',
+      '/Library/Java/JavaVirtualMachines'
+    ] : [
       'C:\\Program Files\\Java',
       'C:\\Program Files\\Eclipse Adoptium',
       'C:\\Program Files\\Microsoft',
@@ -68,30 +119,17 @@ export class JavaDetector {
       }
     }
 
-    // 4. Scan Registry via PowerShell
-    try {
-      const registryPaths = await this.scanRegistryJava();
-      for (const regPath of registryPaths) {
-        this.addCandidate(candidateBinaries, regPath);
-      }
-    } catch (e) {
-      console.warn('Registry scan skipped:', e);
-    }
-
-    // 5. Test each discovered binary
-    const testedRuntimes: JavaRuntime[] = [];
+    // 4. Test the filesystem candidates while the (slow, Windows-only) registry
+    //    query runs in the background, then fold in whatever it adds.
     const testedPaths = new Set<string>();
+    const testedRuntimes = await this.testCandidates(candidateBinaries, testedPaths);
 
-    for (const binaryPath of candidateBinaries) {
-      const normalized = path.normalize(binaryPath).toLowerCase();
-      if (testedPaths.has(normalized)) continue;
-      testedPaths.add(normalized);
-
-      const runtime = await JavaTester.testBinary(binaryPath);
-      if (runtime && runtime.isValid) {
-        testedRuntimes.push(runtime);
-      }
+    const registryCandidates = await registryPromise;
+    for (const regPath of registryCandidates) {
+      this.addCandidate(candidateBinaries, regPath);
     }
+    const extra = await this.testCandidates(candidateBinaries, testedPaths);
+    testedRuntimes.push(...extra);
 
     // Deduplicate by full version + path
     const uniqueMap = new Map<string, JavaRuntime>();
@@ -113,6 +151,45 @@ export class JavaDetector {
       return 0;
     });
 
+    return results;
+  }
+
+  /**
+   * Probes each candidate binary in parallel (bounded), skipping paths that were
+   * already probed. Sequential probing meant N x `java -version` spawns, which
+   * alone could exceed a request/timeout budget on machines with many JDKs.
+   */
+  private static async testCandidates(
+    candidates: Iterable<string>,
+    testedPaths: Set<string>
+  ): Promise<JavaRuntime[]> {
+    const pending: string[] = [];
+    for (const binaryPath of candidates) {
+      const normalized = path.normalize(binaryPath).toLowerCase();
+      if (testedPaths.has(normalized)) continue;
+      testedPaths.add(normalized);
+      pending.push(binaryPath);
+    }
+
+    const results: JavaRuntime[] = [];
+    let cursor = 0;
+    const worker = async (): Promise<void> => {
+      while (cursor < pending.length) {
+        const binaryPath = pending[cursor++];
+        try {
+          const runtime = await JavaTester.testBinary(binaryPath);
+          if (runtime && runtime.isValid) results.push(runtime);
+        } catch {
+          // A single unreadable binary must not abort the whole scan.
+        }
+      }
+    };
+
+    const workers = Array.from(
+      { length: Math.min(this.TEST_CONCURRENCY, pending.length) },
+      () => worker()
+    );
+    await Promise.all(workers);
     return results;
   }
 
@@ -149,11 +226,20 @@ export class JavaDetector {
         $paths | Where-Object { Test-Path $_ } | Select-Object -Unique
       `.trim().replace(/\n/g, ' ');
 
-      exec(`powershell -NoProfile -NonInteractive -Command "${psCommand}"`, { timeout: 5000 }, (error, stdout) => {
-        if (error || !stdout) return resolve([]);
-        const lines = stdout.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0 && l.endsWith('.exe'));
-        resolve(lines);
-      });
+      // Argument-array invocation: no shell, so no quoting/injection surface.
+      execFile(
+        'powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-Command', psCommand],
+        { timeout: this.REGISTRY_TIMEOUT_MS, windowsHide: true },
+        (error, stdout) => {
+          if (error || !stdout) return resolve([]);
+          const lines = stdout
+            .split(/\r?\n/)
+            .map(l => l.trim())
+            .filter(l => l.length > 0 && l.toLowerCase().endsWith('.exe'));
+          resolve(lines);
+        }
+      );
     });
   }
 }

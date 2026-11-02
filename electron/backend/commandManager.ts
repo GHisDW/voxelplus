@@ -104,6 +104,9 @@ export class CommandManager {
 
   // Java
   public static async scanJava(): Promise<JavaRuntime[]> {
+    // This backs the Java Manager's explicit "Rescan" action, so it must bypass
+    // the detector cache instead of returning a result from up to 30s ago.
+    JavaDetector.invalidateCache();
     return JavaDetector.scanSystemJava();
   }
 
@@ -111,8 +114,11 @@ export class CommandManager {
     return JavaTester.testBinary(executablePath);
   }
 
-  public static async installJava(version: 8 | 17 | 21 | 25 = 21): Promise<{ success: boolean; runtime?: JavaRuntime; error?: string }> {
-    return JavaInstaller.installJava(version);
+  public static async installJava(
+    version: 8 | 17 | 21 | 25 = 21,
+    onProgress?: (status: string, percentage: number) => void
+  ): Promise<{ success: boolean; runtime?: JavaRuntime; error?: string }> {
+    return JavaInstaller.installJava(version, onProgress);
   }
 
   // Instances
