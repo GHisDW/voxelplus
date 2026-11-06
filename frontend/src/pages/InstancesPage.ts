@@ -17,6 +17,7 @@ export class InstancesPage {
   private instances: InstanceMetadata[] = [];
   private activeDetailsId: string | null = null;
   private filters: HeaderFilters = { search: '', filter: 'all', sort: 'recent' };
+  private currentLayout: 'horizontal' | 'vertical' = 'horizontal';
   private events: InstancesPageEvents;
   private unsubscribeStatus: (() => void) | null = null;
   private currentRenderId: number = 0;
@@ -27,6 +28,15 @@ export class InstancesPage {
     this.events = events;
     this.container = document.createElement('div');
     this.container.className = 'page-scroll-area animate-fade-in';
+    // Initialize layout preference from app settings or localStorage
+    try {
+      const saved = localStorage.getItem('voxelplus:homeLayout');
+      if (saved === 'horizontal' || saved === 'vertical') {
+        this.currentLayout = saved;
+      }
+    } catch {
+      this.currentLayout = 'horizontal';
+    }
   }
 
   public setFilters(filters: HeaderFilters): void {
@@ -119,17 +129,50 @@ export class InstancesPage {
 
     this.container.innerHTML = '';
 
-    // Add import button at the top
+    // Add layout toggle and import actions at the top
     const headerActions = document.createElement('div');
-    headerActions.style.cssText = 'display: flex; justify-content: flex-end; margin-bottom: 16px;';
+    headerActions.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;';
     headerActions.innerHTML = `
+      <!-- Layout Toggle: Horizontal (List) vs Vertical (Grid/Poster) -->
+      <div style="display: flex; align-items: center; gap: 6px; background: var(--bg-surface); padding: 4px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
+        <button class="btn btn-sm ${this.currentLayout === 'horizontal' ? 'btn-primary' : 'btn-secondary'}" id="btn-layout-horizontal" title="Horizontal Cards">
+          ☰ Horizontal
+        </button>
+        <button class="btn btn-sm ${this.currentLayout === 'vertical' ? 'btn-primary' : 'btn-secondary'}" id="btn-layout-vertical" title="Vertical Poster Grid">
+          ☵ Vertical
+        </button>
+      </div>
+
       <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end;">
-        <button class="btn btn-primary" id="btn-import-vpack" style="padding: 10px 20px;">
+        <button class="btn btn-primary" id="btn-import-vpack" style="padding: 8px 18px;">
           📦 Import VPack / Modpack
         </button>
       </div>
     `;
     this.container.appendChild(headerActions);
+
+    const btnHoriz = headerActions.querySelector('#btn-layout-horizontal') as HTMLElement;
+    const btnVert = headerActions.querySelector('#btn-layout-vertical') as HTMLElement;
+
+    btnHoriz.onclick = async () => {
+      if (this.currentLayout === 'horizontal') return;
+      this.currentLayout = 'horizontal';
+      try {
+        localStorage.setItem('voxelplus:homeLayout', 'horizontal');
+        await api.setAppSettings({ homeLayout: 'horizontal' });
+      } catch {}
+      this.render();
+    };
+
+    btnVert.onclick = async () => {
+      if (this.currentLayout === 'vertical') return;
+      this.currentLayout = 'vertical';
+      try {
+        localStorage.setItem('voxelplus:homeLayout', 'vertical');
+        await api.setAppSettings({ homeLayout: 'vertical' });
+      } catch {}
+      this.render();
+    };
 
     (this.container.querySelector('#btn-import-vpack') as HTMLElement).onclick = async () => {
       const filePath = await api.selectFileDialog([{ name: 'Voxel+ or Modrinth Pack', extensions: ['voxelplus', 'vpack', 'mrpack', 'zip'] }]);
@@ -197,19 +240,28 @@ export class InstancesPage {
       return this.container;
     }
 
-    // Render list of horizontal cards
+    // Render instances in selected layout (horizontal list or vertical grid)
     const listWrapper = document.createElement('div');
-    listWrapper.style.cssText = `display: flex; flex-direction: column; gap: 4px;`;
+    if (this.currentLayout === 'vertical') {
+      listWrapper.className = 'instance-grid-wrapper animate-fade-in';
+    } else {
+      listWrapper.style.cssText = `display: flex; flex-direction: column; gap: 4px;`;
+      listWrapper.className = 'animate-fade-in';
+    }
 
     displayed.forEach(instance => {
-      const cardEl = InstanceCard.render(instance, {
-        onOpenDetails: (id) => {
-          this.activeDetailsId = id;
-          this.render();
+      const cardEl = InstanceCard.render(
+        instance,
+        {
+          onOpenDetails: (id) => {
+            this.activeDetailsId = id;
+            this.render();
+          },
+          onRefresh: () => this.render(),
+          onViewLogs: (id) => this.events.onViewLogs(id)
         },
-        onRefresh: () => this.render(),
-        onViewLogs: (id) => this.events.onViewLogs(id)
-      });
+        this.currentLayout
+      );
       listWrapper.appendChild(cardEl);
     });
 

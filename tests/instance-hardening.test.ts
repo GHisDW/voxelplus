@@ -71,4 +71,42 @@ describe('InstanceManager duplication', () => {
     expect(fs.existsSync(copy!.instancePath!)).toBe(true);
     expect(fs.readdirSync(tmpDir).some(entry => entry.startsWith('instance-copy-') || entry.includes('___'))).toBe(true);
   });
+
+  it('does not start gameplay session on Gradle preparation logs alone', () => {
+    const gradleLogs = [
+      ':compileJava UP-TO-DATE',
+      ':processResources UP-TO-DATE',
+      ':classes UP-TO-DATE',
+      ':runClient',
+      'Fabric Loom: 1.7.4',
+      'Download https://repo.maven.apache.org/maven2/...',
+      'Configuring project :...'
+    ];
+
+    const isMinecraftClientLog = (line: string): boolean => {
+      return (
+        line.includes('Backend library: LWJGL') ||
+        line.includes('OpenAL initialized') ||
+        line.includes('Setting user:') ||
+        line.includes('Minecraft client initialized') ||
+        line.includes('[Render thread/INFO]') ||
+        line.includes('[Client thread/INFO]') ||
+        line.includes('Starting integrated minecraft server') ||
+        line.includes('Created: 1024x512x4 minecraft:textures/atlas/blocks.png')
+      );
+    };
+
+    for (const log of gradleLogs) {
+      expect(isMinecraftClientLog(log)).toBe(false);
+    }
+
+    const mcLogs = [
+      '[Render thread/INFO]: Backend library: LWJGL version 3.3.3',
+      '[Render thread/INFO]: Setting user: Player',
+      '[Client thread/INFO]: OpenAL initialized'
+    ];
+    for (const log of mcLogs) {
+      expect(isMinecraftClientLog(log)).toBe(true);
+    }
+  });
 });

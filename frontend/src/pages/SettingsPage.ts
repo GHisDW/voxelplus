@@ -6,6 +6,7 @@ import { NotificationToast } from '../components/NotificationToast';
 import { UpdatePrompt } from '../components/UpdatePrompt';
 import { describeIpcError } from '../services/errors';
 import { getItemDataUrl } from '../assets/items';
+import { VoxelWrappedModal } from '../components/VoxelWrappedModal';
 
 export interface SettingsPageEvents {
   onRedoOnboarding?: () => void;
@@ -14,7 +15,7 @@ export interface SettingsPageEvents {
 export class SettingsPage {
   private container: HTMLElement;
   private settings: AppSettings | null = null;
-  private activeSection: 'general' | 'minecraft' | 'java' | 'appearance' | 'advanced' | 'about' = 'general';
+  private activeSection: 'general' | 'minecraft' | 'java' | 'appearance' | 'advanced' | 'about' | 'aboutme' = 'general';
   private events?: SettingsPageEvents;
 
   constructor(events?: SettingsPageEvents) {
@@ -55,6 +56,10 @@ export class SettingsPage {
           <button class="btn ${this.activeSection === 'about' ? 'btn-primary' : 'btn-secondary'}" data-sec="about" style="justify-content: flex-start; gap: 8px;">
             <img src="${getItemDataUrl('minecraft:enchanted_book')}" style="width: 16px; height: 16px; image-rendering: pixelated;" />
             <span>About</span>
+          </button>
+          <button class="btn ${this.activeSection === 'aboutme' ? 'btn-primary' : 'btn-secondary'}" data-sec="aboutme" style="justify-content: flex-start; gap: 8px;">
+            <img src="${getItemDataUrl('minecraft:nether_star')}" style="width: 16px; height: 16px; image-rendering: pixelated;" />
+            <span>About Me</span>
           </button>
         </div>
 
@@ -330,6 +335,49 @@ export class SettingsPage {
           }
         };
       }
+    } else if (this.activeSection === 'aboutme') {
+      div.innerHTML = `
+        <div style="padding: 10px 0;">
+          <h4 style="font-size: 1.3rem; font-weight: 800; margin-bottom: 8px;">About Me</h4>
+          <p style="font-size: 0.88rem; color: var(--text-secondary); margin-bottom: 24px;">
+            Personal Minecraft gameplay statistics, achievements mastery, and annual gaming recaps.
+          </p>
+
+          <div style="
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(6, 182, 212, 0.08) 100%);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+          ">
+            <div style="display: flex; align-items: center; gap: 16px;">
+              <div style="width: 56px; height: 56px; border-radius: 14px; background: rgba(16, 185, 129, 0.2); display: flex; align-items: center; justify-content: center;">
+                <img src="${getItemDataUrl('minecraft:nether_star')}" style="width: 36px; height: 36px; image-rendering: pixelated;" />
+              </div>
+              <div>
+                <h5 style="font-size: 1.15rem; font-weight: 800; color: var(--text-primary); margin: 0 0 4px 0;">Voxel⁺ Wrapped</h5>
+                <p style="font-size: 0.84rem; color: var(--text-secondary); margin: 0;">
+                  Experience a cinematic recap of your playtime, hardest achievements, top versions, and economy highlights.
+                </p>
+              </div>
+            </div>
+
+            <button class="btn btn-primary" id="btn-open-wrapped" style="padding: 10px 24px; font-weight: 800; white-space: nowrap;">
+              ▶ Open Wrapped
+            </button>
+          </div>
+        </div>
+      `;
+
+      const openWrappedBtn = div.querySelector('#btn-open-wrapped') as HTMLElement | null;
+      if (openWrappedBtn) {
+        openWrappedBtn.onclick = () => {
+          VoxelWrappedModal.show('lifetime');
+        };
+      }
     }
 
     return div;
@@ -365,7 +413,7 @@ export class SettingsPage {
           <li>All local Minecraft Loom instances will be permanently deleted.</li>
           <li>Launcher preferences, themes, and storage settings will be restored to defaults.</li>
           <li>Player profile, Voxel Points (VP), transactions, and owned cosmetics will be wiped.</li>
-          <li>Arcade records (Cookie Clicker & Stocker high scores) will be reset to zero.</li>
+          <li>Arcade records (Cookie Clicker high scores) will be reset to zero.</li>
         </ul>
 
         <div style="display: flex; justify-content: flex-end; gap: 12px;">

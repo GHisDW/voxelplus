@@ -34,7 +34,9 @@ import {
   UpdateInstallResult,
   UpdateProgressEvent,
   UpdateRuntimeInfo,
-  JavaInstallProgressEvent
+  JavaInstallProgressEvent,
+  WrappedStats,
+  PlaySession
 } from './types';
 
 const api = {
@@ -116,9 +118,11 @@ const api = {
   purchaseCosmetic: (cosmeticId: string): Promise<{ success: boolean; error?: string; wallet?: WalletState }> => ipcRenderer.invoke('player:purchaseCosmetic', cosmeticId),
   equipCosmetic: (cosmeticId: string | null, effectId: string | null): Promise<PlayerProfile> => ipcRenderer.invoke('player:equipCosmetic', cosmeticId, effectId),
 
+  // Statistics & Wrapped
+  getWrappedStats: (period?: 'lifetime' | number): Promise<WrappedStats> => ipcRenderer.invoke('stats:getWrapped', period),
+  getStatsSessions: (): Promise<PlaySession[]> => ipcRenderer.invoke('stats:getSessions'),
+
   // Arcade
-  getStockerData: (): Promise<StockerSaveData> => ipcRenderer.invoke('arcade:getStockerData'),
-  recordStockerRun: (run: StockerRunResult): Promise<ArcadeRewardResult> => ipcRenderer.invoke('arcade:recordStockerRun', run),
   getCookieData: (): Promise<CookieClickerSaveData> => ipcRenderer.invoke('arcade:getCookieData'),
   saveCookieData: (data: CookieClickerSaveData): Promise<ArcadeRewardResult> => ipcRenderer.invoke('arcade:saveCookieData', data),
 

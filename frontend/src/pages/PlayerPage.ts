@@ -346,7 +346,7 @@ export class PlayerPage {
       let filteredDefs = achievementsData.definitions;
       if (this.achievementCategoryFilter !== 'all') {
         if (this.achievementCategoryFilter === 'arcade') {
-          filteredDefs = filteredDefs.filter(d => d.category === 'stocker' || d.category === 'cookie');
+          filteredDefs = filteredDefs.filter(d => d.category === 'cookie');
         } else {
           filteredDefs = filteredDefs.filter(d => d.category === this.achievementCategoryFilter);
         }
@@ -357,8 +357,9 @@ export class PlayerPage {
         { id: 'launcher', label: 'Launcher' },
         { id: 'vpack', label: 'VPack' },
         { id: 'content', label: 'Content' },
-        { id: 'arcade', label: 'Arcade' },
-        { id: 'player', label: 'Player & Economy' }
+        { id: 'arcade', label: 'Arcade (Cookie Clicker)' },
+        { id: 'player', label: 'Player & Economy' },
+        { id: 'collection', label: 'Collection' }
       ];
 
       const categoryFilterButtons = categoryTabs.map(cat => {
@@ -419,7 +420,7 @@ export class PlayerPage {
             </div>
 
             <div style="flex: 1; min-width: 0;">
-              <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 2px;">
+              <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 2px; flex-wrap: wrap;">
                 <div style="font-size: 1rem; font-weight: 800; color: var(--text-primary);">${def.name}</div>
                 <span style="
                   font-size: 0.68rem;
@@ -431,6 +432,15 @@ export class PlayerPage {
                   color: ${color};
                   border: 1px solid ${color}44;
                 ">${def.rarity}</span>
+                <span style="
+                  font-size: 0.68rem;
+                  font-weight: 800;
+                  padding: 2px 8px;
+                  border-radius: 999px;
+                  background: rgba(255, 255, 255, 0.08);
+                  color: var(--text-secondary);
+                  border: 1px solid var(--border-subtle);
+                ">Diff: ${def.difficulty}/10 • ${def.difficultyRank}</span>
                 ${isComplete ? `<span style="color: var(--success); font-size: 0.78rem; font-weight: 800; margin-left: auto;">✓ UNLOCKED</span>` : ''}
               </div>
 
