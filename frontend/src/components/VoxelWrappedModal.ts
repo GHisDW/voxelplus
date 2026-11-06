@@ -9,7 +9,7 @@ export class VoxelWrappedModal {
   private currentSlideIndex: number = 0;
   private stats: WrappedStats | null = null;
   private selectedPeriod: 'lifetime' | number = 'lifetime';
-  private availableYears: number[] = [new Date().getFullYear(), new Date().getFullYear() - 1];
+  private availableYears: number[] = [];
 
   constructor() {
     this.overlay = document.createElement('div');
@@ -37,6 +37,19 @@ export class VoxelWrappedModal {
   private async loadStats(): Promise<void> {
     try {
       this.stats = await api.getWrappedStats(this.selectedPeriod);
+      // Discover available years dynamically from recorded sessions
+      const sessions = await api.getRecordedSessions();
+      const yearsSet = new Set<number>();
+      yearsSet.add(new Date().getFullYear());
+      for (const s of sessions) {
+        if (s.startedAt) {
+          const y = new Date(s.startedAt).getFullYear();
+          if (!Number.isNaN(y) && y >= 2020 && y <= 2030) {
+            yearsSet.add(y);
+          }
+        }
+      }
+      this.availableYears = Array.from(yearsSet).sort((a, b) => b - a);
     } catch (err: any) {
       console.error('Failed to load wrapped stats', err);
       NotificationToast.show('Failed to calculate wrapped recap data.', 'error');
@@ -228,6 +241,66 @@ export class VoxelWrappedModal {
       `
     };
 
+    // Dedicated Least Played Instance Slide (if different from most played)
+    const leastPlayedHtml = s.leastPlayedInstance
+      ? `
+        <div style="margin-top: 24px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 16px; padding: 20px; display: flex; align-items: center; justify-content: space-between;">
+          <div style="display: flex; align-items: center; gap: 14px;">
+            <img src="${getItemDataUrl('minecraft:compass')}" style="width: 36px; height: 36px; image-rendering: pixelated;" />
+            <div style="text-align: left;">
+              <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--info); font-weight: 800;">Least Played Instance</div>
+              <div style="font-size: 1.15rem; font-weight: 800; color: var(--text-primary);">${escapeHtml(s.leastPlayedInstance.name)}</div>
+            </div>
+          </div>
+          <div style="font-family: var(--font-mono); font-size: 1.3rem; font-weight: 900; color: var(--info);">
+            ${s.leastPlayedInstance.formattedPlaytime}
+          </div>
+        </div>
+      `
+      : '';
+
+    const slideLeastPlayed = {
+      title: 'Hidden Gem',
+      html: `
+        <div style="background: rgba(18, 24, 38, 0.85); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 24px; padding: 40px; text-align: center; box-shadow: 0 30px 60px rgba(0,0,0,0.6); backdrop-filter: blur(20px);">
+          <div style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); font-weight: 800; margin-bottom: 8px;">
+            The Undiscovered Realm
+          </div>
+          <h2 style="font-size: 1.8rem; font-weight: 900; margin-bottom: 8px;">Every Instance Matters</h2>
+          <p style="font-size: 0.95rem; color: var(--text-secondary); max-width: 440px; margin: 0 auto;">
+            Not every world became a mega-base, but each one holds a unique memory.
+          </p>
+          ${leastPlayedHtml || '<div style="margin-top: 24px; color: var(--text-muted);">Play more instances to uncover your least-played world.</div>'}
+        </div>
+      `
+    };
+
+    // Playtime breakdown across all instances
+    const breakdownList = s.instancesPlaytime.slice(0, 5).map(inst => `
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.06);">
+        <div style="text-align: left;">
+          <div style="font-weight: 700; color: var(--text-primary);">${escapeHtml(inst.name)}</div>
+          <div style="font-size: 0.75rem; color: var(--text-muted);">${inst.loaderType.toUpperCase()} • MC ${inst.minecraftVersion}</div>
+        </div>
+        <div style="font-family: var(--font-mono); font-weight: 800; color: var(--accent-primary);">
+          ${(inst.totalPlaytimeMs / (1000 * 3600)).toFixed(1)} hrs
+        </div>
+      </div>
+    `).join('');
+
+    const slideBreakdown = {
+      title: 'Instance Breakdown',
+      html: `
+        <div style="background: rgba(18, 24, 38, 0.85); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 24px; padding: 36px; text-align: center; box-shadow: 0 30px 60px rgba(0,0,0,0.6); backdrop-filter: blur(20px);">
+          <h2 style="font-size: 1.8rem; font-weight: 900; margin-bottom: 6px;">Playtime Breakdown</h2>
+          <p style="font-size: 0.88rem; color: var(--text-secondary); margin-bottom: 20px;">Top instances by total time spent</p>
+          <div style="max-height: 220px; overflow-y: auto; padding: 0 10px;">
+            ${breakdownList || '<div style="color: var(--text-muted); padding: 20px;">No instance playtime recorded.</div>'}
+          </div>
+        </div>
+      `
+    };
+
     // 3. Minecraft DNA (Versions & Loaders)
     const slide3 = {
       title: 'Minecraft DNA',
@@ -261,7 +334,8 @@ export class VoxelWrappedModal {
       `
     };
 
-    // 4. Economy Slide
+    // 4. Economy Slide (with clearly labeled Current Balance vs Lifetime/Annual VP)
+    const economyTitle = s.period === 'lifetime' ? 'All-Time VP Economy' : `${s.period} Annual VP Economy`;
     const slide4 = {
       title: 'Economy',
       html: `
@@ -269,26 +343,63 @@ export class VoxelWrappedModal {
           <div style="width: 64px; height: 64px; margin: 0 auto 16px auto; border-radius: 16px; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.4); display: flex; align-items: center; justify-content: center;">
             <img src="${getItemDataUrl('minecraft:emerald')}" style="width: 36px; height: 36px; image-rendering: pixelated;" />
           </div>
-          <h2 style="font-size: 1.8rem; font-weight: 900; margin-bottom: 24px;">Voxel⁺ Points Economy</h2>
+          <h2 style="font-size: 1.8rem; font-weight: 900; margin-bottom: 24px;">${economyTitle}</h2>
 
           <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom: 24px;">
             <div style="background: rgba(255,255,255,0.04); border-radius: 16px; padding: 18px; border: 1px solid rgba(255,255,255,0.06);">
-              <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 800; text-transform: uppercase;">Total Earned</div>
+              <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 800; text-transform: uppercase;">VP Earned (${periodLabel})</div>
               <div style="font-size: 1.4rem; font-weight: 900; color: var(--success); font-family: var(--font-mono); margin-top: 4px;">+${s.economy.totalVpEarned.toLocaleString()} VP</div>
             </div>
             <div style="background: rgba(255,255,255,0.04); border-radius: 16px; padding: 18px; border: 1px solid rgba(255,255,255,0.06);">
-              <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 800; text-transform: uppercase;">Total Spent</div>
+              <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 800; text-transform: uppercase;">VP Spent (${periodLabel})</div>
               <div style="font-size: 1.4rem; font-weight: 900; color: var(--danger); font-family: var(--font-mono); margin-top: 4px;">-${s.economy.totalVpSpent.toLocaleString()} VP</div>
             </div>
             <div style="background: rgba(255,255,255,0.04); border-radius: 16px; padding: 18px; border: 1px solid rgba(255,255,255,0.06);">
-              <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 800; text-transform: uppercase;">Current Balance</div>
+              <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 800; text-transform: uppercase;">Current Wallet Balance</div>
               <div style="font-size: 1.4rem; font-weight: 900; color: var(--warning); font-family: var(--font-mono); margin-top: 4px;">${s.economy.currentBalance.toLocaleString()} VP</div>
             </div>
           </div>
 
           ${s.economy.mostExpensiveCosmetic ? `
             <div style="background: rgba(255, 255, 255, 0.03); border-radius: 12px; padding: 12px 18px; font-size: 0.88rem; color: var(--text-secondary); display: inline-flex; align-items: center; gap: 8px;">
-              <span>Crown purchase:</span> <strong style="color: var(--text-primary);">${escapeHtml(s.economy.mostExpensiveCosmetic.name)}</strong> (${s.economy.mostExpensiveCosmetic.price} VP)
+              <span>Top Cosmetic:</span> <strong style="color: var(--text-primary);">${escapeHtml(s.economy.mostExpensiveCosmetic.name)}</strong> (${s.economy.mostExpensiveCosmetic.price} VP)
+            </div>
+          ` : ''}
+        </div>
+      `
+    };
+
+    // Dedicated Collection Card
+    const slideCollection = {
+      title: 'Collection & VPacks',
+      html: `
+        <div style="background: rgba(18, 24, 38, 0.85); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 24px; padding: 40px; text-align: center; box-shadow: 0 30px 60px rgba(0,0,0,0.6); backdrop-filter: blur(20px);">
+          <div style="width: 64px; height: 64px; margin: 0 auto 16px auto; border-radius: 16px; background: rgba(192, 132, 252, 0.15); border: 1px solid rgba(192, 132, 252, 0.4); display: flex; align-items: center; justify-content: center;">
+            <img src="${getItemDataUrl('minecraft:netherite_ingot')}" style="width: 36px; height: 36px; image-rendering: pixelated;" />
+          </div>
+          <h2 style="font-size: 1.8rem; font-weight: 900; margin-bottom: 24px;">Collection & VPacks</h2>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;">
+            <div style="background: rgba(255,255,255,0.04); border-radius: 16px; padding: 20px; border: 1px solid rgba(255,255,255,0.06);">
+              <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 800; text-transform: uppercase;">Owned Cosmetics</div>
+              <div style="font-size: 1.6rem; font-weight: 900; color: var(--accent-primary); font-family: var(--font-mono); margin-top: 4px;">
+                ${s.collection.totalOwnedCosmetics} / ${s.collection.totalAvailableCosmetics}
+              </div>
+              <div style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 4px;">${s.collection.completionPercentage}% unlocked</div>
+            </div>
+
+            <div style="background: rgba(255,255,255,0.04); border-radius: 16px; padding: 20px; border: 1px solid rgba(255,255,255,0.06);">
+              <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 800; text-transform: uppercase;">VPack Modpacks</div>
+              <div style="font-size: 1.6rem; font-weight: 900; color: var(--info); font-family: var(--font-mono); margin-top: 4px;">
+                ${s.collection.vpacksImported + s.collection.vpacksExported}
+              </div>
+              <div style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 4px;">${s.collection.vpacksImported} imported • ${s.collection.vpacksExported} created</div>
+            </div>
+          </div>
+
+          ${s.collection.favoriteEquipped ? `
+            <div style="background: rgba(255,255,255,0.03); border-radius: 12px; padding: 12px 18px; font-size: 0.88rem; color: var(--text-secondary); display: inline-flex; align-items: center; gap: 8px;">
+              <span>Equipped Avatar:</span> <strong style="color: var(--text-primary);">${escapeHtml(s.collection.favoriteEquipped.name)}</strong>
             </div>
           ` : ''}
         </div>
@@ -391,7 +502,7 @@ export class VoxelWrappedModal {
       `
     };
 
-    return [slide1, slide2, slide3, slide4, slide5, slide6];
+    return [slide1, slide2, slideLeastPlayed, slideBreakdown, slide3, slide4, slideCollection, slide5, slide6];
   }
 
   private copySummaryToClipboard(): void {

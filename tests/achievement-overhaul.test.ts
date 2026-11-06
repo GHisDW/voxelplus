@@ -39,11 +39,26 @@ describe('Achievement Engine Overhaul', () => {
       'Ultimate'
     ];
 
+    const rankMap: Record<number, string> = {
+      1: 'Trivial',
+      2: 'Very Easy',
+      3: 'Easy',
+      4: 'Moderate',
+      5: 'Challenging',
+      6: 'Hard',
+      7: 'Very Hard',
+      8: 'Extreme',
+      9: 'Legendary',
+      10: 'Ultimate'
+    };
+
     for (const def of definitions) {
       expect(Number.isInteger(def.difficulty)).toBe(true);
       expect(def.difficulty).toBeGreaterThanOrEqual(1);
       expect(def.difficulty).toBeLessThanOrEqual(10);
       expect(validRanks).toContain(def.difficultyRank);
+      // Verify exact 1-to-1 match between score and rank
+      expect(def.difficultyRank).toBe(rankMap[def.difficulty]);
       expect(def.category).not.toBe('stocker');
       expect(def.id).not.toContain('stocker');
     }

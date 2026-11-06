@@ -244,6 +244,9 @@ export class ProcessManager {
       metadata.status = 'LAUNCHING';
       InstanceMetadataStore.writeMetadata(instanceDir, metadata);
 
+      // Conservative gameplay-start detector: Gradle tasks like :runClient or Loom setup
+      // execute before Minecraft JVM client even initializes. We separate Gradle build
+      // output from genuine Minecraft client startup logs.
       const markRunning = (): void => {
         if (active.status === 'RUNNING') return;
         active.status = 'RUNNING';
@@ -256,7 +259,7 @@ export class ProcessManager {
           // Status persistence is best-effort; the live status is authoritative.
         }
 
-        // Start recorded session in StatsStore
+        // Start recorded session in StatsStore exactly once upon reaching verified gameplay/client startup
         if (!active.sessionId) {
           const session = StatsStore.getInstance().startSession({
             instanceId,
@@ -273,13 +276,27 @@ export class ProcessManager {
         }
       };
 
+      // Markers that indicate Minecraft client has actually started executing / initialized
+      const isMinecraftClientLog = (line: string): boolean => {
+        return (
+          line.includes('Backend library: LWJGL') ||
+          line.includes('OpenAL initialized') ||
+          line.includes('Setting user:') ||
+          line.includes('Minecraft client initialized') ||
+          line.includes('[Render thread/INFO]') ||
+          line.includes('[Client thread/INFO]') ||
+          line.includes('Starting integrated minecraft server') ||
+          line.includes('Created: 1024x512x4 minecraft:textures/atlas/blocks.png')
+        );
+      };
+
       // Use readline to process stdout/stderr line-by-line which plays nicely with batching in LogStreamer
       if (child.stdout) {
         const rlOut = createInterface({ input: child.stdout });
         rlOut.on('line', (line) => {
           if (!line.trim()) return;
           LogStreamer.addLog(line, 'INFO', instanceId, metadata.name);
-          if (line.includes('Fabric Loom') || line.includes(':runClient') || line.includes('Setting user:')) {
+          if (isMinecraftClientLog(line)) {
             markRunning();
           }
         });

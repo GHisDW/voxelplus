@@ -487,7 +487,7 @@ export class CommandManager {
       return { success: false, error: 'This item cannot be purchased with VP.' };
     }
 
-    const tx = store.addTransaction('spend', def.price, `Purchased: ${def.name}`, def.id);
+    const tx = store.addTransaction('spend', def.price, `Purchased: ${def.name}`, def.id, 'cosmetic', def.id);
     if (!tx.success) {
       return { success: false, error: tx.error || 'Failed transaction.' };
     }

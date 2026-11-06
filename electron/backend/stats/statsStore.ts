@@ -17,13 +17,21 @@ import { CosmeticCatalogue } from '../player/cosmeticCatalogue';
 import { InstanceManager } from '../instances/instanceManager';
 
 export interface StatsSchema {
+  version: number;
   sessions: PlaySession[];
+  lifetimeStats: {
+    totalPlaytimeMs: number;
+    totalCompletedSessions: number;
+    totalCrashedSessions: number;
+    totalFailedSessions: number;
+  };
   instanceLifetimeStats: Record<string, {
     totalPlaytimeMs: number;
     sessionCount: number;
     createdAt: string;
     deletedAt?: string;
   }>;
+  processedSessionIds?: string[]; // IDs contributing to lifetime aggregates to prevent double counting
   vpackEvents: {
     type: 'import' | 'export';
     packId?: string;
@@ -58,31 +66,108 @@ export class StatsStore {
 
   private getDefaultData(): StatsSchema {
     return {
+      version: 2,
       sessions: [],
+      lifetimeStats: {
+        totalPlaytimeMs: 0,
+        totalCompletedSessions: 0,
+        totalCrashedSessions: 0,
+        totalFailedSessions: 0
+      },
       instanceLifetimeStats: {},
+      processedSessionIds: [],
       vpackEvents: [],
       totalInstancesCreated: 0
     };
   }
 
   private load(): StatsSchema {
+    let data: StatsSchema;
     try {
       if (fs.existsSync(this.filePath)) {
         const raw = fs.readFileSync(this.filePath, 'utf-8');
         const parsed = JSON.parse(raw);
-        return {
+        data = {
+          version: typeof parsed.version === 'number' ? parsed.version : 1,
           sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
-          instanceLifetimeStats: parsed.instanceLifetimeStats || {},
+          lifetimeStats: parsed.lifetimeStats && typeof parsed.lifetimeStats.totalPlaytimeMs === 'number'
+            ? parsed.lifetimeStats
+            : {
+                totalPlaytimeMs: 0,
+                totalCompletedSessions: 0,
+                totalCrashedSessions: 0,
+                totalFailedSessions: 0
+              },
+          instanceLifetimeStats: parsed.instanceLifetimeStats && typeof parsed.instanceLifetimeStats === 'object'
+            ? parsed.instanceLifetimeStats
+            : {},
+          processedSessionIds: Array.isArray(parsed.processedSessionIds) ? parsed.processedSessionIds : [],
           vpackEvents: Array.isArray(parsed.vpackEvents) ? parsed.vpackEvents : [],
           totalInstancesCreated: typeof parsed.totalInstancesCreated === 'number' ? parsed.totalInstancesCreated : 0
         };
+
+        // Migration to version 2: ensure lifetime aggregates and instance totals account for existing sessions
+        this.migrateToV2(data);
+        return data;
       }
     } catch (e) {
       console.error('Failed to load stats data, initializing defaults', e);
     }
-    const def = this.getDefaultData();
-    this.save(def);
-    return def;
+    data = this.getDefaultData();
+    this.save(data);
+    return data;
+  }
+
+  /**
+   * Idempotent migration to populate lifetimeStats and instanceLifetimeStats
+   * from any uncounted sessions in the file without double counting.
+   */
+  private migrateToV2(data: StatsSchema): void {
+    if (!data.processedSessionIds) {
+      data.processedSessionIds = [];
+    }
+    const processedSet = new Set(data.processedSessionIds);
+
+    for (const s of data.sessions) {
+      if (!s.sessionId || processedSet.has(s.sessionId)) continue;
+
+      // Only count completed or crashed sessions that actually ended
+      if (s.status === 'completed' || s.status === 'crashed') {
+        const duration = typeof s.durationMs === 'number' && s.durationMs > 0 ? s.durationMs : 0;
+        data.lifetimeStats.totalPlaytimeMs += duration;
+        if (s.status === 'completed') data.lifetimeStats.totalCompletedSessions += 1;
+        if (s.status === 'crashed') data.lifetimeStats.totalCrashedSessions += 1;
+
+        if (s.instanceId) {
+          if (!data.instanceLifetimeStats[s.instanceId]) {
+            data.instanceLifetimeStats[s.instanceId] = {
+              totalPlaytimeMs: 0,
+              sessionCount: 0,
+              createdAt: s.startedAt || new Date().toISOString()
+            };
+          }
+          // Only add duration if instance lifetime stats didn't already have it
+          // In v1, instanceLifetimeStats was already maintained on endSession,
+          // so we avoid double-adding if instance lifetime stats was already initialized.
+          if (data.version < 2 && data.instanceLifetimeStats[s.instanceId].totalPlaytimeMs === 0 && duration > 0) {
+            data.instanceLifetimeStats[s.instanceId].totalPlaytimeMs += duration;
+          }
+        }
+        data.processedSessionIds.push(s.sessionId);
+        processedSet.add(s.sessionId);
+      } else if (s.status === 'failed') {
+        data.lifetimeStats.totalFailedSessions += 1;
+        data.processedSessionIds.push(s.sessionId);
+        processedSet.add(s.sessionId);
+      }
+    }
+
+    // Keep processed IDs array reasonable (e.g. 5,000)
+    if (data.processedSessionIds.length > 5000) {
+      data.processedSessionIds = data.processedSessionIds.slice(-5000);
+    }
+
+    data.version = 2;
   }
 
   public save(dataToSave?: StatsSchema): void {
@@ -99,24 +184,65 @@ export class StatsStore {
   /**
    * If the application terminated unexpectedly during a run, mark lingering
    * 'running' sessions as 'crashed' and compute duration safely.
+   * Prevents duplicate aggregate updates and bounds duration up to MAX_RECOVERY_DURATION_MS (e.g. 4 hours).
    */
-  private recoverActiveSessions(): void {
+  public recoverActiveSessions(recoveryTime: number = Date.now()): void {
     let changed = false;
-    const now = Date.now();
+    const MAX_RECOVERY_DURATION_MS = 4 * 60 * 60 * 1000; // 4 hours maximum recovery cap
+
+    if (!this.data.processedSessionIds) {
+      this.data.processedSessionIds = [];
+    }
+    const processedSet = new Set(this.data.processedSessionIds);
+
     for (const s of this.data.sessions) {
       if (s.status === 'running') {
         s.status = 'crashed';
-        const start = new Date(s.startedAt).getTime();
-        // If start is valid, estimate duration or cap at 1 minute if unknown
-        if (!Number.isNaN(start) && start <= now) {
-          s.durationMs = Math.min(Math.max(0, s.durationMs || 0), 300_000);
+        const start = s.startedAt ? new Date(s.startedAt).getTime() : NaN;
+
+        let computedDuration = 0;
+        if (!Number.isNaN(start) && start > 0) {
+          if (start <= recoveryTime) {
+            // Elapsed time clamped between 0 and 4 hours
+            const elapsed = recoveryTime - start;
+            computedDuration = Math.min(Math.max(0, elapsed), MAX_RECOVERY_DURATION_MS);
+            s.durationMs = computedDuration;
+            s.endedAt = new Date(start + computedDuration).toISOString();
+          } else {
+            // Future timestamp: clock anomaly, set duration to 0 and clamp endedAt
+            s.durationMs = 0;
+            s.endedAt = new Date(start).toISOString();
+          }
         } else {
+          // Corrupted start timestamp
           s.durationMs = 0;
+          s.startedAt = new Date(recoveryTime).toISOString();
+          s.endedAt = s.startedAt;
         }
-        s.endedAt = new Date(start + s.durationMs).toISOString();
+
+        // Atomically update lifetime aggregates if not already processed
+        if (!processedSet.has(s.sessionId)) {
+          this.data.lifetimeStats.totalPlaytimeMs += s.durationMs;
+          this.data.lifetimeStats.totalCrashedSessions += 1;
+          this.data.processedSessionIds.push(s.sessionId);
+          processedSet.add(s.sessionId);
+
+          if (s.instanceId) {
+            if (!this.data.instanceLifetimeStats[s.instanceId]) {
+              this.data.instanceLifetimeStats[s.instanceId] = {
+                totalPlaytimeMs: 0,
+                sessionCount: 1,
+                createdAt: s.startedAt
+              };
+            }
+            this.data.instanceLifetimeStats[s.instanceId].totalPlaytimeMs += s.durationMs;
+          }
+        }
+
         changed = true;
       }
     }
+
     if (changed) {
       this.save();
     }
@@ -141,11 +267,6 @@ export class StatsStore {
     };
 
     this.data.sessions.push(session);
-    // Keep max 2,000 historical session records
-    if (this.data.sessions.length > 2000) {
-      this.data.sessions = this.data.sessions.slice(-2000);
-    }
-
     if (!this.data.instanceLifetimeStats[params.instanceId]) {
       this.data.instanceLifetimeStats[params.instanceId] = {
         totalPlaytimeMs: 0,
@@ -154,6 +275,11 @@ export class StatsStore {
       };
     }
     this.data.instanceLifetimeStats[params.instanceId].sessionCount += 1;
+
+    // Prune retained session history to max 2,000 entries WITHOUT reducing lifetime aggregates
+    if (this.data.sessions.length > 2000) {
+      this.data.sessions = this.data.sessions.slice(-2000);
+    }
 
     this.save();
     return session;
@@ -174,23 +300,50 @@ export class StatsStore {
     session.endedAt = now.toISOString();
     session.status = status;
 
-    const start = new Date(session.startedAt).getTime();
+    const start = session.startedAt ? new Date(session.startedAt).getTime() : NaN;
     const end = now.getTime();
-    const elapsed = Math.max(0, end - start);
+    const elapsed = (!Number.isNaN(start) && start > 0 && end >= start) ? Math.max(0, end - start) : 0;
+
+    if (!this.data.processedSessionIds) {
+      this.data.processedSessionIds = [];
+    }
+    const processedSet = new Set(this.data.processedSessionIds);
 
     // Only count playtime for completed or crashed sessions that actually ran (status != failed launch)
     if (status !== 'failed') {
       session.durationMs = elapsed;
-      if (!this.data.instanceLifetimeStats[session.instanceId]) {
-        this.data.instanceLifetimeStats[session.instanceId] = {
-          totalPlaytimeMs: 0,
-          sessionCount: 1,
-          createdAt: session.startedAt
-        };
+      if (!processedSet.has(sessionId)) {
+        this.data.lifetimeStats.totalPlaytimeMs += elapsed;
+        if (status === 'completed') {
+          this.data.lifetimeStats.totalCompletedSessions += 1;
+        } else {
+          this.data.lifetimeStats.totalCrashedSessions += 1;
+        }
+
+        if (session.instanceId) {
+          if (!this.data.instanceLifetimeStats[session.instanceId]) {
+            this.data.instanceLifetimeStats[session.instanceId] = {
+              totalPlaytimeMs: 0,
+              sessionCount: 1,
+              createdAt: session.startedAt || now.toISOString()
+            };
+          }
+          this.data.instanceLifetimeStats[session.instanceId].totalPlaytimeMs += elapsed;
+        }
+
+        this.data.processedSessionIds.push(sessionId);
       }
-      this.data.instanceLifetimeStats[session.instanceId].totalPlaytimeMs += elapsed;
     } else {
       session.durationMs = 0;
+      if (!processedSet.has(sessionId)) {
+        this.data.lifetimeStats.totalFailedSessions += 1;
+        this.data.processedSessionIds.push(sessionId);
+      }
+    }
+
+    // Keep processed IDs bound to 5000
+    if (this.data.processedSessionIds.length > 5000) {
+      this.data.processedSessionIds = this.data.processedSessionIds.slice(-5000);
     }
 
     this.save();
@@ -301,13 +454,27 @@ export class StatsStore {
       lastPlayedAt: string | null;
     }>();
 
-    let totalPlaytimeMs = 0;
+    // In lifetime mode, start with the durable instanceLifetimeStats
+    if (period === 'lifetime') {
+      for (const [id, stats] of Object.entries(this.data.instanceLifetimeStats)) {
+        playtimeByInstance.set(id, {
+          name: id,
+          version: '1.21.1',
+          loader: 'fabric',
+          playtimeMs: stats.totalPlaytimeMs || 0,
+          sessionCount: stats.sessionCount || 0,
+          lastPlayedAt: null
+        });
+      }
+    }
+
+    let periodSessionsPlaytimeMs = 0;
     const versionCounts: Record<string, number> = {};
     const loaderCounts: Record<string, number> = {};
 
     for (const session of filteredSessions) {
       const duration = session.durationMs || 0;
-      totalPlaytimeMs += duration;
+      periodSessionsPlaytimeMs += duration;
 
       const existing = playtimeByInstance.get(session.instanceId) || {
         name: session.instanceName,
@@ -317,9 +484,26 @@ export class StatsStore {
         sessionCount: 0,
         lastPlayedAt: session.startedAt
       };
-      existing.playtimeMs += duration;
-      existing.sessionCount += 1;
-      if (!existing.lastPlayedAt || new Date(session.startedAt) > new Date(existing.lastPlayedAt)) {
+
+      // For lifetime, ensure playtime is at least the sum of recorded sessions
+      if (period !== 'lifetime') {
+        existing.playtimeMs += duration;
+        existing.sessionCount += 1;
+      } else {
+        existing.playtimeMs = Math.max(existing.playtimeMs, (existing.playtimeMs || 0));
+        // If instanceLifetimeStats had 0 playtime (e.g. manually crafted session test data), add session duration
+        if (existing.playtimeMs === 0 && duration > 0) {
+          existing.playtimeMs = duration;
+        } else if (existing.playtimeMs < duration) {
+          existing.playtimeMs = duration;
+        }
+      }
+
+      existing.name = session.instanceName || existing.name;
+      existing.version = session.minecraftVersion || existing.version;
+      existing.loader = session.loaderType || existing.loader;
+
+      if (!existing.lastPlayedAt || (session.startedAt && new Date(session.startedAt) > new Date(existing.lastPlayedAt))) {
         existing.lastPlayedAt = session.startedAt;
       }
       playtimeByInstance.set(session.instanceId, existing);
@@ -332,6 +516,15 @@ export class StatsStore {
         loaderCounts[session.loaderType] = (loaderCounts[session.loaderType] || 0) + 1;
       }
     }
+
+    // In lifetime mode, totalPlaytime is authoritative from lifetimeStats or sum of filtered sessions
+    const totalPlaytimeMs = period === 'lifetime'
+      ? Math.max(this.data.lifetimeStats.totalPlaytimeMs, periodSessionsPlaytimeMs, Array.from(playtimeByInstance.values()).reduce((sum, v) => sum + v.playtimeMs, 0))
+      : periodSessionsPlaytimeMs;
+
+    const totalSessions = period === 'lifetime'
+      ? Math.max(this.data.lifetimeStats.totalCompletedSessions + this.data.lifetimeStats.totalCrashedSessions, filteredSessions.length)
+      : filteredSessions.length;
 
     // Also include any currently installed instances in instancesPlaytime even if 0 playtime
     try {
@@ -391,11 +584,22 @@ export class StatsStore {
     let totalVpSpent = 0;
     let mostExpensiveCosmetic: { name: string; price: number } | null = null;
 
+    // In annual mode, check if playerStore has durable yearly aggregates
+    if (typeof period === 'number') {
+      const yearly = pStore.getYearlyEconomy(period);
+      totalVpEarned = yearly.earned;
+      totalVpSpent = yearly.spent;
+    }
+
     for (const tx of filteredTxs) {
-      if (tx.type === 'earn') {
-        totalVpEarned += tx.amount;
-      } else if (tx.type === 'spend') {
-        totalVpSpent += tx.amount;
+      if (typeof period !== 'number') {
+        if (tx.type === 'earn') totalVpEarned += tx.amount;
+        else if (tx.type === 'spend') totalVpSpent += tx.amount;
+      }
+
+      // Check for cosmetic purchases strictly
+      const isCosmeticTx = tx.category === 'cosmetic' || (tx.type === 'spend' && (tx.reason.startsWith('Purchased: ') && !tx.reason.includes('VPack') && !tx.reason.includes('Card')));
+      if (isCosmeticTx && tx.type === 'spend') {
         if (!mostExpensiveCosmetic || tx.amount > mostExpensiveCosmetic.price) {
           mostExpensiveCosmetic = {
             name: tx.reason.replace(/^Purchased:\s*/i, ''),
@@ -469,7 +673,7 @@ export class StatsStore {
       period,
       totalPlaytimeMs,
       formattedPlaytime: this.formatDuration(totalPlaytimeMs),
-      totalSessions: filteredSessions.length,
+      totalSessions,
       mostPlayedInstance: mostPlayed,
       leastPlayedInstance: leastPlayed,
       instancesPlaytime: instancesPlaytimeList,

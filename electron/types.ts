@@ -661,6 +661,19 @@ export interface InstanceStatsSummary {
   lastPlayedAt: string | null;
 }
 
+export type TransactionCategory = 'cosmetic' | 'shop' | 'vpack' | 'reward' | 'refund' | 'other';
+
+export interface WalletTransaction {
+  id: string;
+  type: 'earn' | 'spend';
+  amount: number;
+  balanceAfter: number;
+  reason: string;
+  timestamp: string;
+  category?: TransactionCategory;
+  itemId?: string;
+}
+
 export interface WrappedStats {
   period: 'lifetime' | number; // e.g. 2025 or 'lifetime'
   totalPlaytimeMs: number;

@@ -89,7 +89,7 @@ describe('Home Page Layouts and Artwork', () => {
   });
 
   it('generates high quality procedural Minecraft SVG fallback artwork styles with local caching', () => {
-    const style1 = getArtworkStyle('preset:lush_caves');
+    const style1 = getArtworkStyle('preset:grass_block');
     expect(style1).toContain('data:image/svg+xml;utf8');
     expect(style1).toContain('linear-gradient');
 
@@ -97,7 +97,17 @@ describe('Home Page Layouts and Artwork', () => {
     expect(styleDefault).toContain('data:image/svg+xml;utf8');
 
     // Repeated call hits cache
-    const styleCached = getArtworkStyle('preset:lush_caves');
+    const styleCached = getArtworkStyle('preset:grass_block');
     expect(styleCached).toBe(style1);
+  });
+
+  it('validates user artwork format and falls back gracefully for invalid strings', () => {
+    const validDataUri = 'data:image/png;base64,iVBORw0KGgo=';
+    const style1 = getArtworkStyle(validDataUri);
+    expect(style1).toContain(validDataUri);
+
+    const invalidArtwork = 'javascript:alert(1)';
+    const style2 = getArtworkStyle(invalidArtwork);
+    expect(style2).toContain('data:image/svg+xml;utf8');
   });
 });

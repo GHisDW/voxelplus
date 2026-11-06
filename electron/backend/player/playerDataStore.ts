@@ -21,6 +21,8 @@ export interface PlayerDataSchema {
   profile: PlayerProfile;
   wallet: WalletState;
   transactions: WalletTransaction[];
+  yearlyEconomy?: Record<number, { earned: number; spent: number }>;
+  processedTransactionIds?: string[];
   achievements: Record<string, AchievementProgress>;
   cosmetics: Record<string, CosmeticOwnership>;
   vpacks: Record<string, VPackOwnership>;
@@ -52,6 +54,8 @@ export class PlayerDataStore {
 
   private getDefaultData(): PlayerDataSchema {
     const now = new Date().toISOString();
+    const starterTxId = crypto.randomUUID();
+    const year = new Date().getFullYear();
     return {
       profile: {
         id: crypto.randomUUID(),
@@ -66,18 +70,23 @@ export class PlayerDataStore {
         balance: 1000,
         lifetimeEarned: 1000,
         lifetimeSpent: 0,
-        lastTransactionId: null
+        lastTransactionId: starterTxId
       },
       transactions: [
         {
-          id: crypto.randomUUID(),
+          id: starterTxId,
           type: 'earn',
           amount: 1000,
+          balanceAfter: 1000,
           reason: 'Welcome to Voxel+!',
-          sourceId: 'starter-bonus',
-          timestamp: now
+          timestamp: now,
+          category: 'reward'
         }
       ],
+      yearlyEconomy: {
+        [year]: { earned: 1000, spent: 0 }
+      },
+      processedTransactionIds: [starterTxId],
       achievements: {},
       cosmetics: {
         'cosmetic-gem-emerald': {
@@ -137,10 +146,36 @@ export class PlayerDataStore {
           }
         }
 
+        const yearlyEconomy: Record<number, { earned: number; spent: number }> = parsed.yearlyEconomy || {};
+        const processedTransactionIds: string[] = Array.isArray(parsed.processedTransactionIds)
+          ? parsed.processedTransactionIds
+          : [];
+        const processedTxSet = new Set(processedTransactionIds);
+
+        // Populate yearlyEconomy from legacy transactions safely without double counting
+        for (const tx of transactions) {
+          if (!tx.id || processedTxSet.has(tx.id)) continue;
+          const txYear = tx.timestamp ? new Date(tx.timestamp).getFullYear() : null;
+          if (txYear && !Number.isNaN(txYear)) {
+            if (!yearlyEconomy[txYear]) {
+              yearlyEconomy[txYear] = { earned: 0, spent: 0 };
+            }
+            if (tx.type === 'earn') {
+              yearlyEconomy[txYear].earned += tx.amount || 0;
+            } else if (tx.type === 'spend') {
+              yearlyEconomy[txYear].spent += tx.amount || 0;
+            }
+          }
+          processedTransactionIds.push(tx.id);
+          processedTxSet.add(tx.id);
+        }
+
         return {
           profile: { ...defaultData.profile, ...(parsed.profile || {}) },
           wallet,
           transactions,
+          yearlyEconomy,
+          processedTransactionIds,
           achievements: cleanedAchievements,
           cosmetics: parsed.cosmetics || defaultData.cosmetics,
           vpacks: parsed.vpacks || {},
@@ -189,11 +224,24 @@ export class PlayerDataStore {
     return [...this.data.transactions];
   }
 
+  public getYearlyEconomy(year: number): { earned: number; spent: number } {
+    if (this.data.yearlyEconomy && this.data.yearlyEconomy[year]) {
+      return { ...this.data.yearlyEconomy[year] };
+    }
+    return { earned: 0, spent: 0 };
+  }
+
+  public getAllYearlyEconomy(): Record<number, { earned: number; spent: number }> {
+    return { ...(this.data.yearlyEconomy || {}) };
+  }
+
   public addTransaction(
     type: 'earn' | 'spend',
     amount: number,
     reason: string,
-    sourceId?: string
+    sourceId?: string,
+    category?: 'cosmetic' | 'shop' | 'vpack' | 'reward' | 'refund' | 'other',
+    itemId?: string
   ): { success: boolean; wallet: WalletState; transaction?: WalletTransaction; error?: string } {
     if (amount <= 0 || !Number.isInteger(amount)) {
       return { success: false, wallet: this.getWallet(), error: 'Amount must be a positive integer.' };
@@ -203,13 +251,36 @@ export class PlayerDataStore {
       return { success: false, wallet: this.getWallet(), error: 'Insufficient Voxel Points (VP).' };
     }
 
+    const now = new Date();
+    const currentYear = now.getFullYear();
+
+    // Determine category if not explicitly provided
+    let finalCategory = category;
+    if (!finalCategory) {
+      if (sourceId?.startsWith('cosmetic') || reason.toLowerCase().includes('purchased: cosmetic')) {
+        finalCategory = 'cosmetic';
+      } else if (reason.toLowerCase().includes('vpack')) {
+        finalCategory = 'vpack';
+      } else if (reason.toLowerCase().includes('reward') || reason.toLowerCase().includes('welcome')) {
+        finalCategory = 'reward';
+      } else if (reason.toLowerCase().includes('refund')) {
+        finalCategory = 'refund';
+      } else if (type === 'spend') {
+        finalCategory = 'shop';
+      } else {
+        finalCategory = 'other';
+      }
+    }
+
     const tx: WalletTransaction = {
       id: crypto.randomUUID(),
       type,
       amount,
+      balanceAfter: type === 'earn' ? this.data.wallet.balance + amount : this.data.wallet.balance - amount,
       reason,
-      sourceId,
-      timestamp: new Date().toISOString()
+      timestamp: now.toISOString(),
+      category: finalCategory,
+      itemId: itemId || sourceId
     };
 
     if (type === 'earn') {
@@ -227,6 +298,28 @@ export class PlayerDataStore {
       this.data.wallet.balance -= amount;
       this.data.wallet.lifetimeSpent += amount;
     }
+
+    // Update yearly economy aggregates reliably
+    if (!this.data.yearlyEconomy) {
+      this.data.yearlyEconomy = {};
+    }
+    if (!this.data.yearlyEconomy[currentYear]) {
+      this.data.yearlyEconomy[currentYear] = { earned: 0, spent: 0 };
+    }
+    if (type === 'earn') {
+      this.data.yearlyEconomy[currentYear].earned += amount;
+    } else {
+      this.data.yearlyEconomy[currentYear].spent += amount;
+    }
+
+    if (!this.data.processedTransactionIds) {
+      this.data.processedTransactionIds = [];
+    }
+    this.data.processedTransactionIds.push(tx.id);
+    if (this.data.processedTransactionIds.length > 5000) {
+      this.data.processedTransactionIds = this.data.processedTransactionIds.slice(-5000);
+    }
+
     this.data.wallet.lastTransactionId = tx.id;
     this.data.transactions.unshift(tx);
     if (this.data.transactions.length > 200) {
