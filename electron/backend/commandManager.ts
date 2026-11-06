@@ -54,6 +54,8 @@ import { ModrinthPackImporter } from './vpack/modrinthPackImporter';
 import { CurseForgePackImporter } from './vpack/curseForgePackImporter';
 import { PreflightChecker } from './instances/preflightChecker';
 import { ArcadeStore } from './arcade/arcadeStore';
+import { StatsStore } from './stats/statsStore';
+import { WrappedStats, PlaySession } from '../types';
 
 
 export class CommandManager {
@@ -89,6 +91,7 @@ export class CommandManager {
     ConfigStore.resetToDefaults();
     PlayerDataStore.getInstance().resetToDefaults();
     ArcadeStore.getInstance().resetToDefaults();
+    StatsStore.getInstance().resetToDefaults();
 
     return true;
   }
@@ -327,8 +330,12 @@ export class CommandManager {
   public static async exportInstance(instanceId: string, targetZipPath: string): Promise<boolean> {
     const success = await InstanceManager.exportInstance(instanceId, targetZipPath);
     if (success) {
+      StatsStore.getInstance().recordVPackEvent('export', path.basename(targetZipPath), instanceId);
       const engine = new AchievementEngine();
       engine.trackProgress('vpack_export', 1);
+      const exportCount = StatsStore.getInstance().getAllSessions(); // check vpack exports
+      const allExports = StatsStore.getInstance().getVPackEvents().filter(v => v.type === 'export').length;
+      engine.trackProgress('vpack_sharer', allExports, true);
       engine.checkWinCondition();
     }
     return success;
@@ -337,8 +344,11 @@ export class CommandManager {
   public static async importInstance(zipPath: string, customName?: string): Promise<InstanceMetadata | null> {
     const meta = await InstanceManager.importInstance(zipPath, customName);
     if (meta) {
+      StatsStore.getInstance().recordVPackEvent('import', meta.name, meta.id);
       const engine = new AchievementEngine();
       engine.trackProgress('vpack_import', 1);
+      const allImports = (StatsStore.getInstance() as any).data?.vpackEvents?.filter((v: any) => v.type === 'import').length || 1;
+      engine.trackProgress('vpack_collector', allImports, true);
       engine.checkWinCondition();
     }
     return meta;
@@ -497,10 +507,30 @@ export class CommandManager {
     if (cosmeticId && !store.isCosmeticOwned(cosmeticId)) {
       throw new Error('Cannot equip cosmetic that is not owned.');
     }
-    return store.updateProfile({
+    const updated = store.updateProfile({
       equippedCosmeticId: cosmeticId,
       equippedEffectId: effectId
     });
+
+    if (effectId) {
+      const engine = new AchievementEngine(store);
+      // Track distinct equipped effects in store
+      store.recordEquippedEffect(effectId);
+      const distinctEffectsCount = store.getEquippedEffectsCount();
+      engine.trackProgress('effect_explorer', distinctEffectsCount, true);
+      engine.checkWinCondition();
+    }
+
+    return updated;
+  }
+
+  // Statistics & Wrapped
+  public static async getWrappedStats(period: 'lifetime' | number = 'lifetime'): Promise<WrappedStats> {
+    return StatsStore.getInstance().getWrappedStats(period, PlayerDataStore.getInstance());
+  }
+
+  public static async getStatsSessions(): Promise<PlaySession[]> {
+    return StatsStore.getInstance().getAllSessions();
   }
 
   // Arcade

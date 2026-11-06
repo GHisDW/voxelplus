@@ -137,26 +137,9 @@ export class ArcadeStore {
     const vpEarned = Math.max(5, Math.floor(score / 25));
     const tx = this.playerStore.addTransaction('earn', vpEarned, `Stocker Run (${mode}) - Score ${score}`);
 
-    // Trigger achievements
-    const newAchievements: string[] = [];
-    const r1 = this.achievementEngine.trackProgress('stocker_first_run', 1);
-    if (r1.unlockedNow) newAchievements.push('stocker_first_run');
-
-    const r2 = this.achievementEngine.trackProgress('stocker_1000', score, true);
-    if (r2.unlockedNow) newAchievements.push('stocker_1000');
-
-    const r3 = this.achievementEngine.trackProgress('stocker_5000', score, true);
-    if (r3.unlockedNow) newAchievements.push('stocker_5000');
-
-    const r4 = this.achievementEngine.trackProgress('stocker_marathon', this.stockerData.totalRuns, true);
-    if (r4.unlockedNow) newAchievements.push('stocker_marathon');
-
-    const r5 = this.achievementEngine.trackProgress('stocker_distance', this.stockerData.totalDistance, true);
-    if (r5.unlockedNow) newAchievements.push('stocker_distance');
-
     return {
       vpEarned,
-      newAchievements,
+      newAchievements: [],
       transactionId: tx.transaction?.id || null
     };
   }

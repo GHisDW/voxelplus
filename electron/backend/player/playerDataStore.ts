@@ -9,6 +9,7 @@ import {
   AchievementProgress,
   CosmeticOwnership
 } from '../../types';
+import { AchievementEngine } from './achievementEngine';
 
 export interface VPackOwnership {
   packId: string;
@@ -23,6 +24,7 @@ export interface PlayerDataSchema {
   achievements: Record<string, AchievementProgress>;
   cosmetics: Record<string, CosmeticOwnership>;
   vpacks: Record<string, VPackOwnership>;
+  equippedEffectsHistory?: string[];
   _starterBonusGranted?: boolean;
 }
 
@@ -85,8 +87,23 @@ export class PlayerDataStore {
         }
       },
       vpacks: {},
+      equippedEffectsHistory: [],
       _starterBonusGranted: true
     };
+  }
+
+  public recordEquippedEffect(effectId: string): void {
+    if (!this.data.equippedEffectsHistory) {
+      this.data.equippedEffectsHistory = [];
+    }
+    if (!this.data.equippedEffectsHistory.includes(effectId)) {
+      this.data.equippedEffectsHistory.push(effectId);
+      this.save();
+    }
+  }
+
+  public getEquippedEffectsCount(): number {
+    return this.data.equippedEffectsHistory ? this.data.equippedEffectsHistory.length : 0;
   }
 
   private load(): PlayerDataSchema {
@@ -110,13 +127,24 @@ export class PlayerDataStore {
           ? parsed.transactions
           : defaultData.transactions;
         
+        // Migration: purge removed/orphaned achievement IDs (stocker achievements, configurator, etc.)
+        const rawAchievements: Record<string, AchievementProgress> = parsed.achievements || {};
+        const validAchievementIds = new Set(new AchievementEngine(this).getDefinitions().map(d => d.id));
+        const cleanedAchievements: Record<string, AchievementProgress> = {};
+        for (const [k, v] of Object.entries(rawAchievements)) {
+          if (validAchievementIds.has(k)) {
+            cleanedAchievements[k] = v;
+          }
+        }
+
         return {
           profile: { ...defaultData.profile, ...(parsed.profile || {}) },
           wallet,
           transactions,
-          achievements: parsed.achievements || {},
+          achievements: cleanedAchievements,
           cosmetics: parsed.cosmetics || defaultData.cosmetics,
           vpacks: parsed.vpacks || {},
+          equippedEffectsHistory: parsed.equippedEffectsHistory || [],
           _starterBonusGranted: true
         };
       }
@@ -187,6 +215,14 @@ export class PlayerDataStore {
     if (type === 'earn') {
       this.data.wallet.balance += amount;
       this.data.wallet.lifetimeEarned += amount;
+
+      // Track VP milestones without recursive calls when addTransaction is triggered by achievement rewards
+      if (!sourceId?.startsWith('achievement') && !reason.startsWith('Unlocked achievement:')) {
+        const engine = new AchievementEngine(this);
+        engine.trackProgress('vp_earner', this.data.wallet.lifetimeEarned, true);
+        engine.trackProgress('vp_tycoon', this.data.wallet.lifetimeEarned, true);
+        engine.checkWinCondition();
+      }
     } else {
       this.data.wallet.balance -= amount;
       this.data.wallet.lifetimeSpent += amount;

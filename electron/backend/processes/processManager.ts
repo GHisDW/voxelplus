@@ -8,15 +8,20 @@ import { MinecraftCompatibilityResolver } from '../instances/minecraftCompatibil
 import { LogStreamer } from './logStreamer';
 import { ConfigStore } from '../storage/configStore';
 import { VoxelError } from '../diagnostics';
+import { StatsStore } from '../stats/statsStore';
+import { AchievementEngine } from '../player/achievementEngine';
 import { createInterface } from 'node:readline';
 
 interface ActiveProcess {
   instanceId: string;
   instanceName: string;
+  instanceDir: string;
   childProcess: ChildProcess;
   pid?: number;
+  sessionId?: string;
   status: ProcessStatus;
   startTime: Date;
+  runningSince?: Date;
   javaRuntime: JavaRuntime;
 }
 
@@ -221,6 +226,7 @@ export class ProcessManager {
       const active: ActiveProcess = {
         instanceId,
         instanceName: metadata.name,
+        instanceDir,
         childProcess: child,
         pid: child.pid,
         status: 'STARTING',
@@ -241,12 +247,29 @@ export class ProcessManager {
       const markRunning = (): void => {
         if (active.status === 'RUNNING') return;
         active.status = 'RUNNING';
+        active.runningSince = new Date();
         this.updateStatus(instanceId, 'RUNNING', child.pid);
         metadata.status = 'RUNNING';
         try {
           InstanceMetadataStore.writeMetadata(instanceDir, metadata);
         } catch {
           // Status persistence is best-effort; the live status is authoritative.
+        }
+
+        // Start recorded session in StatsStore
+        if (!active.sessionId) {
+          const session = StatsStore.getInstance().startSession({
+            instanceId,
+            instanceName: metadata.name,
+            minecraftVersion: metadata.minecraft.version,
+            loaderType: metadata.loader?.type || 'fabric'
+          });
+          active.sessionId = session.sessionId;
+
+          // Trigger achievements for launching Minecraft
+          const engine = new AchievementEngine();
+          engine.trackProgress('first_launch', 1);
+          engine.checkWinCondition();
         }
       };
 
@@ -283,9 +306,28 @@ export class ProcessManager {
 
       child.on('close', (code) => {
         LogStreamer.addLog(`[Voxel+] Process for "${metadata.name}" exited with code ${code}.`, code === 0 ? 'INFO' : 'WARN', instanceId, metadata.name);
+
+        // Finalize session in StatsStore and accumulate totalPlaytimeMs
+        if (active.sessionId) {
+          const finishedSession = StatsStore.getInstance().endSession(
+            active.sessionId,
+            code === 0 ? 'completed' : 'crashed'
+          );
+          if (finishedSession && finishedSession.durationMs > 0) {
+            const currentMeta = InstanceMetadataStore.readMetadata(instanceDir) || metadata;
+            currentMeta.totalPlaytimeMs = (currentMeta.totalPlaytimeMs || 0) + finishedSession.durationMs;
+            currentMeta.status = code === 0 ? 'STOPPED' : 'ERROR';
+            InstanceMetadataStore.writeMetadata(instanceDir, currentMeta);
+          } else {
+            metadata.status = code === 0 ? 'STOPPED' : 'ERROR';
+            InstanceMetadataStore.writeMetadata(instanceDir, metadata);
+          }
+        } else {
+          metadata.status = code === 0 ? 'STOPPED' : 'ERROR';
+          InstanceMetadataStore.writeMetadata(instanceDir, metadata);
+        }
+
         this.activeProcesses.delete(instanceId);
-        metadata.status = code === 0 ? 'STOPPED' : 'ERROR';
-        InstanceMetadataStore.writeMetadata(instanceDir, metadata);
         this.updateStatus(instanceId, code === 0 ? 'STOPPED' : 'ERROR', undefined, code);
       });
 
@@ -301,6 +343,11 @@ export class ProcessManager {
           details: err.stack || err.message
         });
         error.log(instanceId, metadata.name);
+
+        if (active.sessionId) {
+          StatsStore.getInstance().endSession(active.sessionId, 'failed');
+        }
+
         this.activeProcesses.delete(instanceId);
         metadata.status = 'ERROR';
         InstanceMetadataStore.writeMetadata(instanceDir, metadata);

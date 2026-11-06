@@ -33,7 +33,9 @@ import {
   UpdateInstallResult,
   UpdateProgressEvent,
   UpdateRuntimeInfo,
-  JavaInstallProgressEvent
+  JavaInstallProgressEvent,
+  WrappedStats,
+  PlaySession
 } from '../../../electron/types';
 
 // Access the contextBridge exposed API
@@ -116,9 +118,11 @@ export const api = {
   purchaseCosmetic: (cosmeticId: string): Promise<{ success: boolean; error?: string; wallet?: WalletState }> => electronApi.purchaseCosmetic(cosmeticId),
   equipCosmetic: (cosmeticId: string | null, effectId: string | null): Promise<PlayerProfile> => electronApi.equipCosmetic(cosmeticId, effectId),
 
+  // Statistics & Wrapped
+  getWrappedStats: (period?: 'lifetime' | number): Promise<WrappedStats> => electronApi.getWrappedStats(period),
+  getStatsSessions: (): Promise<PlaySession[]> => electronApi.getStatsSessions(),
+
   // Arcade
-  getStockerData: (): Promise<StockerSaveData> => electronApi.getStockerData(),
-  recordStockerRun: (run: StockerRunResult): Promise<ArcadeRewardResult> => electronApi.recordStockerRun(run),
   getCookieData: (): Promise<CookieClickerSaveData> => electronApi.getCookieData(),
   saveCookieData: (data: CookieClickerSaveData): Promise<ArcadeRewardResult> => electronApi.saveCookieData(data),
 

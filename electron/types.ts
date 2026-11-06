@@ -200,6 +200,7 @@ export interface InstanceMetadata {
   resourcePackCount?: number;
   shaderCount?: number;
   instancePath?: string;
+  totalPlaytimeMs?: number; // Accumulated playable duration in milliseconds
 }
 
 export interface ModInfo {
@@ -298,6 +299,7 @@ export interface AppSettings {
   gradleWrapperArgs: string;
   debugLogging: boolean;
   firstRunCompleted: boolean;
+  homeLayout?: 'horizontal' | 'vertical';
 }
 
 export interface CreateInstancePayload {
@@ -379,11 +381,22 @@ export interface WalletTransaction {
   timestamp: string;
 }
 
+export type DifficultyRank =
+  | 'Trivial'
+  | 'Very Easy'
+  | 'Easy'
+  | 'Moderate'
+  | 'Challenging'
+  | 'Hard'
+  | 'Very Hard'
+  | 'Extreme'
+  | 'Legendary'
+  | 'Ultimate';
+
 export type AchievementCategory =
   | 'launcher'
   | 'vpack'
   | 'content'
-  | 'stocker'
   | 'cookie'
   | 'player'
   | 'collection';
@@ -398,6 +411,10 @@ export interface AchievementDefinition {
   rarity: AchievementRarity;
   icon?: string;
   hidden: boolean;
+  /** Integer difficulty score from 1 (Trivial) to 10 (Ultimate). */
+  difficulty: number;
+  /** Difficulty rank derived from the 1-10 difficulty score. */
+  difficultyRank: DifficultyRank;
   /** For boolean achievements: target = 1. For numeric: the threshold. */
   target: number;
   /** VP reward on first unlock. 0 = no reward. */
@@ -618,4 +635,90 @@ export interface UpdateRuntimeInfo {
   portable: boolean;
   canAutoInstall: boolean;
   platform: string;
+}
+
+// ─── Statistics & Wrapped Types ──────────────────────────────────────────────
+
+export interface PlaySession {
+  sessionId: string;
+  instanceId: string;
+  instanceName: string;
+  minecraftVersion: string;
+  loaderType: LoaderType;
+  startedAt: string;
+  endedAt: string | null;
+  durationMs: number;
+  status: 'running' | 'completed' | 'crashed' | 'failed';
+}
+
+export interface InstanceStatsSummary {
+  instanceId: string;
+  name: string;
+  minecraftVersion: string;
+  loaderType: LoaderType;
+  totalPlaytimeMs: number;
+  sessionCount: number;
+  lastPlayedAt: string | null;
+}
+
+export interface WrappedStats {
+  period: 'lifetime' | number; // e.g. 2025 or 'lifetime'
+  totalPlaytimeMs: number;
+  formattedPlaytime: string;
+  totalSessions: number;
+  mostPlayedInstance: {
+    id: string;
+    name: string;
+    playtimeMs: number;
+    formattedPlaytime: string;
+  } | null;
+  leastPlayedInstance: {
+    id: string;
+    name: string;
+    playtimeMs: number;
+    formattedPlaytime: string;
+  } | null;
+  instancesPlaytime: InstanceStatsSummary[];
+  totalInstancesCreated: number;
+  mostUsedVersion: string | null;
+  mostUsedLoader: string | null;
+  economy: {
+    totalVpEarned: number;
+    totalVpSpent: number;
+    currentBalance: number;
+    mostExpensiveCosmetic: {
+      name: string;
+      price: number;
+    } | null;
+  };
+  achievements: {
+    totalUnlocked: number;
+    totalAvailable: number;
+    completionPercentage: number;
+    hardestAchievement: {
+      id: string;
+      name: string;
+      difficulty: number;
+      difficultyRank: DifficultyRank;
+      category: AchievementCategory;
+      rarity: AchievementRarity;
+      icon?: string;
+      unlockedAt: string | null;
+      description: string;
+    } | null;
+    categoryBreakdown: Record<string, { unlocked: number; total: number }>;
+  };
+  collection: {
+    totalOwnedCosmetics: number;
+    totalAvailableCosmetics: number;
+    completionPercentage: number;
+    favoriteEquipped: {
+      id: string;
+      name: string;
+      artworkPath: string;
+    } | null;
+    vpacksImported: number;
+    vpacksExported: number;
+  };
+  generatedAt: string;
 }
