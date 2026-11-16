@@ -105,12 +105,24 @@ export class InstanceManager {
 
     const metadata = await LoomProjectGenerator.generateProject(targetDir, payload);
 
+    // Record in stats store
+    const { StatsStore } = await import('../stats/statsStore');
+    StatsStore.getInstance().recordInstanceCreated(metadata.id);
+
     // Track achievements
     const engine = new AchievementEngine();
     const allInstances = await InstanceManager.listInstances();
     engine.trackProgress('first_instance', 1);
     engine.trackProgress('instance_collector', allInstances.length, true);
     engine.trackProgress('instance_master', allInstances.length, true);
+
+    // Track version explorer & loader master
+    const uniqueVersions = new Set(allInstances.map(i => i.minecraft?.version).filter(Boolean));
+    engine.trackProgress('launcher_explorer', uniqueVersions.size, true);
+
+    const uniqueLoaders = new Set(allInstances.map(i => i.loader?.type).filter(Boolean));
+    engine.trackProgress('loader_expert', uniqueLoaders.size, true);
+
     engine.checkWinCondition();
 
     return metadata;
@@ -181,6 +193,8 @@ export class InstanceManager {
 
     try {
       fs.rmSync(instanceDir, { recursive: true, force: true });
+      const { StatsStore } = await import('../stats/statsStore');
+      StatsStore.getInstance().recordInstanceDeleted(instanceId);
       return true;
     } catch (e) {
       new VoxelError({

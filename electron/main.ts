@@ -216,9 +216,17 @@ function registerIpcHandlers() {
   handle('player:equipCosmetic', 'IPC', async (_, cosmeticId, effectId) =>
     CommandManager.equipCosmetic(v.opt(cosmeticId, 'cosmetic id'), v.opt(effectId, 'effect id')));
 
+  // Statistics & Wrapped
+  handle('stats:getWrapped', 'IPC', async (_, period) => {
+    let validatedPeriod: 'lifetime' | number = 'lifetime';
+    if (typeof period === 'number' && Number.isInteger(period) && period >= 2000 && period <= 2100) {
+      validatedPeriod = period;
+    }
+    return CommandManager.getWrappedStats(validatedPeriod);
+  });
+  handle('stats:getSessions', 'IPC', async () => CommandManager.getStatsSessions());
+
   // Arcade
-  handle('arcade:getStockerData', 'IPC', async () => CommandManager.getStockerData());
-  handle('arcade:recordStockerRun', 'IPC', async (_, run) => CommandManager.recordStockerRun(v.obj(run, 'stocker run') as any));
   handle('arcade:getCookieData', 'IPC', async () => CommandManager.getCookieData());
   handle('arcade:saveCookieData', 'IPC', async (_, data) => CommandManager.saveCookieData(v.obj(data, 'cookie save data') as any));
 

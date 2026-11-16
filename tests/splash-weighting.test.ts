@@ -60,8 +60,8 @@ describe('selectSplashText', () => {
     // With multiple nonzero weights, it should use weighted selection
     // not the weight-100 special case
     const results = new Set<string>();
-    // Run multiple times to verify it's not always B
-    for (let i = 0; i < 10; i++) {
+    // Run enough times to verify it's not always B (100 vs 10 + 20 has ~23% chance per roll of selecting A or C)
+    for (let i = 0; i < 50; i++) {
       results.add(selectSplashText(splashes));
     }
     // Should have at least 2 different results (not always B)

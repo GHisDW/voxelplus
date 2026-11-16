@@ -40,6 +40,7 @@ export class InstanceMetadataStore {
       isFavorite: false,
       createdAt: new Date().toISOString(),
       lastPlayedAt: null,
+      totalPlaytimeMs: 0,
       status: 'READY',
       shareSource: payload.shareSource || 'local'
     };

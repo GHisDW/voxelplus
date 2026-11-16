@@ -15,7 +15,18 @@ export interface InstanceCardEvents {
 }
 
 export class InstanceCard {
-  public static render(instance: InstanceMetadata, events: InstanceCardEvents): HTMLElement {
+  public static render(
+    instance: InstanceMetadata,
+    events: InstanceCardEvents,
+    layout: 'horizontal' | 'vertical' = 'horizontal'
+  ): HTMLElement {
+    if (layout === 'vertical') {
+      return this.renderVertical(instance, events);
+    }
+    return this.renderHorizontal(instance, events);
+  }
+
+  public static renderHorizontal(instance: InstanceMetadata, events: InstanceCardEvents): HTMLElement {
     const card = document.createElement('div');
     card.className = 'instance-card animate-fade-in-up';
     card.setAttribute('data-instance-id', instance.id);
@@ -25,6 +36,7 @@ export class InstanceCard {
     const lastPlayedText = instance.lastPlayedAt
       ? `Last played ${this.formatRelativeTime(new Date(instance.lastPlayedAt))}`
       : 'Never played';
+    const playtimeText = this.formatPlaytime(instance.totalPlaytimeMs);
 
     const itemUrl = getItemDataUrl(instance.appearance.item);
     const artworkStyle = getArtworkStyle(instance.appearance.artwork);
@@ -57,7 +69,7 @@ export class InstanceCard {
           ${isRunning ? `<div class="card-running-ring"></div>` : ''}
 
           <!-- Loader Chip -->
-          <div class="card-loader-chip">${(instance.loader?.type || 'fabric').toUpperCase()}</div>
+          <div class="card-loader-chip">${(instance.loader?.type || 'fabric').toUpperCase()} ${instance.loader?.version ? `v${instance.loader.version}` : ''}</div>
         </div>
       </div>
 
@@ -95,8 +107,8 @@ export class InstanceCard {
             <span>Java ${this.javaVersionForMc(instance.minecraft.version)}</span>
           </div>
           <div class="card-meta-chip">
-            <img src="${getItemDataUrl('minecraft:iron_ingot')}" style="width: 14px; height: 14px; image-rendering: pixelated;" />
-            <span>${(instance.runtime.memoryMb || 4096) / 1024} GB RAM</span>
+            <img src="${getItemDataUrl('minecraft:compass')}" style="width: 14px; height: 14px; image-rendering: pixelated;" />
+            <span>${playtimeText}</span>
           </div>
           <div class="status-pill ${instance.status.toLowerCase()}">
             <span class="status-dot ${isRunning ? 'animate-pulse' : ''}"></span>
@@ -159,28 +171,136 @@ export class InstanceCard {
     return card;
   }
 
+  public static renderVertical(instance: InstanceMetadata, events: InstanceCardEvents): HTMLElement {
+    const card = document.createElement('div');
+    card.className = 'instance-card-vertical animate-fade-in-up';
+    card.setAttribute('data-instance-id', instance.id);
+
+    const isRunning = ['PREPARING', 'STARTING', 'LAUNCHING', 'RUNNING'].includes(instance.status);
+    const isError = instance.status === 'ERROR';
+    const playtimeText = this.formatPlaytime(instance.totalPlaytimeMs);
+
+    const itemUrl = getItemDataUrl(instance.appearance.item);
+    const artworkStyle = getArtworkStyle(instance.appearance.artwork);
+
+    const edgeColor = isRunning
+      ? 'rgba(6, 182, 212, 0.6)'
+      : isError
+        ? 'rgba(239, 68, 68, 0.5)'
+        : instance.isFavorite
+          ? 'rgba(251, 191, 36, 0.5)'
+          : 'rgba(99, 102, 241, 0.25)';
+
+    card.innerHTML = `
+      <div class="card-edge-glow" style="--glow-color: ${edgeColor};"></div>
+
+      <!-- Top Poster Artwork Banner -->
+      <div class="card-poster-artwork" style="background: ${artworkStyle};">
+        <div class="artwork-overlay"></div>
+
+        <div class="card-item-badge">
+          <img src="${itemUrl}" width="34" height="34" style="image-rendering: pixelated; display: block;" />
+        </div>
+
+        ${isRunning ? `<div class="card-running-ring"></div>` : ''}
+
+        <button class="btn-fav" style="position: absolute; top: 10px; right: 10px; z-index: 4; background: rgba(8,12,22,0.6); border-radius: 8px; padding: 4px 6px;" title="${instance.isFavorite ? 'Unfavorite' : 'Favorite'}">
+          ${instance.isFavorite ? '★' : '☆'}
+        </button>
+
+        <div class="card-loader-chip" style="bottom: 8px; left: 8px;">
+          ${(instance.loader?.type || 'fabric').toUpperCase()} ${instance.loader?.version ? `v${instance.loader.version}` : ''}
+        </div>
+
+        <div class="status-pill ${instance.status.toLowerCase()}" style="position: absolute; bottom: 8px; right: 8px; z-index: 3;">
+          <span class="status-dot ${isRunning ? 'animate-pulse' : ''}"></span>
+          ${instance.status}
+        </div>
+      </div>
+
+      <!-- Poster Body Details -->
+      <div class="card-poster-content">
+        <div>
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+            <h3 class="card-instance-name" style="font-size: 1.15rem; margin: 0;">${escapeHtml(instance.name)}</h3>
+            ${instance.isVPack ? `<span style="font-size: 0.7rem; padding: 1px 6px; border-radius: 4px; background: rgba(245, 158, 11, 0.2); color: var(--warning); font-weight: 700;">VPACK</span>` : ''}
+          </div>
+          <div style="display: flex; align-items: center; justify-content: space-between; font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">
+            <span>Minecraft ${instance.minecraft.version}</span>
+            <span style="color: var(--text-muted); font-family: var(--font-mono);">${playtimeText}</span>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+          <span class="content-pill mods" style="font-size: 0.72rem; padding: 2px 7px;">${instance.modCount || 0} Mods</span>
+          <span class="content-pill packs" style="font-size: 0.72rem; padding: 2px 7px;">${instance.resourcePackCount || 0} Packs</span>
+        </div>
+
+        ${isError ? `
+          <div class="card-error-row" style="font-size: 0.75rem; padding: 4px 8px;">
+            <span>⚠ Launch failed</span>
+          </div>
+        ` : ''}
+
+        <div style="margin-top: auto; display: flex; flex-direction: column; gap: 8px; padding-top: 8px;">
+          ${isRunning
+            ? `<button class="btn btn-stop btn-action-stop" style="width: 100%;">■ STOP</button>`
+            : `<button class="btn btn-play btn-action-play" style="width: 100%;">▶ PLAY</button>`
+          }
+
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
+            <button class="btn btn-secondary btn-sm" data-action="open" style="flex: 1;">Details</button>
+            <button class="btn btn-secondary btn-sm" data-action="folder" title="Open Folder">📁</button>
+            <div style="position: relative;">
+              <button class="btn btn-icon btn-more" title="More options">•••</button>
+              <div class="dropdown-menu">
+                <button class="btn-menu-item" data-action="open">📂 Open Details</button>
+                <button class="btn-menu-item" data-action="folder">📁 Open Folder</button>
+                <button class="btn-menu-item" data-action="logs">▣ View Logs</button>
+                <button class="btn-menu-item" data-action="duplicate">📋 Duplicate</button>
+                <button class="btn-menu-item" data-action="export">📦 Export</button>
+                <div class="menu-separator"></div>
+                <button class="btn-menu-item danger" data-action="delete">🗑 Delete</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    this.attachEvents(card, instance, events);
+    return card;
+  }
+
   private static attachEvents(card: HTMLElement, instance: InstanceMetadata, events: InstanceCardEvents): void {
-    // Card click → open details (but not when clicking controls)
+    // Card click → open details (ignoring buttons)
     card.onclick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      if (target.closest('.card-actions-col') || target.closest('.btn-fav')) return;
+      if (
+        target.closest('.card-actions-col') ||
+        target.closest('.card-poster-content button') ||
+        target.closest('.btn-fav') ||
+        target.closest('.dropdown-menu')
+      ) return;
       events.onOpenDetails(instance.id);
     };
 
     // Favorite button
     const favBtn = card.querySelector('.btn-fav') as HTMLElement;
-    favBtn.onclick = async (e) => {
-      e.stopPropagation();
-      const updated = !instance.isFavorite;
-      await api.updateInstance(instance.id, { isFavorite: updated });
-      instance.isFavorite = updated;
-      favBtn.style.color = updated ? '#fbbf24' : 'var(--text-muted)';
-      favBtn.textContent = updated ? '★' : '☆';
-      const edgeGlow = card.querySelector('.card-edge-glow') as HTMLElement;
-      if (edgeGlow) {
-        edgeGlow.style.setProperty('--glow-color', updated ? 'rgba(251, 191, 36, 0.5)' : 'rgba(99, 102, 241, 0.25)');
-      }
-    };
+    if (favBtn) {
+      favBtn.onclick = async (e) => {
+        e.stopPropagation();
+        const updated = !instance.isFavorite;
+        await api.updateInstance(instance.id, { isFavorite: updated });
+        instance.isFavorite = updated;
+        favBtn.style.color = updated ? '#fbbf24' : 'var(--text-muted)';
+        favBtn.textContent = updated ? '★' : '☆';
+        const edgeGlow = card.querySelector('.card-edge-glow') as HTMLElement;
+        if (edgeGlow) {
+          edgeGlow.style.setProperty('--glow-color', updated ? 'rgba(251, 191, 36, 0.5)' : 'rgba(99, 102, 241, 0.25)');
+        }
+      };
+    }
 
     // Play button
     const playBtn = card.querySelector('.btn-action-play') as HTMLButtonElement;
@@ -206,8 +326,6 @@ export class InstanceCard {
               });
 
               if (confirmed) {
-                // Open the manager with the required version preselected so the
-                // prompt's "Install Java" action really installs that version.
                 const target = Number(res.recommendedJavaVersion);
                 const installVersion = [8, 17, 21, 25].includes(target) ? (target as 8 | 17 | 21 | 25) : undefined;
                 JavaManagerModal.show(undefined, { installVersion });
@@ -238,7 +356,7 @@ export class InstanceCard {
       };
     }
 
-    // Direct card delete button
+    // Direct card delete button (horizontal card)
     const cardDelBtn = card.querySelector('.btn-card-delete') as HTMLElement;
     if (cardDelBtn) {
       cardDelBtn.onclick = async (e) => {
@@ -257,21 +375,8 @@ export class InstanceCard {
       };
     }
 
-    // Inline error action links
-    card.querySelectorAll('.card-inline-link').forEach(link => {
-      (link as HTMLElement).onclick = async (e) => {
-        e.stopPropagation();
-        const action = link.getAttribute('data-action');
-        if (action === 'logs') events.onViewLogs(instance.id);
-        else if (action === 'play') {
-          const res = await api.launchInstance(instance.id);
-          if (!res.success) NotificationToast.show(`Retry failed: ${res.message}`, 'error');
-        }
-      };
-    });
-
-    // Details shortcut
-    const detailsBtn = card.querySelector('[data-action="open"].btn-sm') as HTMLElement;
+    // Details button
+    const detailsBtn = card.querySelector('[data-action="open"]') as HTMLElement;
     if (detailsBtn) {
       detailsBtn.onclick = (e) => {
         e.stopPropagation();
@@ -279,63 +384,81 @@ export class InstanceCard {
       };
     }
 
+    // Folder button (vertical card quick action)
+    const folderBtn = card.querySelector('[data-action="folder"].btn-sm') as HTMLElement;
+    if (folderBtn) {
+      folderBtn.onclick = async (e) => {
+        e.stopPropagation();
+        await api.openInstanceFolder(instance.id);
+      };
+    }
+
     // More dropdown
     const moreBtn = card.querySelector('.btn-more') as HTMLElement;
     const dropdown = card.querySelector('.dropdown-menu') as HTMLElement;
 
-    moreBtn.onclick = (e) => {
-      e.stopPropagation();
-      const isVisible = dropdown.classList.contains('open');
-      document.querySelectorAll('.dropdown-menu.open').forEach(d => d.classList.remove('open'));
-      if (!isVisible) dropdown.classList.add('open');
-    };
-
-    document.addEventListener('click', () => dropdown.classList.remove('open'), { capture: false });
-
-    dropdown.querySelectorAll('.btn-menu-item').forEach(item => {
-      const btn = item as HTMLElement;
-      btn.onclick = async (e) => {
+    if (moreBtn && dropdown) {
+      moreBtn.onclick = (e) => {
         e.stopPropagation();
-        dropdown.classList.remove('open');
-        const action = btn.getAttribute('data-action');
-
-        if (action === 'open') {
-          events.onOpenDetails(instance.id);
-        } else if (action === 'folder') {
-          await api.openInstanceFolder(instance.id);
-        } else if (action === 'logs') {
-          events.onViewLogs(instance.id);
-        } else if (action === 'duplicate') {
-          const dup = await api.duplicateInstance(instance.id);
-          if (dup) {
-            NotificationToast.show(`Duplicated as "${dup.name}"`, 'success');
-            events.onRefresh();
-          }
-        } else if (action === 'export') {
-          const savePath = await api.selectSaveFileDialog(`${instance.name}.voxelplus`);
-          if (savePath) {
-            const ok = await api.exportInstance(instance.id, savePath);
-            NotificationToast.show(ok ? `Exported to ${savePath}` : `Export failed`, ok ? 'success' : 'error');
-          }
-        } else if (action === 'delete') {
-          const confirmed = await ConfirmDialog.show({
-            title: `Delete "${instance.name}"?`,
-            message: `Permanently delete this development instance and all installed mods, configurations, and saves? This cannot be undone.`,
-            confirmText: 'Delete Instance',
-            isDanger: true
-          });
-          if (confirmed) {
-            await api.deleteInstance(instance.id);
-            NotificationToast.show(`"${instance.name}" deleted.`, 'info');
-            events.onRefresh();
-          }
-        }
+        const isVisible = dropdown.classList.contains('open');
+        document.querySelectorAll('.dropdown-menu.open').forEach(d => d.classList.remove('open'));
+        if (!isVisible) dropdown.classList.add('open');
       };
-    });
+
+      document.addEventListener('click', () => dropdown.classList.remove('open'), { capture: false });
+
+      dropdown.querySelectorAll('.btn-menu-item').forEach(item => {
+        const btn = item as HTMLElement;
+        btn.onclick = async (e) => {
+          e.stopPropagation();
+          dropdown.classList.remove('open');
+          const action = btn.getAttribute('data-action');
+
+          if (action === 'open') {
+            events.onOpenDetails(instance.id);
+          } else if (action === 'folder') {
+            await api.openInstanceFolder(instance.id);
+          } else if (action === 'logs') {
+            events.onViewLogs(instance.id);
+          } else if (action === 'duplicate') {
+            const dup = await api.duplicateInstance(instance.id);
+            if (dup) {
+              NotificationToast.show(`Duplicated as "${dup.name}"`, 'success');
+              events.onRefresh();
+            }
+          } else if (action === 'export') {
+            const savePath = await api.selectSaveFileDialog(`${instance.name}.voxelplus`);
+            if (savePath) {
+              const ok = await api.exportInstance(instance.id, savePath);
+              NotificationToast.show(ok ? `Exported to ${savePath}` : `Export failed`, ok ? 'success' : 'error');
+            }
+          } else if (action === 'delete') {
+            const confirmed = await ConfirmDialog.show({
+              title: `Delete "${instance.name}"?`,
+              message: `Permanently delete this development instance and all installed mods, configurations, and saves? This cannot be undone.`,
+              confirmText: 'Delete Instance',
+              isDanger: true
+            });
+            if (confirmed) {
+              await api.deleteInstance(instance.id);
+              NotificationToast.show(`"${instance.name}" deleted.`, 'info');
+              events.onRefresh();
+            }
+          }
+        };
+      });
+    }
+  }
+
+  private static formatPlaytime(ms: number | undefined): string {
+    if (!ms || ms <= 0) return 'Never played';
+    const totalMinutes = Math.floor(ms / (1000 * 60));
+    if (totalMinutes < 60) return `${Math.max(1, totalMinutes)}m played`;
+    const hours = (ms / (1000 * 60 * 60)).toFixed(1);
+    return `${hours} hrs played`;
   }
 
   private static javaVersionForMc(mcVersion: string): string {
-    // 26.x new-era (non-obfuscated) requires Java 25
     if (mcVersion.startsWith('26.')) return '25';
     const parts = mcVersion.split('.').map(Number);
     const minor = parts[1] || 0;
@@ -357,5 +480,4 @@ export class InstanceCard {
     if (days === 1) return 'yesterday';
     return `${days}d ago`;
   }
-
 }
