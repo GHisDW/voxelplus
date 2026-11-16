@@ -7,7 +7,7 @@ on:
 permissions:
   contents: read
   issues: write
-  pull-requests: read
+  pull-requests: write
 
 concurrency:
   group: gemini-pr-review-${{ github.event.issue.number }}
@@ -28,13 +28,18 @@ jobs:
       - name: React with 👀 to show bot started
         uses: actions/github-script@v7
         with:
+          github-token: ${{ secrets.BOT_GH_TOKEN || github.token }}
           script: |
-            await github.rest.reactions.createForIssueComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              comment_id: context.payload.comment.id,
-              content: 'eyes'
-            });
+            try {
+              await github.rest.reactions.createForIssueComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: context.payload.comment.id,
+                content: 'eyes'
+              });
+            } catch (error) {
+              core.warning(`Could not add 👀 reaction: ${error.message}`);
+            }
 
       - name: Fetch PR details
         id: pr
@@ -71,13 +76,13 @@ jobs:
       - name: Review with Gemini and post comment
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-2.5-flash' }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-4-hydrogen' }}
           REQUESTER: ${{ github.event.comment.user.login }}
           PR_TITLE: ${{ steps.pr.outputs.title }}
           PR_BODY: ${{ steps.pr.outputs.body }}
           PR_NUMBER: ${{ github.event.issue.number }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ secrets.BOT_GH_TOKEN || github.token }}
         shell: bash
         run: |
           set -euo pipefail
@@ -125,7 +130,7 @@ jobs:
             "### ✨ Pros & What Works Well",
             "List meaningful strengths; do not invent positives.",
             "### 🐛 Issues & Suggested Fixes",
-            "Report only actionable bugs, security risks, edge cases, or logic flaws supported by the diff. For each, include the file path, changed-line context, why it is a problem, and a concrete fix. If no issues are supported, say 'No critical issues found!'",
+            "Report only actionable bugs, security risks, edge cases, or logic flaws supported by the diff. For each, include the exact file path, changed-line context, why it is a problem, and a concrete suggested fix. Always format suggested code fixes in fenced code blocks with a language tag (for example, ```js or ```python) and include the exact file path alongside the code block.",
             diffTruncated ? "The diff was truncated; say that the review may be incomplete." : "",
             "---",
             `PR title:\n${title || "(untitled)"}`,
@@ -133,7 +138,7 @@ jobs:
             `Pull request diff:\n${diff}`,
           ].filter(Boolean).join("\n\n");
 
-          const model = configuredModel || "gemini-2.5-flash";
+          const model = configuredModel || "gemini-4-hydrogen";
           const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
 
           const geminiResponse = await fetch(geminiUrl, {
@@ -144,6 +149,7 @@ jobs:
             },
             body: JSON.stringify({
               contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: { thinkingConfig: { thinkingLevel: "high" } },
             }),
             signal: AbortSignal.timeout(120_000),
           });
