@@ -1,0 +1,159 @@
+name: Gemini PR Reviewer (@bot-review)
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review-pr:
+    # Only run on Pull Requests when someone comments "@bot-review"
+    if: >
+      github.event.issue.pull_request &&
+      contains(github.event.comment.body, '@bot-review')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: React with 👀 to show bot started
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: 'eyes'
+            });
+
+      - name: Fetch PR Details & Checkout Code
+        id: pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number
+            });
+            core.setOutput('head_sha', pr.head.sha);
+            core.setOutput('base_ref', pr.base.ref);
+            core.setOutput('title', pr.title);
+            core.setOutput('body', pr.body || 'No description provided.');
+
+      - name: Checkout PR Head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.pr.outputs.head_sha }}
+          fetch-depth: 0
+
+      - name: Generate Clean Git Diff
+        run: |
+          git fetch origin ${{ steps.pr.outputs.base_ref }}
+          # Diff against base branch while ignoring noisy lockfiles
+          git diff origin/${{ steps.pr.outputs.base_ref }}...HEAD -- . \
+            ':!package-lock.json' ':!yarn.lock' ':!pnpm-lock.yaml' ':!*.min.js' \
+            > pr_diff.txt
+
+      - name: Run Gemini 4 Hydrogen Review & Post Comment
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          REQUESTER: ${{ github.event.comment.user.login }}
+          PR_TITLE: ${{ steps.pr.outputs.title }}
+          PR_BODY: ${{ steps.pr.outputs.body }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cat << 'EOF' > run_review.mjs
+          import fs from "fs";
+
+          const apiKey = process.env.GEMINI_API_KEY;
+          const requester = process.env.REQUESTER;
+          const diff = fs.readFileSync("pr_diff.txt", "utf8");
+
+          if (!diff.trim()) {
+            console.log("Empty diff, skipping review.");
+            process.exit(0);
+          }
+
+          // Also grab a list of all repo files so Gemini knows full project context
+          const allFiles = fs.readdirSync(".", { recursive: true })
+            .filter(f => !f.includes(".git") && !f.includes("node_modules"))
+            .slice(0, 150)
+            .join("\n");
+
+          const prompt = `
+          You are an expert Senior Staff Software Engineer reviewing a GitHub Pull Request.
+          The review was requested by @${requester}.
+
+          Start your response by tagging @${requester} directly in the first sentence.
+          Format your response cleanly in GitHub-flavored Markdown with these exact sections:
+
+          ### 👋 Hey @${requester}, here is your PR Review
+          (1-2 sentence summary of what this PR accomplishes and an overall Verdict: **✅ Ready to Merge** or **⚠️ Needs Fixes**)
+
+          ### ✨ Pros & What Works Well
+          - Bullet points highlighting clean patterns, good logic, or smart improvements.
+
+          ### 🐛 Issues & Suggested Fixes
+          - For every bug, security risk, edge case, or logic flaw, clearly state the **File Path** (e.g., \`src/index.js\`) and line context.
+          - Show the exact fix using fenced code blocks (\`\`\`js / \`\`\`python / etc.) so the author can copy-paste it immediately.
+          - If there are zero issues, explicitly state "No critical issues found!"
+
+          ---
+          **PR Title:** ${process.env.PR_TITLE}
+          **PR Description:** ${process.env.PR_BODY}
+
+          **Repository File Structure:**
+          ${allFiles}
+
+          **Full Git Diff:**
+          ${diff}
+          `;
+
+          const response = await fetch(
+            `https://googleapis.com{apiKey}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: {
+                  thinkingConfig: { thinkingLevel: "high" }
+                }
+              })
+            }
+          );
+
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(`Gemini API Error: ${JSON.stringify(data)}`);
+          }
+
+          const reviewText = data.candidates?.[0]?.content?.parts
+            ?.filter(p => !p.thought)
+            ?.map(p => p.text)
+            ?.join("") || "Could not generate review.";
+
+          // Post the review comment back to the PR
+          const ghRes = await fetch(
+            `https://github.com{process.env.GITHUB_REPOSITORY}/issues/${process.env.PR_NUMBER}/comments`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
+                Accept: "application/vnd.github+json",
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({ body: reviewText })
+            }
+          );
+
+          if (!ghRes.ok) {
+            throw new Error(`GitHub Comment Error: ${await ghRes.text()}`);
+          }
+          EOF
+
+          node run_review.mjs
